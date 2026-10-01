@@ -1,40 +1,53 @@
-# FyDisplayRemote
+# RemoteScreenSwitch / FyDisplayRemote
 
 OriginOS/Android Quick Settings remote monitor power controller.
 
-MVP components:
+## Components
 
 - `android/`: Kotlin Android app with Quick Settings `TileService`.
-- `windows-agent/`: Go Windows tray-less agent. Exposes a Tailscale/LAN HTTP API and can poll the relay server.
-- `relay-server/`: dependency-free Go HTTP long-poll relay.
+- `windows-agent/`: C#/.NET 8 Windows GUI + tray agent with built-in native DDC/CI monitor control.
+- `relay-server/`: lightweight relay for use when direct Tailscale/LAN access is unavailable.
 
 ## Control flow
 
 Direct/Tailscale:
 
-`Android -> http://<tailscale-host>:27120 -> Windows Agent -> PowerToys.PowerDisplay.Cli.exe`
+`Android -> http://<tailscale-host>:27120 -> Windows Agent -> Windows DDC/CI -> monitor`
 
 Relay fallback:
 
-`Android -> HTTPS Relay -> long poll -> Windows Agent -> PowerToys CLI`
+`Android -> HTTPS Relay -> long poll -> Windows Agent -> Windows DDC/CI -> monitor`
 
 The Android `AUTO` mode tries Direct first and falls back to Relay.
 
-## MVP security
+## Native monitor control
 
-Every request uses the same per-device bearer token. Direct HTTP is intended for an encrypted Tailscale network. Expose the relay only behind HTTPS (Caddy/Nginx/Cloudflare tunnel, etc.).
+The Windows agent no longer requires PowerToys. It uses the Windows Monitor Configuration API in `Dxva2.dll` directly:
+
+- enumerate physical monitors with `GetPhysicalMonitorsFromHMONITOR`
+- read power state with `GetVCPFeatureAndVCPFeatureReply`
+- write power state with `SetVCPFeature`
+- MCCS VCP code `0xD6` (Power Mode)
+- `0x01` = On
+- `0x04` = Off (DPM)
+
+Enable **DDC/CI** in the monitor's OSD. Monitor support varies by model, cable, dock, adapter, and GPU driver, so real hardware validation is required.
+
+The agent keeps the last successfully read/written power state. This allows `Toggle` to continue working when a monitor temporarily stops answering DDC/CI after entering Off/DPM.
 
 ## Windows agent
 
-Copy `windows-agent/config.example.json` to `config.json`, edit it, then run `fy-display-agent.exe -config config.json`.
+Download the latest `FyDisplayAgent-win-x64` artifact from GitHub Actions and run `FyDisplayAgent.exe`.
 
-The agent discovers `PowerToys.PowerDisplay.Cli.exe` from PATH or common PowerToys install locations. You can always set `powertoys_cli` explicitly.
+On first run it:
 
-## Relay
+1. creates `%LOCALAPPDATA%\FyDisplayRemote\config.json`
+2. generates a random Device Token
+3. opens the settings window
+4. scans for external DDC/CI monitors
+5. keeps running in the notification area when the window is closed
 
-Set `FY_RELAY_LISTEN` if needed (default `:27121`), then run `fy-display-relay`.
-
-The MVP relay is stateless except for in-memory command queues. Restarting it only drops in-flight requests.
+Select the intended monitor, press **Save settings**, then test **Refresh status**, **Display OFF (DPM)** and **Display ON** locally before configuring remote control.
 
 ## Android
 
@@ -42,19 +55,25 @@ Configure:
 
 - Direct URL: e.g. `http://100.90.80.70:27120`
 - Relay URL: e.g. `https://display.example.com`
-- Device ID: same as Windows config
-- Token: same as Windows config
+- Device ID: same as the Windows agent
+- Token: same as the Windows agent
 - Mode: AUTO / DIRECT / RELAY
 
-Then press **Add Quick Settings tile** and approve the system prompt.
+Then add the FyDisplayRemote Quick Settings tile.
+
+## Security
+
+Every request uses a per-device bearer token. Direct HTTP is intended to run inside an encrypted Tailscale network. Public relay endpoints should always use HTTPS.
 
 ## Build
 
-### Go
+### Windows
 
-```bash
-cd windows-agent && go test ./... && GOOS=windows GOARCH=amd64 go build -o fy-display-agent.exe .
-cd relay-server && go test ./... && go build -o fy-display-relay .
+Requires .NET 8 SDK on Windows:
+
+```powershell
+cd windows-agent
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
 ### Android
@@ -66,15 +85,4 @@ cd android
 gradle :app:assembleDebug
 ```
 
-GitHub Actions is included to build all artifacts.
-
-### Relay production token binding
-
-For production, set a JSON map so Device IDs cannot be claimed by the first caller:
-
-```bash
-export FY_RELAY_DEVICE_TOKENS='{"fy-pc-main":"your-long-random-token"}'
-./fy-display-relay-linux-amd64
-```
-
-If the variable is omitted, the MVP relay uses trust-on-first-use token binding for development only.
+GitHub Actions builds both Windows and Android artifacts automatically.
