@@ -16,7 +16,7 @@ public sealed class MainForm : Form
     private readonly Label _ddcStatus = new() { AutoSize = true };
     private readonly Label _relayStatus = new() { AutoSize = true };
     private readonly Label _displayStatus = new() { AutoSize = true };
-    private readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 130, Dock = DockStyle.Fill };
+    private readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 150, Dock = DockStyle.Fill };
     private readonly CheckBox _autoStart = new() { Text = "Start with Windows" };
     private bool _reallyExit;
 
@@ -24,10 +24,10 @@ public sealed class MainForm : Form
     {
         _service = service;
         _store = store;
-        Text = "FyDisplay Remote - Windows Agent v0.3";
-        Width = 760;
-        Height = 610;
-        MinimumSize = new Size(660, 540);
+        Text = "FyDisplay Remote - Windows Agent v0.3.1";
+        Width = 820;
+        Height = 650;
+        MinimumSize = new Size(700, 560);
         StartPosition = FormStartPosition.CenterScreen;
 
         _tray = new NotifyIcon
@@ -127,8 +127,8 @@ public sealed class MainForm : Form
         var hint = new Label
         {
             AutoSize = true,
-            MaximumSize = new Size(540, 0),
-            Text = "Native control uses MCCS VCP 0xD6 through Windows DDC/CI. Enable DDC/CI in the monitor OSD. OFF uses 0x04 (Off/DPM), not Hard Off."
+            MaximumSize = new Size(600, 0),
+            Text = "Scan probes VCP 0xD6 with a read only. 'Power OK' means the monitor answered the power-state query; unsupported candidates remain visible for diagnosis but are not preferred automatically. OFF uses 0x04 (Off/DPM), not Hard Off."
         };
         AddRow(root, "Control", hint);
         AddRow(root, "Log", _log);
@@ -174,11 +174,31 @@ public sealed class MainForm : Form
                     return;
                 }
 
-                var selected = list.ToList().FindIndex(m => string.Equals(m.Key, cfg.MonitorId, StringComparison.OrdinalIgnoreCase));
-                if (selected < 0) selected = Math.Clamp(cfg.MonitorNumber - 1, 0, list.Count - 1);
+                foreach (var m in list)
+                {
+                    AppendLog(m.SupportsPowerRead
+                        ? $"Probe {m.Key}: Power OK, current=0x{m.PowerState.GetValueOrDefault():X2}, {m.Description}."
+                        : $"Probe {m.Key}: VCP 0xD6 unavailable ({m.ProbeError ?? "read failed"}), {m.Description}.");
+                }
+
+                var selected = list.ToList().FindIndex(m =>
+                    string.Equals(m.Key, cfg.MonitorId, StringComparison.OrdinalIgnoreCase) && m.SupportsPowerRead);
+
+                if (selected < 0)
+                    selected = list.ToList().FindIndex(m => m.SupportsPowerRead);
+
+                if (selected < 0)
+                {
+                    selected = list.ToList().FindIndex(m => string.Equals(m.Key, cfg.MonitorId, StringComparison.OrdinalIgnoreCase));
+                    if (selected < 0) selected = Math.Clamp(cfg.MonitorNumber - 1, 0, list.Count - 1);
+                }
+
                 _monitors.SelectedIndex = selected;
-                _ddcStatus.Text = $"Ready - {list.Count} physical monitor(s)";
-                AppendLog($"DDC/CI scan found {list.Count} physical monitor(s).");
+                var readableCount = list.Count(m => m.SupportsPowerRead);
+                _ddcStatus.Text = readableCount > 0
+                    ? $"Ready - {readableCount}/{list.Count} support power-state read"
+                    : $"Detected {list.Count}, but none answered VCP 0xD6";
+                AppendLog($"DDC/CI scan found {list.Count} physical monitor(s); {readableCount} answered VCP 0xD6.");
             });
         }
         catch (Exception ex)
@@ -226,8 +246,6 @@ public sealed class MainForm : Form
     {
         var cfg = _service.Config;
         _apiStatus.Text = $"Listening on 0.0.0.0:{cfg.Port} (LAN/Tailscale)";
-        if (_monitors.Items.Count > 0)
-            _ddcStatus.Text = $"Ready - {_monitors.Items.Count} physical monitor(s)";
         _relayStatus.Text = string.IsNullOrWhiteSpace(cfg.RelayUrl)
             ? "Disabled"
             : (_service.RelayOnline ? "Connected" : "Disconnected: " + _service.LastRelayMessage);
