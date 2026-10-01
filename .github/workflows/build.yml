@@ -1,0 +1,55 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Test relay
+        working-directory: relay-server
+        run: go test ./...
+      - name: Build relay
+        working-directory: relay-server
+        run: go build -o ../fy-display-relay-linux-amd64 .
+      - name: Test agent
+        working-directory: windows-agent
+        run: go test ./...
+      - name: Build Windows agent
+        working-directory: windows-agent
+        run: GOOS=windows GOARCH=amd64 go build -o ../fy-display-agent-win-x64.exe .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fy-display-go-binaries
+          path: |
+            fy-display-relay-linux-amd64
+            fy-display-agent-win-x64.exe
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build APK
+        working-directory: android
+        run: gradle :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FyDisplayRemote-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
