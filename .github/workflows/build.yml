@@ -1,4 +1,4 @@
-name: build-apk
+name: build
 
 on:
   workflow_dispatch:
@@ -6,10 +6,12 @@ on:
     branches: [ main ]
     paths:
       - 'android/**'
+      - 'windows-agent/**'
       - '.github/workflows/build.yml'
   pull_request:
     paths:
       - 'android/**'
+      - 'windows-agent/**'
       - '.github/workflows/build.yml'
 
 jobs:
@@ -35,4 +37,20 @@ jobs:
         with:
           name: FyDisplayRemote-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish Windows tray agent
+        shell: pwsh
+        run: dotnet publish .\windows-agent\FyDisplayAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o .\publish\windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FyDisplayAgent-win-x64
+          path: publish/windows/FyDisplayAgent.exe
           if-no-files-found: error
