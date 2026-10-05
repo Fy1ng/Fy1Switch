@@ -1,8 +1,8 @@
 namespace RemoteDisplaySwitch.Probe;
 
-public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker, bool AllowPowerWrite, bool GdiOrderExperiment = false)
+public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker, bool AllowPowerWrite, bool GdiOrderExperiment = false, int OffSeconds = 5)
 {
-    public bool WritesPower => Command is "on" or "cycle";
+    public bool WritesPower => Command is "on" or "cycle" or "restart-cycle";
 
     public static bool TryParse(string[] arguments, out ProbeOptions? options)
     {
@@ -13,12 +13,12 @@ public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker
         }
 
         var command = arguments[0];
-        if (command is not ("inventory" or "topology" or "discover" or "read" or "on" or "cycle"))
+        if (command is not ("inventory" or "topology" or "discover" or "read" or "on" or "cycle" or "restart-cycle"))
         {
             return false;
         }
 
-        var needsTarget = command is "read" or "on" or "cycle";
+        var needsTarget = command is "read" or "on" or "cycle" or "restart-cycle";
         var position = 1;
         string? target = null;
         if (needsTarget)
@@ -34,6 +34,8 @@ public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker
         var worker = false;
         var allowWrite = false;
         var gdiOrderExperiment = false;
+        var offSeconds = 5;
+        var durationSpecified = false;
         while (position < arguments.Length)
         {
             switch (arguments[position++])
@@ -47,18 +49,26 @@ public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker
                 case "--gdi-order-experiment" when !gdiOrderExperiment:
                     gdiOrderExperiment = true;
                     break;
+                case "--off-seconds" when !durationSpecified:
+                    if (position >= arguments.Length || !int.TryParse(arguments[position++], out offSeconds) || offSeconds is < 1 or > 300)
+                    {
+                        return false;
+                    }
+
+                    durationSpecified = true;
+                    break;
                 default:
                     return false;
             }
         }
 
-        var writesPower = command is "on" or "cycle";
-        if (writesPower != allowWrite || (gdiOrderExperiment && command is "inventory" or "topology"))
+        var writesPower = command is "on" or "cycle" or "restart-cycle";
+        if (writesPower != allowWrite || (gdiOrderExperiment && command is "inventory" or "topology") || (durationSpecified && command is not ("cycle" or "restart-cycle")))
         {
             return false;
         }
 
-        options = new(command, target, worker, allowWrite, gdiOrderExperiment);
+        options = new(command, target, worker, allowWrite, gdiOrderExperiment, offSeconds);
         return true;
     }
 }

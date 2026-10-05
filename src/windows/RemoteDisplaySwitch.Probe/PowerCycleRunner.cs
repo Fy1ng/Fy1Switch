@@ -8,8 +8,15 @@ public static class PowerCycleRunner
 {
     public static async Task<PowerCycleResult> RunAsync(
         Func<int, Task<MonitorOperationResult>> write,
-        Func<TimeSpan, Task> delay)
+        Func<TimeSpan, Task> delay,
+        TimeSpan? offDuration = null)
     {
+        var duration = offDuration ?? TimeSpan.FromSeconds(5);
+        if (duration < TimeSpan.FromSeconds(1) || duration > TimeSpan.FromSeconds(300))
+        {
+            throw new ArgumentOutOfRangeException(nameof(offDuration));
+        }
+
         MonitorOperationResult off;
         MonitorOperationResult on;
         try
@@ -17,7 +24,7 @@ public static class PowerCycleRunner
             off = await write(4);
             if (off.IsSuccess)
             {
-                await delay(TimeSpan.FromSeconds(5));
+                await delay(duration);
             }
         }
         finally

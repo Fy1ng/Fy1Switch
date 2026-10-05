@@ -6,7 +6,7 @@
 
 本轮已建立可独立编译的控制核心、进程隔离的本地诊断工具和无硬件回归测试。**不是已完成的远程控制产品**：托盘宿主、自启、Android/OriginOS Tile、HTTPS 与 Relay 尚未实现。
 
-官方 Power Display 退出后，已完成真实 DDC 发现和一次受限对照实验：原始上游按 CCD 顺序绑定时把唯一响应句柄标为 VDD；按本机 GDI 顺序显式重排后标为 G4Q。该实验的 DPM 0x04 和 ON 0x01 写入均成功，随后实时读回 0x01。**仍等待人工确认实体屏熄灭/恢复及 VDD、复制模式未受影响；没有据此通过 P0 门槛。**详见 docs/P0-findings.md。
+官方 Power Display 退出后，已完成真实 DDC 发现及受限对照实验：原始上游按 CCD 顺序绑定时把唯一响应句柄标为 VDD；按本机 GDI 顺序显式重排后标为 G4Q。用户已于 2026-10-05 人工确认复测时实体屏熄灭约 5 秒后恢复，VDD、复制模式正常。随后 30/30 轮软件循环、保持句柄关闭 60 秒，以及释放原句柄后等待 15/60 秒由全新进程恢复均成功；当前发布包也通过 5 秒全新进程恢复复核。**人工确认只覆盖指定短循环，整机重启、睡眠和物理拔插尚未验证，不把工作进程重启当成整机重启。**详见 docs/P0-findings.md。
 
 ## 已确认架构
 
@@ -47,6 +47,8 @@ topology 对照 CCD 路径顺序与 EnumDisplayDevices 的 GDI 设备顺序，�
 ./RemoteDisplaySwitch.Probe.exe read <完整targetKey>
 ./RemoteDisplaySwitch.Probe.exe on <完整targetKey> --allow-power-write
 ./RemoteDisplaySwitch.Probe.exe cycle <完整targetKey> --allow-power-write
+./RemoteDisplaySwitch.Probe.exe cycle <完整targetKey> --allow-power-write --off-seconds 60
+./RemoteDisplaySwitch.Probe.exe restart-cycle <完整targetKey> --allow-power-write --off-seconds 60
 ~~~
 
 当前 G4Q + MTT VDD 复制环境只能使用显式诊断实验，不会自动选择或交换索引：
@@ -58,9 +60,13 @@ topology 对照 CCD 路径顺序与 EnumDisplayDevices 的 GDI 设备顺序，�
 
 该开关仅接受两个指定 EDID 型号 SAC2563、MTT1337、同一 GDI 源、完整且唯一的活动 GDI/CCD 设备集合。实验直接调用上游 DdcCiController，以 GDI 顺序传入目标；写前重新核对拓扑，并要求只有一个被发现的 DDC 候选。名称和身份仍标记为未验证；不会保存实体绑定，不支持任意 VDD/多实体显示器，也不能证明微软保证此映射。
 
-cycle 仅在能力包含 0x01、0x04，且刚读到 0x01 时执行。它发送 0x04，成功后等待 5 秒，在 finally 中尝试发送 0x01；即使 OFF 报错也尝试 ON，不回退到 Hard Off 0x05。退出码为 0 只表示相应调用和最终 ON 读回成功，**不表示物理身份及肉眼开关已验证**。
+cycle 仅在能力包含 0x01、0x04，且刚读到 0x01 时执行。它发送 0x04，成功后默认等待 5 秒（可用 --off-seconds 指定 1～300 秒），在 finally 中尝试发送 0x01；即使 OFF 报错也尝试 ON，不回退到 Hard Off 0x05。退出码为 0 只表示相应调用和最终 ON 读回成功，**不表示物理身份及肉眼开关已验证**。
 
-原生驱动卡死、进程被强制结束或系统故障时，finally 不保证执行；监督进程在 90 秒后终止自己的工作进程并报告结果未知。Ctrl+C 请求不会立即终止正常恢复流程。程序不会自动重试硬件任务，也不提供永久 OFF 或 Toggle 的产品接口。
+restart-cycle 是明确的故障恢复实验：监督进程在收到成功 OFF 回执后结束自己的原工作进程，确认其退出并释放句柄，等待指定时间，再启动全新工作进程重新发现目标、发送 ON 并读回。不保留救援 DDC 句柄，不借用旧进程的内存状态；即使第一阶段异常也尝试一次全新进程 ON。该模式只能由监督进程运行，不能直接作为 --worker 命令调用。两个阶段之间持有监督锁，其他正常 P0 命令不能插入。
+
+原生驱动卡死、监督进程被强制结束或系统故障时，finally 不保证执行。普通诊断工作进程预算为 90 秒，cycle 另计已指定的关闭等待时间；restart-cycle 的关闭和全新进程恢复阶段各有 90 秒预算，中间等待单独计时。超时会结束自己的工作进程并报告结果未知。Ctrl+C 请求不会立即终止正常恢复流程；除明确的 ON 恢复尝试外，不自动重试硬件任务，也不提供永久 OFF 或 Toggle 的产品接口。
+
+重复测试可运行 tools/Run-P0-Matrix.ps1 -TargetKey <完整targetKey> -Cycles 30 -AllowPowerWrite。默认每轮关闭 5 秒，轮间至少保持开启 3 秒，每轮使用新工作进程重新发现；首个异常立即停止。日志在 diagnostics 下，physicallyObserved 始终为 false，不用自动化回执代替人工验收。
 
 PowerToys 与本工具没有共同的硬件锁。检测到官方进程时拒绝访问，只是防误用措施，不是对所有第三方 DDC 程序的排他保证；测试期间不要重启其他控制者。
 

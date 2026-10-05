@@ -23,8 +23,8 @@ internal static class Program
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args.Length == 0 || args[0] is "--help" or "help")
         {
-            Console.WriteLine("RemoteDisplaySwitch P0: inventory | topology | discover | read <target-key> | on <target-key> --allow-power-write | cycle <target-key> --allow-power-write");
-            Console.WriteLine("cycle tests DPM (0x04) for five seconds, then attempts ON (0x01). Physical identity and visible state must be checked by a person. Restoration is not guaranteed after driver failure.");
+            Console.WriteLine("RemoteDisplaySwitch P0: inventory | topology | discover | read <target-key> | on <target-key> --allow-power-write | cycle/restart-cycle <target-key> --allow-power-write [--off-seconds 1..300]");
+            Console.WriteLine("cycle defaults to five seconds of DPM (0x04), then attempts ON (0x01). restart-cycle terminates its own writer after OFF and uses a fresh process for ON. Physical identity and visible state must be checked by a person. Recovery is not guaranteed after driver or supervisor failure.");
             Console.WriteLine("--gdi-order-experiment is an explicit P0-only comparison for the G4Q plus MTT VDD clone setup. It does not establish physical identity.");
             return 0;
         }
@@ -52,7 +52,7 @@ internal static class Program
         }
     }
 
-    private static async Task<int> SuperviseAsync(string[] args)
+    private static ProcessStartInfo CreateWorkerStartInfo(string[] args)
     {
         var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("No process path.");
         var start = new ProcessStartInfo(processPath)
@@ -75,38 +75,144 @@ internal static class Program
         }
 
         start.ArgumentList.Add("--worker");
-        using var child = Process.Start(start) ?? throw new InvalidOperationException("Unable to start probe worker.");
-        var standardOutput = CopyLinesAsync(child.StandardOutput, Console.Out);
+        return start;
+    }
+
+    private static async Task<int> SuperviseAsync(string[] args)
+    {
+        PathConstants.EnsurePowerDisplayFolderExists();
+        using var supervisorLease = TryAcquireInstance("probe.supervisor.lock");
+        if (supervisorLease is null)
+        {
+            Emit(new { kind = "failure", error = "probe_supervisor_already_running" });
+            return 4;
+        }
+
+        ProbeOptions.TryParse(args, out var options);
+        if (options!.Command == "restart-cycle")
+        {
+            return await RunRestartCycleAsync(options);
+        }
+
+        var timeout = TimeSpan.FromSeconds(90 + (options.Command == "cycle" ? options.OffSeconds : 0));
+        var result = await RunWorkerProcessAsync(args, timeout);
+        return result.ExitCode;
+    }
+
+    private static async Task<ProbeProcessResult> RunWorkerProcessAsync(string[] args, TimeSpan timeout, bool stopAfterOff = false)
+    {
+        using var child = Process.Start(CreateWorkerStartInfo(args)) ?? throw new InvalidOperationException("Unable to start probe worker.");
+        Emit(new { kind = "worker_started", pid = child.Id, stopAfterOff });
+        var offAcknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void ObserveOutput(string line)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var entry = document.RootElement;
+                if (entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String && kind.GetString() == "power_write" &&
+                    entry.TryGetProperty("requestedValue", out var requested) && requested.ValueKind == JsonValueKind.Number && requested.TryGetInt32(out var value) && value == 4 &&
+                    entry.TryGetProperty("accepted", out var accepted) && accepted.ValueKind == JsonValueKind.True)
+                {
+                    offAcknowledged.TrySetResult();
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        var standardOutput = CopyLinesAsync(child.StandardOutput, Console.Out, ObserveOutput);
         var standardError = CopyLinesAsync(child.StandardError, Console.Error);
+        var exited = child.WaitForExitAsync();
+        var terminated = false;
+        using var deadline = new CancellationTokenSource(timeout);
         try
         {
-            await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(90));
+            if (stopAfterOff)
+            {
+                await Task.WhenAny(offAcknowledged.Task, exited).WaitAsync(deadline.Token);
+                if (offAcknowledged.Task.IsCompletedSuccessfully && !child.HasExited)
+                {
+                    child.Kill(entireProcessTree: true);
+                    terminated = true;
+                    Emit(new { kind = "writer_terminated_after_off", pid = child.Id });
+                }
+            }
+
+            await exited.WaitAsync(deadline.Token);
             await Task.WhenAll(standardOutput, standardError);
-            return child.ExitCode;
+            return new(terminated ? 0 : child.ExitCode, offAcknowledged.Task.IsCompletedSuccessfully, terminated);
         }
-        catch (TimeoutException)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
             if (!child.HasExited)
             {
                 child.Kill(entireProcessTree: true);
             }
+
             await child.WaitForExitAsync();
             await Task.WhenAll(standardOutput, standardError);
             Emit(new { kind = "failure", error = "worker_timeout", hardwareOutcome = "unknown", retryAutomatically = false });
-            return 3;
+            return new(3, offAcknowledged.Task.IsCompletedSuccessfully, false);
         }
     }
 
-    private static async Task CopyLinesAsync(StreamReader reader, TextWriter writer)
+    private static async Task<int> RunRestartCycleAsync(ProbeOptions options)
+    {
+        string[] Arguments(string command, int? seconds = null)
+        {
+            var result = new List<string> { command, options.TargetKey!, "--allow-power-write" };
+            if (options.GdiOrderExperiment)
+            {
+                result.Add("--gdi-order-experiment");
+            }
+
+            if (seconds is not null)
+            {
+                result.AddRange(["--off-seconds", seconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
+            }
+
+            return result.ToArray();
+        }
+
+        Emit(new { kind = "restart_cycle_start", offSeconds = options.OffSeconds, originalHandlesWillBeReleased = true });
+        var result = await RestartCycleRunner.RunAsync(
+            () => RunWorkerProcessAsync(Arguments("cycle", 300), TimeSpan.FromSeconds(90), stopAfterOff: true),
+            duration => Task.Delay(duration),
+            async () =>
+            {
+                Emit(new { kind = "fresh_process_restoration_start" });
+                return (await RunWorkerProcessAsync(Arguments("on"), TimeSpan.FromSeconds(90))).ExitCode;
+            },
+            TimeSpan.FromSeconds(options.OffSeconds));
+        Emit(new { kind = "restart_cycle_summary", result.Succeeded, result.Writer, result.RestoreExitCode, physicalPowerValidated = false });
+        return result.Succeeded ? 0 : 9;
+    }
+
+    private static async Task CopyLinesAsync(StreamReader reader, TextWriter writer, Action<string>? observe = null)
     {
         while (await reader.ReadLineAsync() is { } line)
         {
-            await writer.WriteLineAsync(line);
+            observe?.Invoke(line);
+            try
+            {
+                await writer.WriteLineAsync(line);
+            }
+            catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+            {
+            }
         }
     }
 
     private static async Task<int> RunWorkerAsync(ProbeOptions options)
     {
+        if (options.Command == "restart-cycle")
+        {
+            Emit(new { kind = "failure", error = "restart_cycle_requires_supervisor" });
+            return 2;
+        }
+
         PathConstants.EnsurePowerDisplayFolderExists();
         using var instance = TryAcquireInstance();
         if (instance is null)
@@ -235,11 +341,11 @@ internal static class Program
         }
     }
 
-    private static FileStream? TryAcquireInstance()
+    private static FileStream? TryAcquireInstance(string fileName = "probe.instance.lock")
     {
         try
         {
-            return new FileStream(Path.Combine(PathConstants.PowerDisplayFolderPath, "probe.instance.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            return new FileStream(Path.Combine(PathConstants.PowerDisplayFolderPath, fileName), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         }
         catch (IOException)
         {
@@ -305,7 +411,8 @@ internal static class Program
                     Emit(new { kind = "power_write", requestedValue, accepted = result.IsSuccess, errorCode = result.ErrorCode, physicallyVerified = false });
                     return result;
                 },
-                duration => Task.Delay(duration));
+                duration => Task.Delay(duration),
+                TimeSpan.FromSeconds(options.OffSeconds));
             offResult = cycle.Off;
             onResult = cycle.On;
         }
@@ -344,5 +451,14 @@ internal static class Program
 
     private static string Key(string identifier) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identifier.ToUpperInvariant()))).ToLowerInvariant();
 
-    private static void Emit<T>(T value) => Console.WriteLine(JsonSerializer.Serialize(value));
+    private static void Emit<T>(T value)
+    {
+        try
+        {
+            Console.WriteLine(JsonSerializer.Serialize(value));
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+        }
+    }
 }
