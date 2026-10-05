@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace FyDisplayAgent;
 
@@ -9,6 +10,10 @@ public sealed record DdcMonitorInfo(
     string Description,
     int LogicalIndex,
     int PhysicalIndex,
+    bool HasCapabilities,
+    bool AdvertisesPowerControl,
+    string? CapabilitiesSummary,
+    string? CapabilitiesError,
     bool SupportsPowerRead,
     uint? PowerState,
     string? ProbeError)
@@ -16,16 +21,23 @@ public sealed record DdcMonitorInfo(
     public override string ToString()
     {
         var physical = PhysicalIndex > 0 ? $" / physical {PhysicalIndex + 1}" : "";
-        var power = SupportsPowerRead
-            ? $" / Power OK 0x{PowerState.GetValueOrDefault():X2}"
-            : $" / Power unsupported{(string.IsNullOrWhiteSpace(ProbeError) ? "" : $" ({ProbeError})")}";
-        return $"{LogicalIndex}. {Description} [{GdiDeviceName}]{physical}{power}";
+        var caps = AdvertisesPowerControl
+            ? " / MCCS D6"
+            : HasCapabilities
+                ? " / MCCS"
+                : " / no MCCS caps";
+        var read = SupportsPowerRead
+            ? $" / read 0x{PowerState.GetValueOrDefault():X2}"
+            : $" / read unavailable{(string.IsNullOrWhiteSpace(ProbeError) ? "" : $" ({ProbeError})")}";
+        return $"{LogicalIndex}. {Description} [{GdiDeviceName}]{physical}{caps}{read}";
     }
 }
 
 /// <summary>
-/// Minimal native DDC/CI controller for external monitors.
-/// Uses the Windows Monitor Configuration API (Dxva2.dll) directly and has no PowerToys dependency.
+/// Native DDC/CI controller for external monitors.
+/// Uses Dxva2.dll directly. Monitor selection intentionally prefers a real MCCS capabilities
+/// response over a successful VCP 0xD6 read because virtual displays can emulate reads while
+/// rejecting writes in clone/mirror topologies.
 /// </summary>
 public sealed class DdcMonitorController
 {
@@ -54,20 +66,7 @@ public sealed class DdcMonitorController
                 for (int i = 0; i < physicals.Length; i++)
                 {
                     if (physicals[i].Handle == IntPtr.Zero) continue;
-                    var description = string.IsNullOrWhiteSpace(physicals[i].Description)
-                        ? $"Physical monitor {i + 1}"
-                        : physicals[i].Description.Trim();
-
-                    var (supported, state, error) = ProbePowerRead(physicals[i].Handle);
-                    result.Add(new DdcMonitorInfo(
-                        BuildKey(gdi, i),
-                        gdi,
-                        description,
-                        logical,
-                        i,
-                        supported,
-                        state,
-                        error));
+                    result.Add(BuildMonitorInfo(gdi, logical, i, physicals[i]));
                 }
             }
             finally
@@ -84,47 +83,30 @@ public sealed class DdcMonitorController
     public uint GetPowerState(string? monitorId, int monitorNumber)
         => WithSelectedMonitor(monitorId, monitorNumber, (handle, selected) =>
         {
+            Marshal.SetLastPInvokeError(0);
             if (!NativeMethods.GetVCPFeatureAndVCPFeatureReply(handle, VcpPowerMode, IntPtr.Zero, out var current, out _))
-                throw NativeError($"Could not read power state (VCP 0x{VcpPowerMode:X2}) from {selected.Description}");
+                throw NativeError($"Could not read power state (VCP 0x{VcpPowerMode:X2}) from {selected.Key}");
             return current;
-        }, preferPowerReadable: true);
+        });
 
     public void SetPowerState(string? monitorId, int monitorNumber, uint value)
         => WithSelectedMonitor(monitorId, monitorNumber, (handle, selected) =>
         {
+            Marshal.SetLastPInvokeError(0);
             if (!NativeMethods.SetVCPFeature(handle, VcpPowerMode, value))
-                throw NativeError($"Could not set power state 0x{value:X2} (VCP 0x{VcpPowerMode:X2}) on {selected.Description}");
+                throw NativeError($"Could not set power state 0x{value:X2} (VCP 0x{VcpPowerMode:X2}) on {selected.Key}");
             return 0;
-        }, preferPowerReadable: false);
+        });
 
     public DdcMonitorInfo ResolveSelectedMonitor(string? monitorId, int monitorNumber)
     {
         var monitors = EnumerateMonitors();
         if (monitors.Count == 0)
             throw new InvalidOperationException("No external DDC/CI monitors were found. Check that DDC/CI is enabled in the monitor OSD.");
-
-        if (!string.IsNullOrWhiteSpace(monitorId))
-        {
-            var byId = monitors.FirstOrDefault(m => string.Equals(m.Key, monitorId, StringComparison.OrdinalIgnoreCase));
-            if (byId is not null) return byId;
-        }
-
-        var readable = monitors.Where(m => m.SupportsPowerRead).ToList();
-        if (readable.Count > 0)
-        {
-            var preferredIndex = Math.Clamp(monitorNumber, 1, readable.Count) - 1;
-            return readable[preferredIndex];
-        }
-
-        var index = Math.Clamp(monitorNumber, 1, monitors.Count) - 1;
-        return monitors[index];
+        return SelectBest(monitors, monitorId, monitorNumber);
     }
 
-    private T WithSelectedMonitor<T>(
-        string? monitorId,
-        int monitorNumber,
-        Func<IntPtr, DdcMonitorInfo, T> action,
-        bool preferPowerReadable)
+    private T WithSelectedMonitor<T>(string? monitorId, int monitorNumber, Func<IntPtr, DdcMonitorInfo, T> action)
     {
         var candidates = CollectPhysicalCandidates();
         if (candidates.Count == 0)
@@ -132,21 +114,8 @@ public sealed class DdcMonitorController
 
         try
         {
-            Candidate? selected = null;
-
-            if (!string.IsNullOrWhiteSpace(monitorId))
-                selected = candidates.FirstOrDefault(c => string.Equals(c.Info.Key, monitorId, StringComparison.OrdinalIgnoreCase));
-
-            if (selected is null && preferPowerReadable)
-            {
-                var readable = candidates.Where(c => c.Info.SupportsPowerRead).ToList();
-                if (readable.Count > 0)
-                    selected = readable[Math.Clamp(monitorNumber, 1, readable.Count) - 1];
-            }
-
-            if (selected is null)
-                selected = candidates[Math.Clamp(monitorNumber, 1, candidates.Count) - 1];
-
+            var selectedInfo = SelectBest(candidates.Select(c => c.Info).ToList(), monitorId, monitorNumber);
+            var selected = candidates.First(c => string.Equals(c.Info.Key, selectedInfo.Key, StringComparison.OrdinalIgnoreCase));
             return action(selected.Handle, selected.Info);
         }
         finally
@@ -158,6 +127,37 @@ public sealed class DdcMonitorController
                     NativeMethods.DestroyPhysicalMonitors((uint)array.Length, array);
             }
         }
+    }
+
+    private static DdcMonitorInfo SelectBest(IReadOnlyList<DdcMonitorInfo> monitors, string? monitorId, int monitorNumber)
+    {
+        // PowerToys first establishes real DDC/MCCS capability evidence. Mirror-mode VDDs may
+        // answer a VCP read but still reject SetVCPFeature. Therefore a caps string is stronger
+        // evidence than SupportsPowerRead and drives automatic selection.
+        var advertised = monitors.Where(m => m.AdvertisesPowerControl).ToList();
+        if (advertised.Count > 0)
+        {
+            var saved = advertised.FirstOrDefault(m => string.Equals(m.Key, monitorId, StringComparison.OrdinalIgnoreCase));
+            return saved ?? advertised[Math.Clamp(monitorNumber, 1, advertised.Count) - 1];
+        }
+
+        var mccs = monitors.Where(m => m.HasCapabilities).ToList();
+        if (mccs.Count > 0)
+        {
+            var saved = mccs.FirstOrDefault(m => string.Equals(m.Key, monitorId, StringComparison.OrdinalIgnoreCase));
+            return saved ?? mccs[Math.Clamp(monitorNumber, 1, mccs.Count) - 1];
+        }
+
+        // If no capabilities string can be obtained, preserve an explicit user selection.
+        if (!string.IsNullOrWhiteSpace(monitorId))
+        {
+            var saved = monitors.FirstOrDefault(m => string.Equals(m.Key, monitorId, StringComparison.OrdinalIgnoreCase));
+            if (saved is not null) return saved;
+        }
+
+        // Do not prefer a candidate solely because GetVCP(0xD6) succeeded: this is exactly what
+        // selected the VDD in the user's clone topology.
+        return monitors[Math.Clamp(monitorNumber, 1, monitors.Count) - 1];
     }
 
     private List<Candidate> CollectPhysicalCandidates()
@@ -186,20 +186,10 @@ public sealed class DdcMonitorController
             for (int i = 0; i < physicals.Length; i++)
             {
                 if (physicals[i].Handle == IntPtr.Zero) continue;
-                var description = string.IsNullOrWhiteSpace(physicals[i].Description)
-                    ? $"Physical monitor {i + 1}"
-                    : physicals[i].Description.Trim();
-                var (supported, state, error) = ProbePowerRead(physicals[i].Handle);
-                var info = new DdcMonitorInfo(
-                    BuildKey(logicalMonitor.Gdi, i),
-                    logicalMonitor.Gdi,
-                    description,
-                    logicalMonitor.LogicalIndex,
-                    i,
-                    supported,
-                    state,
-                    error);
-                result.Add(new Candidate(physicals[i].Handle, info, physicals));
+                result.Add(new Candidate(
+                    physicals[i].Handle,
+                    BuildMonitorInfo(logicalMonitor.Gdi, logicalMonitor.LogicalIndex, i, physicals[i]),
+                    physicals));
                 anyAdded = true;
             }
 
@@ -210,6 +200,72 @@ public sealed class DdcMonitorController
         return result;
     }
 
+    private static DdcMonitorInfo BuildMonitorInfo(string gdi, int logicalIndex, int physicalIndex, NativeMethods.PhysicalMonitor physical)
+    {
+        var description = string.IsNullOrWhiteSpace(physical.Description)
+            ? $"Physical monitor {physicalIndex + 1}"
+            : physical.Description.Trim();
+
+        var caps = ProbeCapabilities(physical.Handle);
+        var power = ProbePowerRead(physical.Handle);
+
+        return new DdcMonitorInfo(
+            BuildKey(gdi, physicalIndex),
+            gdi,
+            description,
+            logicalIndex,
+            physicalIndex,
+            caps.HasCapabilities,
+            caps.AdvertisesPowerControl,
+            caps.Summary,
+            caps.Error,
+            power.Supported,
+            power.State,
+            power.Error);
+    }
+
+    private static (bool HasCapabilities, bool AdvertisesPowerControl, string? Summary, string? Error) ProbeCapabilities(IntPtr handle)
+    {
+        Marshal.SetLastPInvokeError(0);
+        if (!NativeMethods.GetCapabilitiesStringLength(handle, out var length) || length == 0)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            return (false, false, null, error == 0 ? "capabilities length unavailable" : $"error {error}");
+        }
+
+        // Protect against bogus virtual-driver lengths.
+        if (length > 1024 * 1024)
+            return (false, false, null, $"invalid capabilities length {length}");
+
+        var buffer = Marshal.AllocHGlobal(checked((int)length));
+        try
+        {
+            Marshal.SetLastPInvokeError(0);
+            if (!NativeMethods.CapabilitiesRequestAndCapabilitiesReply(handle, buffer, length))
+            {
+                var error = Marshal.GetLastPInvokeError();
+                return (false, false, null, error == 0 ? "capabilities read failed" : $"error {error}");
+            }
+
+            var raw = Marshal.PtrToStringAnsi(buffer) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(raw))
+                return (false, false, null, "empty capabilities string");
+
+            var advertisesD6 = Regex.IsMatch(raw, @"(?i)(?:^|[\s(])D6(?:[\s()])");
+            var compact = Regex.Replace(raw, @"\s+", " ").Trim();
+            var summary = compact.Length <= 220 ? compact : compact[..220] + "…";
+            return (true, advertisesD6, summary, null);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return (false, false, null, ex.Message);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     private static (bool Supported, uint? State, string? Error) ProbePowerRead(IntPtr handle)
     {
         Marshal.SetLastPInvokeError(0);
@@ -217,9 +273,9 @@ public sealed class DdcMonitorController
             return (true, current, null);
 
         var error = Marshal.GetLastPInvokeError();
-        if (error == 0)
-            return (false, null, "read failed");
-        return (false, null, $"error {error}");
+        return error == 0
+            ? (false, null, "read failed")
+            : (false, null, $"error {error}");
     }
 
     private static string BuildKey(string gdiDeviceName, int physicalIndex)
@@ -229,7 +285,7 @@ public sealed class DdcMonitorController
     {
         var error = Marshal.GetLastPInvokeError();
         return error == 0
-            ? new InvalidOperationException(prefix + ". The monitor may not support this DDC/CI command.")
+            ? new InvalidOperationException(prefix + ". The selected handle may not accept this DDC/CI command.")
             : new Win32Exception(error, $"{prefix}. Win32 error {error}");
     }
 
@@ -286,6 +342,14 @@ public sealed class DdcMonitorController
         [DllImport("dxva2.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool DestroyPhysicalMonitors(uint arraySize, [In] PhysicalMonitor[] physicalMonitorArray);
+
+        [DllImport("dxva2.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetCapabilitiesStringLength(IntPtr hMonitor, out uint capabilitiesStringLengthInCharacters);
+
+        [DllImport("dxva2.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool CapabilitiesRequestAndCapabilitiesReply(IntPtr hMonitor, IntPtr asciiCapabilitiesString, uint capabilitiesStringLengthInCharacters);
 
         [DllImport("dxva2.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
