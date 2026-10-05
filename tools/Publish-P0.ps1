@@ -8,6 +8,8 @@ Copy-Item -LiteralPath (Join-Path $root 'vendor/powertoys/LICENSE') -Destination
 Copy-Item -LiteralPath (Join-Path $root 'licenses/WmiLight.LICENSE') -Destination (Join-Path $output 'WmiLight.LICENSE')
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination $output
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $output 'README-P0.md')
+New-Item -ItemType Directory -Path (Join-Path $output 'docs') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'docs/P0-findings.md') -Destination (Join-Path $output 'docs/P0-findings.md')
 Copy-Item -LiteralPath (Join-Path $root 'vendor/powertoys/upstream.json') -Destination (Join-Path $output 'powertoys-upstream.json')
 $runtime = Get-Content -LiteralPath (Join-Path $output 'RemoteDisplaySwitch.Probe.runtimeconfig.json') -Raw | ConvertFrom-Json
 $runtimeVersion = ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Microsoft.NETCore.App').version

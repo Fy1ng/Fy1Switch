@@ -9,6 +9,7 @@ public class ProbeOptionsTests
 
     [TestMethod]
     [DataRow("inventory")]
+    [DataRow("topology")]
     [DataRow("discover")]
     public void ReadOnlyCommandsNeedNoWriteFlag(string command)
     {
@@ -44,5 +45,17 @@ public class ProbeOptionsTests
         Assert.IsTrue(ProbeOptions.TryParse(["cycle", TargetKey.ToUpperInvariant(), "--allow-power-write", "--worker"], out var options));
         Assert.AreEqual(TargetKey, options!.TargetKey);
         Assert.IsTrue(options.Worker);
+    }
+
+    [TestMethod]
+    public void OrderingExperimentIsExplicitAndKeepsWriteGuard()
+    {
+        Assert.IsTrue(ProbeOptions.TryParse(["discover", "--gdi-order-experiment"], out var discovery));
+        Assert.IsTrue(discovery!.GdiOrderExperiment);
+        Assert.IsFalse(ProbeOptions.TryParse(["inventory", "--gdi-order-experiment"], out _));
+        Assert.IsFalse(ProbeOptions.TryParse(["cycle", TargetKey, "--gdi-order-experiment"], out _));
+        Assert.IsFalse(ProbeOptions.TryParse(["discover", "--gdi-order-experiment", "--gdi-order-experiment"], out _));
+        Assert.IsTrue(ProbeOptions.TryParse(["cycle", TargetKey, "--gdi-order-experiment", "--allow-power-write"], out var cycle));
+        Assert.IsTrue(cycle!.GdiOrderExperiment);
     }
 }

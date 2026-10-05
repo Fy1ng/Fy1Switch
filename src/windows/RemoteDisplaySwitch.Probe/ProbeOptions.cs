@@ -1,6 +1,6 @@
 namespace RemoteDisplaySwitch.Probe;
 
-public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker, bool AllowPowerWrite)
+public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker, bool AllowPowerWrite, bool GdiOrderExperiment = false)
 {
     public bool WritesPower => Command is "on" or "cycle";
 
@@ -13,7 +13,7 @@ public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker
         }
 
         var command = arguments[0];
-        if (command is not ("inventory" or "discover" or "read" or "on" or "cycle"))
+        if (command is not ("inventory" or "topology" or "discover" or "read" or "on" or "cycle"))
         {
             return false;
         }
@@ -33,6 +33,7 @@ public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker
 
         var worker = false;
         var allowWrite = false;
+        var gdiOrderExperiment = false;
         while (position < arguments.Length)
         {
             switch (arguments[position++])
@@ -43,18 +44,21 @@ public sealed record ProbeOptions(string Command, string? TargetKey, bool Worker
                 case "--allow-power-write" when !allowWrite:
                     allowWrite = true;
                     break;
+                case "--gdi-order-experiment" when !gdiOrderExperiment:
+                    gdiOrderExperiment = true;
+                    break;
                 default:
                     return false;
             }
         }
 
         var writesPower = command is "on" or "cycle";
-        if (writesPower != allowWrite)
+        if (writesPower != allowWrite || (gdiOrderExperiment && command is "inventory" or "topology"))
         {
             return false;
         }
 
-        options = new(command, target, worker, allowWrite);
+        options = new(command, target, worker, allowWrite, gdiOrderExperiment);
         return true;
     }
 }

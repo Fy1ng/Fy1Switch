@@ -20,10 +20,12 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
+        Console.OutputEncoding = new UTF8Encoding(false);
         if (args.Length == 0 || args[0] is "--help" or "help")
         {
-            Console.WriteLine("RemoteDisplaySwitch P0: inventory | discover | read <target-key> | on <target-key> --allow-power-write | cycle <target-key> --allow-power-write");
+            Console.WriteLine("RemoteDisplaySwitch P0: inventory | topology | discover | read <target-key> | on <target-key> --allow-power-write | cycle <target-key> --allow-power-write");
             Console.WriteLine("cycle tests DPM (0x04) for five seconds, then attempts ON (0x01). Physical identity and visible state must be checked by a person. Restoration is not guaranteed after driver failure.");
+            Console.WriteLine("--gdi-order-experiment is an explicit P0-only comparison for the G4Q plus MTT VDD clone setup. It does not establish physical identity.");
             return 0;
         }
 
@@ -59,6 +61,8 @@ internal static class Program
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
         if (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
         {
@@ -116,6 +120,12 @@ internal static class Program
             PathConstants.EnsurePowerDisplayFolderExists();
             Logger.Sink = Console.Error.WriteLine;
             Emit(new { kind = "baseline", upstreamCommit = UpstreamCommit, session = Process.GetCurrentProcess().SessionId, readOnly = !options.WritesPower });
+            if (options.Command == "topology")
+            {
+                Emit(new { kind = "topology_diagnostics", report = TopologyDiagnostics.Capture() });
+                return 0;
+            }
+
             var inventory = DisplayConfigInventory.GetAllMonitorDisplayInfo();
             foreach (var display in inventory.Values)
             {
@@ -154,8 +164,21 @@ internal static class Program
                 return 7;
             }
 
-            using var manager = new MonitorManager(new MemoryVcpStore());
-            var monitors = await manager.DiscoverMonitorsAsync();
+            using var manager = options.GdiOrderExperiment ? null : new MonitorManager(new MemoryVcpStore());
+            using var experimentalController = options.GdiOrderExperiment ? new DdcCiController(new MemoryVcpStore()) : null;
+            TopologyDiagnosticReport? experimentalTopology = null;
+            IReadOnlyList<global::PowerDisplay.Common.Models.Monitor> monitors;
+            if (experimentalController is not null)
+            {
+                experimentalTopology = TopologyDiagnostics.Capture();
+                var orderedTargets = GdiOrderingExperiment.Reorder(inventory.Values.ToArray(), experimentalTopology);
+                Emit(new { kind = "ordering_experiment", order = orderedTargets.Select(target => new { name = target.FriendlyName, targetKey = Key(MonitorIdentity.FromDevicePath(target.DevicePath)) }), identityVerified = false });
+                monitors = (await experimentalController.DiscoverMonitorsAsync(orderedTargets)).ToArray();
+            }
+            else
+            {
+                monitors = await manager!.DiscoverMonitorsAsync();
+            }
             foreach (var monitor in monitors)
             {
                 Emit(new
@@ -190,7 +213,16 @@ internal static class Program
                     return value.Succeeded ? 0 : 9;
                 }
 
-                return await RunPowerTestAsync(options, manager, reader, candidates[0], value, inventory);
+                if (options.GdiOrderExperiment && monitors.Count != 1)
+                {
+                    Emit(new { kind = "failure", error = "experiment_requires_one_discovered_ddc_candidate" });
+                    return 12;
+                }
+
+                Task<MonitorOperationResult> WritePowerAsync(int requestedValue) => experimentalController is not null
+                    ? experimentalController.SetPowerStateAsync(candidates[0], requestedValue)
+                    : manager!.SetPowerStateAsync(candidates[0].Id, requestedValue);
+                return await RunPowerTestAsync(options, WritePowerAsync, reader, candidates[0], value, inventory, experimentalTopology);
             }
 
             Emit(new { kind = "summary", inventoryCount = inventory.Count, discoveredCount = monitors.Count, physicalPowerValidated = false });
@@ -217,12 +249,19 @@ internal static class Program
 
     private static async Task<int> RunPowerTestAsync(
         ProbeOptions options,
-        MonitorManager manager,
+        Func<int, Task<MonitorOperationResult>> writePowerAsync,
         DdcCiController reader,
         global::PowerDisplay.Common.Models.Monitor monitor,
         PowerReadObservation before,
-        Dictionary<string, MonitorDisplayInfo> inventory)
+        Dictionary<string, MonitorDisplayInfo> inventory,
+        TopologyDiagnosticReport? experimentalTopology)
     {
+        if (!options.GdiOrderExperiment && inventory.Values.GroupBy(display => display.GdiDeviceName, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+        {
+            Emit(new { kind = "failure", error = "clone_binding_unverified", action = "Default ordinal binding is not safe for power writes in a shared-source topology." });
+            return 12;
+        }
+
         var supported = monitor.SupportedPowerStates;
         if (supported is null || !supported.Contains(1) || (options.Command == "cycle" && !supported.Contains(4)))
         {
@@ -237,6 +276,12 @@ internal static class Program
         }
 
         var current = DisplayConfigInventory.GetAllMonitorDisplayInfo();
+        if (experimentalTopology is not null && JsonSerializer.Serialize(experimentalTopology) != JsonSerializer.Serialize(TopologyDiagnostics.Capture()))
+        {
+            Emit(new { kind = "failure", error = "experimental_topology_changed" });
+            return 12;
+        }
+
         if (!InventorySignature(inventory).Equals(InventorySignature(current), StringComparison.Ordinal) || IsOfficialControllerRunning())
         {
             Emit(new { kind = "failure", error = "topology_changed_or_other_controller_started" });
@@ -256,7 +301,7 @@ internal static class Program
                         Emit(new { kind = "restoration_attempt", requestedValue });
                     }
 
-                    var result = await manager.SetPowerStateAsync(monitor.Id, requestedValue);
+                    var result = await writePowerAsync(requestedValue);
                     Emit(new { kind = "power_write", requestedValue, accepted = result.IsSuccess, errorCode = result.ErrorCode, physicallyVerified = false });
                     return result;
                 },
@@ -266,7 +311,7 @@ internal static class Program
         }
         else
         {
-            onResult = await manager.SetPowerStateAsync(monitor.Id, 1);
+            onResult = await writePowerAsync(1);
             Emit(new { kind = "power_write", requestedValue = 1, accepted = onResult.IsSuccess, errorCode = onResult.ErrorCode, physicallyVerified = false });
         }
 
