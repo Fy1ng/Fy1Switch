@@ -16,7 +16,7 @@ public sealed class MainForm : Form
     private readonly Label _ddcStatus = new() { AutoSize = true };
     private readonly Label _relayStatus = new() { AutoSize = true };
     private readonly Label _displayStatus = new() { AutoSize = true };
-    private readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 150, Dock = DockStyle.Fill };
+    private readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 160, Dock = DockStyle.Fill };
     private readonly CheckBox _autoStart = new() { Text = "Start with Windows" };
     private bool _reallyExit;
 
@@ -24,10 +24,10 @@ public sealed class MainForm : Form
     {
         _service = service;
         _store = store;
-        Text = "FyDisplay Remote - Windows Agent v0.3.1";
-        Width = 820;
-        Height = 650;
-        MinimumSize = new Size(700, 560);
+        Text = "FyDisplay Remote - Windows Agent v0.3.2";
+        Width = 860;
+        Height = 680;
+        MinimumSize = new Size(720, 580);
         StartPosition = FormStartPosition.CenterScreen;
 
         _tray = new NotifyIcon
@@ -55,7 +55,7 @@ public sealed class MainForm : Form
             if (firstRun)
             {
                 AppendLog("First run: generated a random device token. Native DDC/CI control is built in; PowerToys is not required.");
-                _tray.ShowBalloonTip(3500, "FyDisplay Remote", "Agent is running. Select a DDC/CI monitor, then configure Android with the Device ID and Token.", ToolTipIcon.Info);
+                _tray.ShowBalloonTip(3500, "FyDisplay Remote", "Agent is running. Select the MCCS-capable physical monitor, then configure Android with the Device ID and Token.", ToolTipIcon.Info);
             }
         };
         FormClosing += OnFormClosing;
@@ -127,8 +127,8 @@ public sealed class MainForm : Form
         var hint = new Label
         {
             AutoSize = true,
-            MaximumSize = new Size(600, 0),
-            Text = "Scan probes VCP 0xD6 with a read only. 'Power OK' means the monitor answered the power-state query; unsupported candidates remain visible for diagnosis but are not preferred automatically. OFF uses 0x04 (Off/DPM), not Hard Off."
+            MaximumSize = new Size(640, 0),
+            Text = "Mirror/VDD-safe selection: the agent prefers a monitor that returns a real MCCS capabilities string (especially one advertising VCP D6). A successful D6 read alone is not treated as proof that writes are supported. OFF uses 0x04 (Off/DPM)."
         };
         AddRow(root, "Control", hint);
         AddRow(root, "Log", _log);
@@ -176,16 +176,31 @@ public sealed class MainForm : Form
 
                 foreach (var m in list)
                 {
-                    AppendLog(m.SupportsPowerRead
-                        ? $"Probe {m.Key}: Power OK, current=0x{m.PowerState.GetValueOrDefault():X2}, {m.Description}."
-                        : $"Probe {m.Key}: VCP 0xD6 unavailable ({m.ProbeError ?? "read failed"}), {m.Description}.");
+                    var caps = m.AdvertisesPowerControl
+                        ? "MCCS capabilities advertise D6"
+                        : m.HasCapabilities
+                            ? "MCCS capabilities present (D6 not advertised)"
+                            : $"no MCCS capabilities ({m.CapabilitiesError ?? "unavailable"})";
+                    var read = m.SupportsPowerRead
+                        ? $"D6 read=0x{m.PowerState.GetValueOrDefault():X2}"
+                        : $"D6 read unavailable ({m.ProbeError ?? "read failed"})";
+                    AppendLog($"Probe {m.Key}: {caps}; {read}; {m.Description}.");
+                    if (!string.IsNullOrWhiteSpace(m.CapabilitiesSummary))
+                        AppendLog($"Caps {m.Key}: {m.CapabilitiesSummary}");
                 }
 
+                // Automatic UI selection follows the same rule as command execution: capability
+                // evidence beats a successful D6 read because the VDD can fake the latter.
                 var selected = list.ToList().FindIndex(m =>
-                    string.Equals(m.Key, cfg.MonitorId, StringComparison.OrdinalIgnoreCase) && m.SupportsPowerRead);
+                    string.Equals(m.Key, cfg.MonitorId, StringComparison.OrdinalIgnoreCase) && m.AdvertisesPowerControl);
+                if (selected < 0) selected = list.ToList().FindIndex(m => m.AdvertisesPowerControl);
 
                 if (selected < 0)
-                    selected = list.ToList().FindIndex(m => m.SupportsPowerRead);
+                {
+                    selected = list.ToList().FindIndex(m =>
+                        string.Equals(m.Key, cfg.MonitorId, StringComparison.OrdinalIgnoreCase) && m.HasCapabilities);
+                    if (selected < 0) selected = list.ToList().FindIndex(m => m.HasCapabilities);
+                }
 
                 if (selected < 0)
                 {
@@ -194,11 +209,12 @@ public sealed class MainForm : Form
                 }
 
                 _monitors.SelectedIndex = selected;
+                var capsCount = list.Count(m => m.HasCapabilities);
+                var d6CapsCount = list.Count(m => m.AdvertisesPowerControl);
                 var readableCount = list.Count(m => m.SupportsPowerRead);
-                _ddcStatus.Text = readableCount > 0
-                    ? $"Ready - {readableCount}/{list.Count} support power-state read"
-                    : $"Detected {list.Count}, but none answered VCP 0xD6";
-                AppendLog($"DDC/CI scan found {list.Count} physical monitor(s); {readableCount} answered VCP 0xD6.");
+                _ddcStatus.Text = $"Detected {list.Count}; MCCS {capsCount}; D6 caps {d6CapsCount}; D6 readable {readableCount}";
+                AppendLog($"DDC/CI scan found {list.Count} candidate(s); {capsCount} returned MCCS capabilities, {d6CapsCount} advertise D6, {readableCount} answered a D6 read.");
+                AppendLog($"Auto-selected {_monitors.SelectedItem}.");
             });
         }
         catch (Exception ex)
