@@ -2,9 +2,9 @@
 
 基于 Microsoft PowerToys Power Display 源码的独立 Windows 显示器远程控制项目。
 
-## 当前状态：Windows P1 本地控制可用，系统级验收后置
+## 当前状态：Windows HTTPS、Android / Tile 与自建 Relay 已实现
 
-已实现 WPF 托盘宿主、独立常驻 Worker、本地 CLI、SQLite 绑定与操作日志、登录自启设置，以及独立 x64 发布/安装/卸载流程。**不是已完成的远程控制产品**：Android/OriginOS Tile、HTTPS 与 Relay 尚未实现。使用与验证范围见 docs/Windows-P1.md。
+已实现 WPF 托盘宿主、独立 Worker、本地 CLI、SQLite 绑定与操作日志、自启、HTTPS 直连与一次性配对、Android Compose App / Quick Settings Tile，以及 ASP.NET Core 自建 Relay。**实现与本地自动化验证不等于实机或公网验收**：OriginOS Tile、真实 LAN/Tailscale、实际自建公网 Relay，以及后置系统级恢复仍需验证。详见 docs/Remote-Control.md、docs/Android.md、docs/Relay.md。
 
 官方 Power Display 退出后，已完成真实 DDC 发现及受限对照实验：原始上游按 CCD 顺序绑定时把唯一响应句柄标为 VDD；按本机 GDI 顺序显式重排后标为 G4Q。用户已于 2026-10-05 人工确认复测时实体屏熄灭约 5 秒后恢复，VDD、复制模式正常。随后 30/30 轮软件循环、保持句柄关闭 60 秒，以及释放原句柄后等待 15/60 秒由全新进程恢复均成功；当前发布包也通过 5 秒全新进程恢复复核。**人工确认只覆盖指定短循环，整机重启、睡眠和物理拔插尚未验证，不把工作进程重启当成整机重启。**详见 docs/P0-findings.md。
 
@@ -17,7 +17,7 @@
 - 控制核心：锁定 PowerToys 源码子集，保留原始发现、配对、句柄及读写行为，独立适配日志、路径与产品状态。
 - Android：Kotlin/Compose 与原生 TileService；短时交互刷新，不以永驻进程保证状态。
 - 网络：HTTPS LAN/Tailscale 直连及可信自建 ASP.NET Core Relay；两段 TLS 不宣称端到端加密。
-- 当前受限环境下的 P0 开关、长关闭与工作进程恢复已验证；按调整后的顺序推进 Windows P1，系统级验收后置，Android 与 Relay 后续实现。
+- 当前受限环境下的 P0 开关、长关闭与工作进程恢复已验证；Windows P1、Android、HTTPS 与 Relay 实现已落地，系统级及跨设备验收按批准顺序后置。
 
 ## Windows 本地版本
 
@@ -29,7 +29,23 @@
 
 输出 artifacts/windows/win-x64。运行其中 RemoteDisplaySwitch.Host.exe，点击发现、选择、绑定，再刷新/控制；关闭设置窗口后保留托盘。Install.ps1 提供每用户安装，Uninstall.ps1 只删除已标记的程序目录并保留用户数据。自启默认关闭，可在界面选择；没有为开发测试启用用户的真实登录自启。默认集成测试为模拟，不访问硬件；显式 -Hardware 才会触发真实 5 秒开关及宿主重启恢复。
 
-宿主使用本机当前用户命名管道，不监听网络端口。不要将此 IPC 当作远程认证接口。P0 诊断工具与新 Worker 互相避让，不能同时操作硬件。
+宿主本地控制使用当前用户命名管道；远程 HTTPS 默认关闭，仅在“手机配对与远程设置”显式启用后监听。不要直接暴露本地 IPC。P0 诊断工具与新 Worker 互相避让，不能同时操作硬件。
+
+## 手机与中继版本
+
+~~~powershell
+./tools/Publish-Windows.ps1 -OutputDirectory ./artifacts/windows-remote/win-x64
+./tools/Build-Android.ps1 -Offline
+./tools/Test-Network.ps1
+./tools/Test-Android-Live.ps1
+./tools/Publish-Relay.ps1
+~~~
+
+本轮 Windows 新版位于 artifacts/windows-remote/win-x64，不要求关闭正在使用的旧版来构建。使用前请自己从旧版托盘退出，再打开新版 Host。发布脚本现在会检查目标目录是否有程序在运行，避免覆盖已加载的文件。APK 位于 artifacts/android/RemoteDisplaySwitch-debug.apk（debug 签名，尚未安装或上传商店）；Relay Linux x64 自包含产物位于 artifacts/relay/linux-x64。Docker/Compose 文件位于 src/relay，本机没有 Docker，未构建/运行容器或部署公网服务器。
+
+Windows 中先绑定显示器，再启用 HTTPS、填写手机可访问的 LAN/Tailscale 地址并生成一次性配对 JSON；在手机粘贴配对。每台手机独立凭据、可撤销、固定服务器 SPKI pin。Relay 是可信的两段 TLS 中继，不是服务器无法读取内容的端到端加密。手机首次配对建议直连，之后再配置 Relay 地址与控制端凭据。
+
+验证：原 Windows 回归 248 项；远程 HTTPS/配对 92 项；Relay 53 项；HTTPS/WSS 端到端 1 项；Android JVM 单测 54 项，另有实际 Android HttpsTransport 到 Windows HTTPS 模拟 Worker 的 live 集成 1 项。跨通道重复 operationId 不重复写入、撤销、过期与错误 pin 均有测试。Android lint 0 错误、6 警告（依赖更新及自定义 TrustManager 提示）。上述网络测试使用本机回环/模拟显示器，不冒充手机、Tailscale 或真实服务器验收。
 
 ## 构建与测试
 

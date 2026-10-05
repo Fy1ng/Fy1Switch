@@ -1,0 +1,30 @@
+name: remote-display-switch-relay
+services:
+  relay:
+    image: remote-display-switch-relay:local
+    build:
+      context: ../..
+      dockerfile: src/relay/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${RDS_RELAY_PORT:-5080}:8080"
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Production
+      RDS_RELAY_CONFIG: /run/relay/config.json
+    volumes:
+      - type: bind
+        source: ${RDS_RELAY_CONFIG:?Set an absolute host config file path}
+        target: /run/relay/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,noexec,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      replicas: 1

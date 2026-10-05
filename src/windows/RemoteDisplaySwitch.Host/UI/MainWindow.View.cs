@@ -145,6 +145,9 @@ public sealed partial class MainWindow
         _bind.Click += async (_, _) => await BindSelectedAsync();
         _unbind.Click += async (_, _) => await UnbindAsync();
 
+        var remoteButton = Button("手机配对与远程设置");
+        remoteButton.Click += (_, _) => RemoteSettingsRequested?.Invoke();
+        page.Children.Add(remoteButton);
         Content = new ScrollViewer
         {
             Background = Background,

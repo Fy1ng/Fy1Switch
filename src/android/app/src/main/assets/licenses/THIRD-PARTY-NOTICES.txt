@@ -1,0 +1,14 @@
+RemoteDisplaySwitch Android third-party components
+
+AndroidX / Jetpack Compose - Android Open Source Project / Google
+https://android.googlesource.com/platform/frameworks/support/
+Kotlin and kotlinx.coroutines - JetBrains
+https://github.com/JetBrains/kotlin
+https://github.com/Kotlin/kotlinx.coroutines
+OkHttp and Okio - Square
+https://github.com/square/okhttp
+https://github.com/square/okio
+
+These components use the Apache License, Version 2.0; see APACHE-2.0.txt.
+Exact direct dependency versions are maintained in the Android Gradle build files.
+This application is independent of Microsoft PowerToys; its Windows companion includes the separately attributed Power Display source.

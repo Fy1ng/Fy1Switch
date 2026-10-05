@@ -1,6 +1,9 @@
+param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$output = Join-Path $root 'artifacts/windows/win-x64'
+$output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $root 'artifacts/windows/win-x64' }
+$busy = @(Get-Process -Name 'RemoteDisplaySwitch.Host','RemoteDisplaySwitch.Worker','RemoteDisplaySwitch.Cli' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($output.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) })
+if ($busy.Count) { throw 'The output directory contains a running application. Exit it manually or choose -OutputDirectory; no process was stopped.' }
 & (Join-Path $PSScriptRoot 'Verify-Upstream.ps1')
 foreach ($entry in @(@{Name='Host';Sub=''}, @{Name='Worker';Sub='worker'}, @{Name='Cli';Sub='cli'})) {
     $destination = if ($entry.Sub) { Join-Path $output $entry.Sub } else { $output }
@@ -30,6 +33,9 @@ Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $output
 New-Item -ItemType Directory -Path (Join-Path $output 'docs') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'docs/Windows-P1.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/P0-findings.md') -Destination (Join-Path $output 'docs')
+Copy-Item -LiteralPath (Join-Path $root 'docs/Remote-Control.md') -Destination (Join-Path $output 'docs')
+Copy-Item -LiteralPath (Join-Path $root 'docs/Android.md') -Destination (Join-Path $output 'docs')
+Copy-Item -LiteralPath (Join-Path $root 'docs/Relay.md') -Destination (Join-Path $output 'docs')
 New-Item -ItemType Directory -Path (Join-Path $output 'licenses') -Force | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $root 'licenses') -File | Copy-Item -Destination (Join-Path $output 'licenses')
 Copy-Item -LiteralPath (Join-Path $root 'tools/Install-Windows.ps1') -Destination (Join-Path $output 'Install.ps1')

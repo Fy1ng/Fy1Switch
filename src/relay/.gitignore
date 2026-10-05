@@ -1,0 +1,3 @@
+*.local.json
+relay.config.json
+!relay.config.example.json

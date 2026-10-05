@@ -1,0 +1,108 @@
+package com.fy1ng.remotedisplayswitch.network
+
+import com.fy1ng.remotedisplayswitch.core.DeviceProfile
+import com.fy1ng.remotedisplayswitch.core.ExpiredRequestException
+import com.fy1ng.remotedisplayswitch.core.HttpResult
+import com.fy1ng.remotedisplayswitch.core.PairBundle
+import com.fy1ng.remotedisplayswitch.core.Protocol
+import com.fy1ng.remotedisplayswitch.core.Route
+import com.fy1ng.remotedisplayswitch.core.Transport
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import org.json.JSONObject
+import java.io.IOException
+import java.time.Duration
+import java.time.Instant
+import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+
+class HttpsTransport : Transport {
+    private val systemClient = OkHttpClient.Builder()
+        .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
+        .connectTimeout(5, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+
+    private fun directClient(endpoint: String, pin: String): OkHttpClient {
+        val trust = PinnedTrustManager(pin)
+        val context = SSLContext.getInstance("TLS")
+        context.init(null, arrayOf(trust), null)
+        return systemClient.newBuilder().sslSocketFactory(context.socketFactory, trust)
+            .hostnameVerifier(trust.hostnameVerifier(endpoint.toHttpUrl().host)).build()
+    }
+
+    override suspend fun pair(bundle: PairBundle, clientName: String, timeoutMillis: Long): HttpResult {
+        val request = Request.Builder().url(bundle.endpoint + "/v1/pair")
+            .post(Protocol.pairRequest(bundle.code, clientName).toRequestBody(JSON)).build()
+        return post(directClient(bundle.endpoint, bundle.certificatePin), request, timeoutMillis, bundle.expiresAt)
+    }
+
+    internal fun controlRequest(device: DeviceProfile, route: Route, body: String): Request {
+        val builder = Request.Builder().post(body.toRequestBody(JSON))
+        when (route) {
+            Route.Direct -> {
+                builder.url(device.endpoint + "/v1/control")
+                    .header("Authorization", "Bearer " + device.deviceToken)
+            }
+            Route.Relay -> {
+                val relay = requireNotNull(device.relay)
+                builder.url(relay.endpoint + "/v1/devices/" + device.deviceId + "/control")
+                    .header("Authorization", "Bearer " + relay.controllerToken)
+                    .header("X-Device-Token", device.deviceToken)
+            }
+        }
+        return builder.build()
+    }
+
+    internal fun controlClient(device: DeviceProfile, route: Route): OkHttpClient = when (route) {
+        Route.Direct -> directClient(device.endpoint, device.certificatePin)
+        Route.Relay -> systemClient
+    }
+
+    override suspend fun control(device: DeviceProfile, route: Route, body: String, timeoutMillis: Long): HttpResult {
+        return post(controlClient(device, route), controlRequest(device, route, body), timeoutMillis,
+            Instant.parse(JSONObject(body).getString("expiresAt")))
+    }
+
+    private suspend fun post(client: OkHttpClient, request: Request, timeoutMillis: Long, expiresAt: Instant): HttpResult =
+        suspendCancellableCoroutine { continuation ->
+            val remaining = Duration.between(Instant.now(), expiresAt).toMillis()
+            if (remaining <= 0) {
+                continuation.resumeWithException(ExpiredRequestException())
+                return@suspendCancellableCoroutine
+            }
+            val call = client.newCall(request)
+            call.timeout().timeout(minOf(timeoutMillis, remaining).coerceAtLeast(1), TimeUnit.MILLISECONDS)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
+                override fun onFailure(call: Call, exception: IOException) {
+                    continuation.resumeWithException(exception)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val result = response.use {
+                            val source = it.body?.source() ?: throw IOException("Missing response")
+                            if (source.request(Protocol.MAX_BODY.toLong() + 1)) throw IOException("Response too large")
+                            HttpResult(it.code, source.readUtf8())
+                        }
+                        continuation.resume(result)
+                    } catch (exception: IOException) {
+                        continuation.resumeWithException(exception)
+                    }
+                }
+            })
+        }
+
+    private companion object {
+        val JSON = "application/json; charset=utf-8".toMediaType()
+    }
+}

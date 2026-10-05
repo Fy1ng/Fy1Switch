@@ -41,6 +41,8 @@ public sealed partial class MainWindow : Window
         Render();
     }
 
+    public event Action? RemoteSettingsRequested;
+
     public Task RefreshViewAsync()
     {
         if (_closed || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)

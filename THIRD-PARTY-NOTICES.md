@@ -9,3 +9,5 @@
 - SQLitePCLRaw 2.1.12: SourceGear, LLC, Apache-2.0; license and original notices are in licenses/SQLitePCLRaw.LICENSE and licenses/SQLitePCLRaw.NOTICE. Includes the native e_sqlite3 runtime. SQLite itself is public domain; the package distribution notices still apply.
 
 Do not distribute a lone executable: the runtime files, WmiLight native files and license notices belong to the package.
+
+Remote control adds System.Security.Cryptography.ProtectedData 10.0.11 (Microsoft, MIT) and the ASP.NET Core shared framework; their license terms are included with the Microsoft runtime distributions. Android uses AndroidX/Jetpack Compose, Kotlin/coroutines and OkHttp/Okio under their respective Apache-2.0 notices; exact direct versions are recorded in src/android/app/build.gradle.kts and src/android/build.gradle.kts. Android debug APK is a development build, not a signed store release.

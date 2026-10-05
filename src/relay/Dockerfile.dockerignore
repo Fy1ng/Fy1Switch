@@ -1,0 +1,13 @@
+**
+!src/
+!src/relay/
+!src/relay/Dockerfile
+!src/relay/Dockerfile.dockerignore
+!src/relay/RemoteDisplaySwitch.Relay/
+!src/relay/RemoteDisplaySwitch.Relay/*.cs
+!src/relay/RemoteDisplaySwitch.Relay/*.csproj
+!src/shared/
+!src/shared/RemoteDisplaySwitch.Contracts/
+!src/shared/RemoteDisplaySwitch.Contracts/Messages.cs
+!src/shared/RemoteDisplaySwitch.Contracts/RemoteMessages.cs
+!src/shared/RemoteDisplaySwitch.Contracts/RemoteDisplaySwitch.Contracts.csproj

@@ -1,0 +1,68 @@
+package com.fy1ng.remotedisplayswitch.core
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class StatePolicyTest {
+    @Test fun onlyConfirmedOnAndOffEnableTile() {
+        assertEquals(TilePower.Active, StatePolicy.tile(activeState()))
+        val off = activeState().copy(devices = listOf(activeState().selected!!.copy(status = status(DisplayPower.Off))))
+        assertEquals(TilePower.Inactive, StatePolicy.tile(off))
+    }
+
+    @Test fun unknownOfflineAndBusyAreUnavailable() {
+        val state = activeState()
+        val device = state.selected!!
+        listOf(
+            state.copy(busy = true), state.copy(storageFailed = true), state.copy(loaded = false), AppState(loaded = true),
+            state.copy(devices = listOf(device.copy(connected = false))),
+            state.copy(devices = listOf(device.copy(status = status(DisplayPower.Unknown)))),
+            state.copy(devices = listOf(device.copy(status = status().copy(available = false)))),
+            state.copy(devices = listOf(device.copy(status = status().copy(busy = true)))),
+            state.copy(devices = listOf(device.copy(status = status().copy(targetId = null)))),
+        ).forEach { assertEquals(TilePower.Unavailable, StatePolicy.tile(it)) }
+    }
+
+    @Test fun uncertainOperationsDoNotReusePreviousOnObservation() {
+        for (outcome in listOf(OperationOutcome.Pending, OperationOutcome.Unknown, OperationOutcome.AcceptedUnconfirmed)) {
+            val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(operation = operation(outcome), requiresRefresh = true))) }
+            assertEquals(TilePower.Unavailable, StatePolicy.tile(state))
+            assertFalse(StatePolicy.canSet(state))
+        }
+    }
+
+    @Test fun remoteClockInFutureCannotClearUncertainty() {
+        val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(
+            status = status().copy(observation = observation(at = NOW.plusSeconds(3600))),
+            operation = operation(OperationOutcome.Unknown), requiresRefresh = true,
+        ))) }
+        assertEquals(TilePower.Unavailable, StatePolicy.tile(state))
+    }
+
+    @Test fun storageRoundTripPreservesDevicesCredentialsAndDefaultButNotLiveState() {
+        val state = activeState(true).copy(devices = listOf(activeState(true).selected!!, DeviceState(profile(deviceId = OTHER))), defaultDeviceId = OTHER, busy = true)
+        val restored = StateCodec.decode(StateCodec.encode(state))
+        assertEquals(2, restored.devices.size)
+        assertEquals(OTHER, restored.defaultDeviceId)
+        assertEquals("fixture-device-token", restored.devices.first().profile.deviceToken)
+        assertEquals("fixture-controller-token", restored.devices.first().profile.relay?.controllerToken)
+        assertFalse(restored.busy)
+        assertFalse(restored.devices.first().connected)
+        assertEquals(TilePower.Unavailable, StatePolicy.tile(restored))
+    }
+
+    @Test fun restartTurnsPendingIntoUnknownAndKeepsQueryIdentity() {
+        val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(operation = operation(OperationOutcome.Pending), requiresRefresh = true))) }
+        val restored = StateCodec.decode(StateCodec.encode(state)).selected!!
+        assertEquals(OperationOutcome.Unknown, restored.operation?.outcome)
+        assertEquals(OPERATION, restored.operation?.operationId)
+        assertEquals(TARGET, restored.operation?.targetId)
+        assertEquals(Feedback.Unknown, restored.feedback)
+        assertTrue(restored.requiresRefresh)
+    }
+
+    @Test fun persistedWrongDeviceStatusFailsClosed() {
+        val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(status = status(deviceId = OTHER)))) }
+        assertThrows(IllegalArgumentException::class.java) { StateCodec.decode(StateCodec.encode(state)) }
+    }
+}

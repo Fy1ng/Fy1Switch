@@ -50,6 +50,12 @@
       "remotedisplayswitch.contracts": {
         "type": "Project"
       },
+      "remotedisplayswitch.remote": {
+        "type": "Project",
+        "dependencies": {
+          "RemoteDisplaySwitch.Runtime": "[1.0.0, )"
+        }
+      },
       "remotedisplayswitch.runtime": {
         "type": "Project",
         "dependencies": {

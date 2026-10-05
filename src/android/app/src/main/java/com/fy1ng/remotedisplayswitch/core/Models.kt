@@ -1,0 +1,142 @@
+package com.fy1ng.remotedisplayswitch.core
+
+import java.time.Instant
+import java.util.UUID
+
+enum class PowerIntent { On, Off, Toggle }
+enum class DisplayPower { Unknown, On, Off }
+enum class OperationOutcome { Pending, Confirmed, AcceptedUnconfirmed, Failed, Unknown }
+
+data class Observation(val state: DisplayPower, val rawValue: Int?, val observedAt: Instant, val source: String)
+data class RemoteStatus(
+    val deviceId: UUID,
+    val targetId: UUID?,
+    val displayName: String?,
+    val observation: Observation,
+    val available: Boolean,
+    val busy: Boolean,
+)
+data class OperationRecord(
+    val operationId: UUID,
+    val targetId: UUID,
+    val requested: PowerIntent,
+    val resolved: PowerIntent?,
+    val outcome: OperationOutcome,
+    val errorCode: String?,
+    val observation: Observation?,
+    val updatedAt: Instant,
+)
+data class RemoteCommand(
+    val requestId: UUID,
+    val deviceId: UUID,
+    val command: String,
+    val expiresAt: Instant,
+    val targetId: UUID? = null,
+    val intent: PowerIntent? = null,
+    val operationId: UUID? = null,
+    val version: Int = 1,
+)
+data class RemoteReply(
+    val requestId: UUID,
+    val success: Boolean,
+    val errorCode: String?,
+    val status: RemoteStatus?,
+    val operation: OperationRecord?,
+    val version: Int,
+)
+data class PairBundle(
+    val deviceId: UUID,
+    val endpoint: String,
+    val certificatePin: String,
+    val code: String,
+    val expiresAt: Instant,
+) {
+    override fun toString() = "PairBundle(redacted)"
+}
+data class PairReply(val deviceId: UUID, val clientId: UUID, val token: String) {
+    override fun toString() = "PairReply(redacted)"
+}
+data class RelayConfig(val endpoint: String, val controllerToken: String) {
+    override fun toString() = "RelayConfig(redacted)"
+}
+data class DeviceProfile(
+    val deviceId: UUID,
+    val clientId: UUID,
+    val name: String,
+    val endpoint: String,
+    val certificatePin: String,
+    val deviceToken: String,
+    val relay: RelayConfig? = null,
+) {
+    override fun toString() = "DeviceProfile(redacted)"
+}
+
+enum class Feedback(val text: String) {
+    Ready("请连接或刷新显示器状态"),
+    Paired("已配对，请刷新状态"),
+    Updated("已获取状态"),
+    Confirmed("操作已确认"),
+    AcceptedUnconfirmed("命令已接受，但显示器状态未确认；请查询结果或实时刷新"),
+    Pending("操作尚在进行；请查询结果"),
+    Unknown("操作结果未知，可能已执行；请先查询结果，不要重复切换"),
+    Failed("操作未成功；请刷新状态后检查 Windows 端"),
+    Offline("无法连接；请检查网络或配置 Relay 后刷新"),
+    Expired("请求已过期，未重放；请刷新或查询已有操作"),
+    Security("安全验证失败；请核对配对证书、地址及手机时间"),
+    Unauthorized("授权失效；请重新配对或检查 Relay 凭据"),
+    Protocol("响应与当前设备或协议不符；未采用返回状态"),
+    InvalidInput("输入无效或配对码已过期，请检查后重试"),
+    Storage("安全存储不可用，已停止发送命令；请重启或清除应用数据后重新配对"),
+    Busy("已有请求正在进行，请稍候"),
+    Saved("配置已保存"),
+    NotFound("未查到操作结果；仍不能据此断定命令没有执行"),
+}
+
+data class DeviceState(
+    val profile: DeviceProfile,
+    val status: RemoteStatus? = null,
+    val operation: OperationRecord? = null,
+    val connected: Boolean = false,
+    val feedback: Feedback = Feedback.Ready,
+    val requiresRefresh: Boolean = false,
+)
+data class AppState(
+    val devices: List<DeviceState> = emptyList(),
+    val defaultDeviceId: UUID? = null,
+    val busy: Boolean = false,
+    val loaded: Boolean = false,
+    val storageFailed: Boolean = false,
+    val notice: Feedback? = null,
+) {
+    val selected: DeviceState? get() = devices.find { it.profile.deviceId == defaultDeviceId }
+}
+
+enum class TilePower { Active, Inactive, Unavailable }
+
+object StatePolicy {
+    fun unresolved(operation: OperationRecord?) = operation?.outcome in setOf(
+        OperationOutcome.Pending, OperationOutcome.Unknown, OperationOutcome.AcceptedUnconfirmed,
+    )
+
+    fun confirmedPower(device: DeviceState?): DisplayPower {
+        if (device == null || !device.connected) return DisplayPower.Unknown
+        val status = device.status ?: return DisplayPower.Unknown
+        if (!status.available || status.targetId == null || status.busy) return DisplayPower.Unknown
+        if (device.requiresRefresh) return DisplayPower.Unknown
+        return status.observation.state
+    }
+
+    fun tile(state: AppState): TilePower = when {
+        !state.loaded || state.busy || state.storageFailed -> TilePower.Unavailable
+        confirmedPower(state.selected) == DisplayPower.On -> TilePower.Active
+        confirmedPower(state.selected) == DisplayPower.Off -> TilePower.Inactive
+        else -> TilePower.Unavailable
+    }
+
+    fun canSet(state: AppState): Boolean {
+        val device = state.selected ?: return false
+        return state.loaded && !state.busy && !state.storageFailed && device.connected &&
+            device.status?.available == true && device.status.targetId != null && !device.status.busy &&
+            !device.requiresRefresh && (!unresolved(device.operation) || confirmedPower(device) != DisplayPower.Unknown)
+    }
+}

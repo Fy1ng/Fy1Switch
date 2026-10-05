@@ -1,8 +1,9 @@
-param([switch]$Hardware)
+param([switch]$Hardware, [string]$PackageDirectory)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$hostExe = Join-Path $root 'artifacts/windows/win-x64/RemoteDisplaySwitch.Host.exe'
-$cli = Join-Path $root 'artifacts/windows/win-x64/cli/RemoteDisplaySwitch.Cli.exe'
+$package = if ($PackageDirectory) { [IO.Path]::GetFullPath($PackageDirectory) } else { Join-Path $root 'artifacts/windows/win-x64' }
+$hostExe = Join-Path $package 'RemoteDisplaySwitch.Host.exe'
+$cli = Join-Path $package 'cli/RemoteDisplaySwitch.Cli.exe'
 $run = [Guid]::NewGuid().ToString('N')
 $data = Join-Path $root ".local/integration-$run"
 $pipe = "RemoteDisplaySwitch.Integration.$run"

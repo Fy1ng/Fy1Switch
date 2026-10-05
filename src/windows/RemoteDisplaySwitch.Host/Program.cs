@@ -14,15 +14,16 @@ using Microsoft.Win32;
 using RemoteDisplaySwitch.Contracts;
 using RemoteDisplaySwitch.Host.UI;
 using RemoteDisplaySwitch.Runtime;
+using RemoteDisplaySwitch.Remote;
 using Forms = System.Windows.Forms;
 
 namespace RemoteDisplaySwitch.Host;
 
-internal sealed record HostOptions(bool Background, bool Simulation, string DataDirectory, string PipeName, string WorkerPath, string? PreviewPath, int? StopAfterSeconds)
+internal sealed record HostOptions(bool Background, bool Simulation, string DataDirectory, string PipeName, string WorkerPath, string? PreviewPath, int? StopAfterSeconds, bool RemotePreview)
 {
     public static HostOptions Parse(string[] args)
     {
-        bool background = false, simulation = false;
+        bool background = false, simulation = false, remotePreview = false;
         string? directory = null, pipe = null, worker = null, preview = null;
         int? stop = null;
         var seen = new HashSet<string>();
@@ -39,16 +40,18 @@ internal sealed record HostOptions(bool Background, bool Simulation, string Data
                 case "--pipe": pipe = Value(); break;
                 case "--worker-path": worker = Value(); break;
                 case "--render-preview": preview = Value(); break;
+                case "--remote-preview": remotePreview = true; break;
                 case "--stop-after-seconds": stop = int.Parse(Value()); if (stop is < 1 or > 3600) throw new ArgumentException("Invalid stop interval."); break;
                 default: throw new ArgumentException("Unknown option.");
             }
         }
         if (simulation && directory is null) throw new ArgumentException("Simulation requires an isolated data directory.");
         if (preview is not null && !simulation) throw new ArgumentException("Preview requires simulation.");
+        if (remotePreview && preview is null) throw new ArgumentException("Remote preview requires a preview path.");
         directory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteDisplaySwitch", "Host");
         pipe ??= simulation ? "RemoteDisplaySwitch.Simulation." + Guid.NewGuid().ToString("N") : PipeIdentity.DefaultHostPipe;
         worker ??= Path.Combine(AppContext.BaseDirectory, "worker", "RemoteDisplaySwitch.Worker.exe");
-        return new(background, simulation, Path.GetFullPath(directory), pipe, Path.GetFullPath(worker), preview is null ? null : Path.GetFullPath(preview), stop);
+        return new(background, simulation, Path.GetFullPath(directory), pipe, Path.GetFullPath(worker), preview is null ? null : Path.GetFullPath(preview), stop, remotePreview);
     }
 }
 
@@ -66,6 +69,8 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
 {
     private readonly CancellationTokenSource _stop = new();
     private DesktopController? _controller;
+    private RemoteManager? _remote;
+    private RemoteWindow? _remoteWindow;
     private MainWindow? _window;
     private Forms.NotifyIcon? _tray;
     private FileStream? _instance;
@@ -92,9 +97,18 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             var worker = new WorkerSupervisor(options.WorkerPath, Path.Combine(options.DataDirectory, "worker"), options.Simulation);
             _controller = new DesktopController(worker, new StartupRegistration(Environment.ProcessPath!, options.Simulation), options.DataDirectory, options.Simulation);
             _window = new MainWindow(_controller);
+            _window.RemoteSettingsRequested += ShowRemoteSettings;
             MainWindow = _window;
             if (options.PreviewPath is not null)
             {
+                if (options.RemotePreview)
+                {
+                    _remote = new RemoteManager(_controller, (await _controller.GetSnapshotAsync()).DeviceId, Path.Combine(options.DataDirectory, "remote"));
+                    _remoteWindow = new RemoteWindow(_remote);
+                    await Dispatcher.InvokeAsync(() => RenderPreview(options.PreviewPath), DispatcherPriority.ApplicationIdle);
+                    await ExitAsync();
+                    return;
+                }
                 var discovered = await _controller.DiscoverAsync();
                 var candidate = discovered.Candidates.First();
                 await _controller.BindAsync(candidate.TargetKey, discovered.TopologyFingerprint, candidate.Name);
@@ -104,6 +118,12 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
                 await ExitAsync();
                 return;
             }
+            try
+            {
+                _remote = new RemoteManager(_controller, (await _controller.GetSnapshotAsync()).DeviceId, Path.Combine(options.DataDirectory, "remote"));
+                if (_remote.Settings.Enabled) await _remote.ApplyAsync(_remote.Settings, persist: false);
+            }
+            catch (Exception exception) { SaveHostError(exception); }
             _serverTask = new LocalPipeServer(options.PipeName, _controller, command => Dispatcher.BeginInvoke(new Action(async () =>
             {
                 if (command == "shutdown") await ExitAsync();
@@ -112,6 +132,7 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             _ = WatchServerAsync(_serverTask);
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("打开设置", null, (_, _) => ShowSettings());
+            menu.Items.Add("手机配对与远程设置", null, (_, _) => ShowRemoteSettings());
             menu.Items.Add("刷新状态", null, async (_, _) => await TrayRefreshAsync());
             menu.Items.Add("开启显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.On));
             menu.Items.Add("关闭显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.Off));
@@ -146,6 +167,16 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
         try { File.AppendAllText(Path.Combine(options.DataDirectory, "host.log"), $"{DateTimeOffset.UtcNow:O} {exception.GetType().Name}{Environment.NewLine}"); } catch { }
     }
     private void ShowSettings() { if (_window is null || _exiting) return; _window.Show(); _window.Activate(); }
+    private void ShowRemoteSettings()
+    {
+        if (_remote is null) { MessageBox.Show("远程身份存储未能初始化，请检查本程序诊断。", "RemoteDisplaySwitch"); return; }
+        if (_remoteWindow is null)
+        {
+            _remoteWindow = new RemoteWindow(_remote);
+            _remoteWindow.Closed += (_, _) => _remoteWindow = null;
+        }
+        _remoteWindow.Show(); _remoteWindow.Activate();
+    }
     private async Task TrayRefreshAsync()
     {
         try { if (_controller is not null) await _controller.RefreshAsync(); }
@@ -167,7 +198,7 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
     private void PowerChanged(object sender, PowerModeChangedEventArgs args) { if (!options.Simulation && args.Mode == PowerModes.Resume) _controller?.NotifyTopologyChanged(); }
     private void RenderPreview(string target)
     {
-        var root = (FrameworkElement)_window!.Content;
+        var root = (FrameworkElement)(options.RemotePreview ? _remoteWindow!.Content : _window!.Content);
         root.Measure(new Size(780, 840)); root.Arrange(new Rect(0, 0, 780, 840)); root.UpdateLayout();
         var bitmap = new RenderTargetBitmap(780, 840, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(root);
@@ -183,6 +214,8 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
         SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         SystemEvents.PowerModeChanged -= PowerChanged;
         _stop.Cancel();
+        _remoteWindow?.Close();
+        if (_remote is not null) { try { await _remote.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); } }
         if (_serverTask is not null) { try { await _serverTask; } catch { } }
         if (_controller is not null) { try { await _controller.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); } }
         _window?.AllowClose(); _window?.Close();
