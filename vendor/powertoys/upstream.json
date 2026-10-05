@@ -1,0 +1,266 @@
+{
+  "repository": "https://github.com/microsoft/PowerToys",
+  "commit": "1400fd8e999f381329e16e9df4084f7dc588c8a7",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "1eb3cbe7f022addbfc6d65cb2e39aca5b24333942ed843aa10c03befd71ee225"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/ContinuousVcpInitializer.cs",
+      "sha256": "c79e61e4690762cc6eec733216dc6111f84d3e8cb632c906e0acbc9f044faad7"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/DdcCiController.cs",
+      "sha256": "cc1677da0c5a7a0c92bd22013a9a309a9f2eaced5dfdb7f489cf1f567ac204d6"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/DdcCiNative.cs",
+      "sha256": "700305203bf321f44383d3e4f8256ffd44842d4ea54b70993357d6cf16711853"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/DdcErrorClassifier.cs",
+      "sha256": "5a8ac4e6d0d1feb9edde40910bf31ab7d237419d1b66ff2a330e9c450b15e6e7"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/MonitorDiscoveryHelper.cs",
+      "sha256": "91e38e4016c5396eca9012fbde448e44b1af495e8f56ef1117bef34fa71a486c"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/NativeVcpFeatureReader.cs",
+      "sha256": "3877debbcc058ec727eb143cb04279ae5b5f87aadb03c332f3a0a28534dd75bb"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/PhysicalMonitorHandleManager.cs",
+      "sha256": "63fca67c5bae7218c9c7907f96bc3044f1bfc0e721269c5b7c3b04de095e836b"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/VcpDiscoveryEvidence.cs",
+      "sha256": "ce35966c2a992d9a1f7fbaee88789cf080a8439bb698785abc4d01573c0cc7db"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DDC/VcpFeatureProbeService.cs",
+      "sha256": "1e5d8f759d349e995f08bcb0b3d2f3ccaf422b13878f3f61bd85cbb79b035fe0"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/DisplayConfigInventory.cs",
+      "sha256": "1f09f3ce60df45ec64fb2f6d9efbd7e9b511ced49be8a88382a75d68bc95904b"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/MonitorDisplayInfo.cs",
+      "sha256": "4f905accce75e20600fa6fbfeef25fcf9d533ebeb43c87c4dfb46c5d641579f7"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeConstants.cs",
+      "sha256": "4a645859ce74962bfd20d2bbd89313af63329759d11a3c669e4d4fb17ed4bf20"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeDelegates.cs",
+      "sha256": "51064737df0247f926aec9c04c9cc342c92b72e3badf626ce8edc6029e67aeba"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DevMode.cs",
+      "sha256": "08c467bbc2d2bf1994416ae4c915260af6cfc5356a6a111aa2f9f620b3237dbf"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfig2DRegion.cs",
+      "sha256": "89e322321979c135f761ec9c90aec321d9ca06643e20ebee9316a09d33fdf29e"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigDeviceInfoHeader.cs",
+      "sha256": "4f2ace9c02d6c20461e1d8d3dfe4d5402d63f31d7cc4c75d79c318d32d8bbbde"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigModeInfo.cs",
+      "sha256": "adf06977ff90c5750f374bafc18b8f965577485799e046c6a6d0bf81c54aeffb"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigModeInfoUnion.cs",
+      "sha256": "89b9e22af572cf3c6c1cd9a316b342bae379002c37fff0089ca09460761d94e9"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigPathInfo.cs",
+      "sha256": "cfe71b53a1638bb3f249f1df7669d0c7a71c6a0a2139cf752fa6d5ac347d516b"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigPathSourceInfo.cs",
+      "sha256": "dd46c6f24373d4147b42b2f587db262ce66dfd4a4475933cbd4a2b4a1d64e382"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigPathTargetInfo.cs",
+      "sha256": "13f67e5d10812ca72a1608f33438644de8cce4355606a0934a33e48a1a562d45"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigPoint.cs",
+      "sha256": "232dd8d62d153e1305f9b145a43bc9135c4b1023d3083ab0858ed5bc1e2f6b5a"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigRational.cs",
+      "sha256": "912c8df7796497ae2d54250a9956addf7ef57e18c7da18953e7fceb8a9a88fa5"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigSourceDeviceName.cs",
+      "sha256": "09efefdce3da71fd511d8a43c3c362e604a3c6db5aafb6c861b92dc3decf370b"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigSourceMode.cs",
+      "sha256": "d9077233f709d0af71939348353289f89b2c61b53a43ad0be54acff0613bdf0e"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigTargetDeviceName.cs",
+      "sha256": "e3d751d63831494dad873567d4173bd91645b03e882de60d7ff446b2d5c33047"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigTargetMode.cs",
+      "sha256": "4971ef0d340624a93a56a70c5eae31ae17dcf93d96d564bd4ae33195d3e9c9a4"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/DisplayConfigVideoSignalInfo.cs",
+      "sha256": "b688a0add6df18c6709de920f3ddda2f1416e979e672876c0d2c002a11302bf3"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/MonitorInfoEx.cs",
+      "sha256": "044edf59898885f3294c5e73efab52cb813de7f70bde46f2c376a5a1284f5c38"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/PhysicalMonitor.cs",
+      "sha256": "09293d6eb823a7e2f9e6436e09ab0ed6eb601c31882a10ab3371d1738540561e"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/NativeStructures/Rect.cs",
+      "sha256": "cc0f56ca11225e54e423f2d6f0088e95bc7ec4442c0194bf0970e1e7983e37bc"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/PInvoke.cs",
+      "sha256": "2b954c58f4bea5e1800ea215b0cb0eba1b8266ba2b78200821adcd606506f61c"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Drivers/WMI/WmiController.cs",
+      "sha256": "50574155113d0b8be1a7e6b57831a9f58a79a3681bc6f180550b038c0bdb5ed9"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Interfaces/IBasicMonitorController.cs",
+      "sha256": "d572543b1e6668e1d8635e72596d9f2130f3919e61f09dfe3b45545cc78a52fe"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Interfaces/IDdcController.cs",
+      "sha256": "d4f4a1cd16ec3dafaa678e1abeb94ace618fff72f0ddfd9b42ef1e1b58c2233d"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Interfaces/IKnownGoodVcpStore.cs",
+      "sha256": "d37e7ec995c50a597f790e901e82e61c724e42aa946728e7dd916996fd7fb83f"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Interfaces/IMonitorController.cs",
+      "sha256": "c621302fbe291cf4c70dfc23df4131bc08bbd29f3371cc6aa5d4e3d3714e743e"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Interfaces/IMonitorData.cs",
+      "sha256": "749c614bee1ecc2f59c0ee2dc88e56f0e109f491cb5b776aa95c0a80813ff88d"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Interfaces/IMonitorManager.cs",
+      "sha256": "306483e1f9bc54272bf9490494b07523591f4b2f6419e6713e8da87fcd1b4f56"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/KnownGoodVcpFeature.cs",
+      "sha256": "5d0281059dfe0d805812c71fde6c20c184bff21efb0c725fa1908aab18556b43"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/Monitor.cs",
+      "sha256": "4a88e946bc3f5691f4476f55f599fd414454dcabe82629034a26b408b8506f68"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/MonitorCapabilities.cs",
+      "sha256": "3c5b5b98000755202f6864a085ef28c30ef59d58ab0cf9bae06ad2f76071ad39"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/MonitorIdentity.cs",
+      "sha256": "59f6992c42b5efbf9eb03571d17d50098eda8d12e2030fd8921c8e8e381801d3"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/MonitorOperationResult.cs",
+      "sha256": "6940e86776768a3c6de9e3a48280d35e3108ee39142b873a8fbf315231eb688f"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/MonitorReadFlags.cs",
+      "sha256": "0909262037f3ca4b9860541708df69d9a7bc81afdb904e6de671dc777a729851"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/MonitorStateEntry.cs",
+      "sha256": "8ebdad186cd0cf88ba9a928ce3455628695e4ca1832fc57bbf94b136292ea5b3"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/MonitorStateFile.cs",
+      "sha256": "3dd82eda4cd91c9777e0e3474df8b7093ff7dd05f253d6ce9cb20eadbcf67123"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/VcpCapabilities.cs",
+      "sha256": "6847b3b315c195c564a84e81ad5a56c7496835c5d984266f3ba8d0383f3c202a"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Models/VcpFeatureValue.cs",
+      "sha256": "2920458ca71c01d74494ef87624dea562a0a6429277448ec2ae7342a4f75a2f1"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Services/CrashDetectionScope.cs",
+      "sha256": "43e2d4ec0652c48e27c1260257b991f6bc3c6cd59c565ef3faa139682f93ecf8"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Services/DisplayRotationService.cs",
+      "sha256": "dca72fd9f2d74f4e4a4b4c480ded4ce1ff7351f5201b8d229b0c1effdcb529f3"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Services/IProcessExitHook.cs",
+      "sha256": "8fe128a488d4b444945e060ca54b3cbd5ba3ba95e77ed1abbe684b913ef61486"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Services/MonitorBlacklistService.cs",
+      "sha256": "cb4245a9811a4d4174733005a2ed84a4d17f9ad76b9737a3d91d8434a1f3f459"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Services/MonitorManager.cs",
+      "sha256": "b279227668d5468d1f274628cee43e28702b8e0bf7d769430e4f8a0da1799f1f"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Utils/MccsCapabilitiesParser.cs",
+      "sha256": "42f594cf5f4e799e0b4e1e8628ad5676d5f03336929868933eff43c9bc820a6c"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Lib/Utils/VcpNames.cs",
+      "sha256": "fc8cf4079d6d297a465935539cbe9f253c5e66069bd4cf46618dea3de4ffd071"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/BuiltInMonitorBlacklist.cs",
+      "sha256": "90359cb95dedcb6289687bd86b41ef37ad64dc3067fdcb69908707475e805c48"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/BuiltInMonitorBlacklist.json",
+      "sha256": "0cf788cfc97dfa2d63a4983526173820ce2fa7ca515c8ca11a4ac9308b73ec88"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/BuiltInMonitorBlacklistFile.cs",
+      "sha256": "aef431614e7381db732e958171720fc1eb2ce9c3b5e6667e0f01161f5c96d5e2"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/CustomVcpValueMapping.cs",
+      "sha256": "3326a8ee0a2a4bae79375eb4c8008dc7e51bdea5e87d8228880fb92b60177499"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/IRetainableMonitor.cs",
+      "sha256": "2781905f152c722941cac4472f90815d811bf00b01f94aaa5ba7c94d49d1d57f"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/MonitorBlacklistEntry.cs",
+      "sha256": "ce586c876eb6b740b20f7cd5778c1d20ffe9c209714398b19c007c832fa8bdbd"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/MonitorBlacklistSerializationContext.cs",
+      "sha256": "35d9e80d52a1c5b8470c63252f5072cbf102705677dceeb5588e43ba9a6b4f13"
+    },
+    {
+      "path": "src/modules/powerdisplay/PowerDisplay.Models/MonitorIdComparer.cs",
+      "sha256": "42c6387746193cd28147cea3d3f97bb89cc5ef2923183243b65c2326d0811d90"
+    }
+  ]
+}
