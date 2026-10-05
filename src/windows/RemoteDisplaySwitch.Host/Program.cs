@@ -1,0 +1,192 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using Microsoft.Win32;
+using RemoteDisplaySwitch.Contracts;
+using RemoteDisplaySwitch.Host.UI;
+using RemoteDisplaySwitch.Runtime;
+using Forms = System.Windows.Forms;
+
+namespace RemoteDisplaySwitch.Host;
+
+internal sealed record HostOptions(bool Background, bool Simulation, string DataDirectory, string PipeName, string WorkerPath, string? PreviewPath, int? StopAfterSeconds)
+{
+    public static HostOptions Parse(string[] args)
+    {
+        bool background = false, simulation = false;
+        string? directory = null, pipe = null, worker = null, preview = null;
+        int? stop = null;
+        var seen = new HashSet<string>();
+        for (var index = 0; index < args.Length; index++)
+        {
+            var name = args[index];
+            if (!seen.Add(name)) throw new ArgumentException("Duplicate option.");
+            string Value() => ++index < args.Length ? args[index] : throw new ArgumentException("Missing option value.");
+            switch (name)
+            {
+                case "--background": background = true; break;
+                case "--simulate": simulation = true; break;
+                case "--data-dir": directory = Value(); break;
+                case "--pipe": pipe = Value(); break;
+                case "--worker-path": worker = Value(); break;
+                case "--render-preview": preview = Value(); break;
+                case "--stop-after-seconds": stop = int.Parse(Value()); if (stop is < 1 or > 3600) throw new ArgumentException("Invalid stop interval."); break;
+                default: throw new ArgumentException("Unknown option.");
+            }
+        }
+        if (simulation && directory is null) throw new ArgumentException("Simulation requires an isolated data directory.");
+        if (preview is not null && !simulation) throw new ArgumentException("Preview requires simulation.");
+        directory ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteDisplaySwitch", "Host");
+        pipe ??= simulation ? "RemoteDisplaySwitch.Simulation." + Guid.NewGuid().ToString("N") : PipeIdentity.DefaultHostPipe;
+        worker ??= Path.Combine(AppContext.BaseDirectory, "worker", "RemoteDisplaySwitch.Worker.exe");
+        return new(background, simulation, Path.GetFullPath(directory), pipe, Path.GetFullPath(worker), preview is null ? null : Path.GetFullPath(preview), stop);
+    }
+}
+
+internal static class Program
+{
+    [STAThread]
+    public static int Main(string[] args)
+    {
+        try { return new HostApplication(HostOptions.Parse(args)).Run(); }
+        catch (Exception exception) { Console.Error.WriteLine(exception.GetType().Name); return 1; }
+    }
+}
+
+internal sealed class HostApplication(HostOptions options) : System.Windows.Application
+{
+    private readonly CancellationTokenSource _stop = new();
+    private DesktopController? _controller;
+    private MainWindow? _window;
+    private Forms.NotifyIcon? _tray;
+    private FileStream? _instance;
+    private Task? _serverTask;
+    private bool _exiting;
+    private DispatcherTimer? _exitTimer;
+
+    protected override async void OnStartup(StartupEventArgs args)
+    {
+        base.OnStartup(args);
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        try
+        {
+            Directory.CreateDirectory(options.DataDirectory);
+            var locks = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RemoteDisplaySwitch", "Locks");
+            Directory.CreateDirectory(locks);
+            var lockName = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(options.PipeName))) + ".lock";
+            try { _instance = new FileStream(Path.Combine(locks, lockName), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+            catch (IOException)
+            {
+                try { await LocalPipeClient.SendAsync(options.PipeName, Environment.ProcessPath!, new(Guid.NewGuid(), "show")); } catch { }
+                Shutdown(2); return;
+            }
+            var worker = new WorkerSupervisor(options.WorkerPath, Path.Combine(options.DataDirectory, "worker"), options.Simulation);
+            _controller = new DesktopController(worker, new StartupRegistration(Environment.ProcessPath!, options.Simulation), options.DataDirectory, options.Simulation);
+            _window = new MainWindow(_controller);
+            MainWindow = _window;
+            if (options.PreviewPath is not null)
+            {
+                var discovered = await _controller.DiscoverAsync();
+                var candidate = discovered.Candidates.First();
+                await _controller.BindAsync(candidate.TargetKey, discovered.TopologyFingerprint, candidate.Name);
+                await _controller.RefreshAsync();
+                await _window.RefreshViewAsync();
+                await Dispatcher.InvokeAsync(() => RenderPreview(options.PreviewPath), DispatcherPriority.ApplicationIdle);
+                await ExitAsync();
+                return;
+            }
+            _serverTask = new LocalPipeServer(options.PipeName, _controller, command => Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                if (command == "shutdown") await ExitAsync();
+                else ShowSettings();
+            }))).RunAsync(_stop.Token);
+            _ = WatchServerAsync(_serverTask);
+            var menu = new Forms.ContextMenuStrip();
+            menu.Items.Add("打开设置", null, (_, _) => ShowSettings());
+            menu.Items.Add("刷新状态", null, async (_, _) => await TrayRefreshAsync());
+            menu.Items.Add("开启显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.On));
+            menu.Items.Add("关闭显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.Off));
+            menu.Items.Add(new Forms.ToolStripSeparator());
+            menu.Items.Add("退出", null, async (_, _) => await ExitAsync());
+            _tray = new Forms.NotifyIcon { Text = options.Simulation ? "RemoteDisplaySwitch · 模拟" : "RemoteDisplaySwitch", Icon = System.Drawing.SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
+            _tray.DoubleClick += (_, _) => ShowSettings();
+            SystemEvents.DisplaySettingsChanged += DisplayChanged;
+            SystemEvents.PowerModeChanged += PowerChanged;
+            if (!options.Background) _window.Show();
+            if (options.StopAfterSeconds is { } seconds)
+            {
+                _exitTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(seconds) };
+                _exitTimer.Tick += async (_, _) => { _exitTimer.Stop(); await ExitAsync(); };
+                _exitTimer.Start();
+            }
+        }
+        catch (Exception exception)
+        {
+            SaveHostError(exception);
+            if (!options.Background && options.PreviewPath is null) MessageBox.Show("程序启动失败，请检查本地诊断目录。", "RemoteDisplaySwitch");
+            await ExitAsync(1);
+        }
+    }
+    private async Task WatchServerAsync(Task server)
+    {
+        try { await server; }
+        catch (Exception exception) { SaveHostError(exception); await Dispatcher.InvokeAsync(async () => await ExitAsync(1)); }
+    }
+    private void SaveHostError(Exception exception)
+    {
+        try { File.AppendAllText(Path.Combine(options.DataDirectory, "host.log"), $"{DateTimeOffset.UtcNow:O} {exception.GetType().Name}{Environment.NewLine}"); } catch { }
+    }
+    private void ShowSettings() { if (_window is null || _exiting) return; _window.Show(); _window.Activate(); }
+    private async Task TrayRefreshAsync()
+    {
+        try { if (_controller is not null) await _controller.RefreshAsync(); }
+        catch { ShowSettings(); }
+    }
+    private async Task TrayPowerAsync(PowerIntent intent)
+    {
+        if (_controller is null) return;
+        try
+        {
+            var snapshot = await _controller.GetSnapshotAsync();
+            if (snapshot.Busy || snapshot.Binding is null || snapshot.Binding.NeedsConfirmation) { ShowSettings(); return; }
+            var result = await _controller.ExecuteAsync(snapshot.Binding.TargetId, intent, Guid.NewGuid());
+            if (result.Outcome != OperationOutcome.Confirmed) ShowSettings();
+        }
+        catch { ShowSettings(); }
+    }
+    private void DisplayChanged(object? sender, EventArgs args) { if (!options.Simulation) _controller?.NotifyTopologyChanged(); }
+    private void PowerChanged(object sender, PowerModeChangedEventArgs args) { if (!options.Simulation && args.Mode == PowerModes.Resume) _controller?.NotifyTopologyChanged(); }
+    private void RenderPreview(string target)
+    {
+        var root = (FrameworkElement)_window!.Content;
+        root.Measure(new Size(780, 840)); root.Arrange(new Rect(0, 0, 780, 840)); root.UpdateLayout();
+        var bitmap = new RenderTargetBitmap(780, 840, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(root);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        using var file = File.Create(target);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); encoder.Save(file);
+    }
+    private async Task ExitAsync(int code = 0)
+    {
+        if (_exiting) return;
+        _exiting = true;
+        _exitTimer?.Stop();
+        SystemEvents.DisplaySettingsChanged -= DisplayChanged;
+        SystemEvents.PowerModeChanged -= PowerChanged;
+        _stop.Cancel();
+        if (_serverTask is not null) { try { await _serverTask; } catch { } }
+        if (_controller is not null) { try { await _controller.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); } }
+        _window?.AllowClose(); _window?.Close();
+        _tray?.Dispose(); _instance?.Dispose();
+        Shutdown(code);
+    }
+}

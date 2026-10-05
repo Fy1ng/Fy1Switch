@@ -2,22 +2,34 @@
 
 基于 Microsoft PowerToys Power Display 源码的独立 Windows 显示器远程控制项目。
 
-## 当前状态：P0，尚未通过实体硬件门槛
+## 当前状态：Windows P1 本地控制可用，系统级验收后置
 
-本轮已建立可独立编译的控制核心、进程隔离的本地诊断工具和无硬件回归测试。**不是已完成的远程控制产品**：托盘宿主、自启、Android/OriginOS Tile、HTTPS 与 Relay 尚未实现。
+已实现 WPF 托盘宿主、独立常驻 Worker、本地 CLI、SQLite 绑定与操作日志、登录自启设置，以及独立 x64 发布/安装/卸载流程。**不是已完成的远程控制产品**：Android/OriginOS Tile、HTTPS 与 Relay 尚未实现。使用与验证范围见 docs/Windows-P1.md。
 
 官方 Power Display 退出后，已完成真实 DDC 发现及受限对照实验：原始上游按 CCD 顺序绑定时把唯一响应句柄标为 VDD；按本机 GDI 顺序显式重排后标为 G4Q。用户已于 2026-10-05 人工确认复测时实体屏熄灭约 5 秒后恢复，VDD、复制模式正常。随后 30/30 轮软件循环、保持句柄关闭 60 秒，以及释放原句柄后等待 15/60 秒由全新进程恢复均成功；当前发布包也通过 5 秒全新进程恢复复核。**人工确认只覆盖指定短循环，整机重启、睡眠和物理拔插尚未验证，不把工作进程重启当成整机重启。**详见 docs/P0-findings.md。
 
 ## 已确认架构
 
-验证安排更新（2026-10-05）：用户明确暂不进行物理拔插验证，该项标记为暂缓，不能计为通过。整机重启、睡眠恢复和 VDD 重建仍未验证；本次暂缓不自动改变原定阶段门槛，也不取消已确认的项目架构。
+验证安排更新（2026-10-05）：用户先暂缓物理拔插，随后明确同意将剩余整机重启、睡眠恢复和 VDD 重建验收后置到正式发布前，先推进已确认架构中的 Windows 后台与托盘。后置不等于验收通过；身份或拓扑不确定时拒绝控制。
 
 - 新独立项目，不使用 RemoteScreenSwitch 实验代码。
 - Windows：.NET 10 用户会话内 Host/Worker，WPF 托盘设置界面；不在 Session 0 控制显示器。
 - 控制核心：锁定 PowerToys 源码子集，保留原始发现、配对、句柄及读写行为，独立适配日志、路径与产品状态。
 - Android：Kotlin/Compose 与原生 TileService；短时交互刷新，不以永驻进程保证状态。
 - 网络：HTTPS LAN/Tailscale 直连及可信自建 ASP.NET Core Relay；两段 TLS 不宣称端到端加密。
-- P0 硬件门槛通过后才推进 Windows 产品宿主、Android 与 Relay。
+- 当前受限环境下的 P0 开关、长关闭与工作进程恢复已验证；按调整后的顺序推进 Windows P1，系统级验收后置，Android 与 Relay 后续实现。
+
+## Windows 本地版本
+
+~~~powershell
+./tools/Test-Windows.ps1
+./tools/Publish-Windows.ps1
+./tools/Test-Windows-Integration.ps1
+~~~
+
+输出 artifacts/windows/win-x64。运行其中 RemoteDisplaySwitch.Host.exe，点击发现、选择、绑定，再刷新/控制；关闭设置窗口后保留托盘。Install.ps1 提供每用户安装，Uninstall.ps1 只删除已标记的程序目录并保留用户数据。自启默认关闭，可在界面选择；没有为开发测试启用用户的真实登录自启。默认集成测试为模拟，不访问硬件；显式 -Hardware 才会触发真实 5 秒开关及宿主重启恢复。
+
+宿主使用本机当前用户命名管道，不监听网络端口。不要将此 IPC 当作远程认证接口。P0 诊断工具与新 Worker 互相避让，不能同时操作硬件。
 
 ## 构建与测试
 

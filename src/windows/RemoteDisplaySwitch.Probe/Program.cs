@@ -435,7 +435,7 @@ internal static class Program
 
     private static bool IsOfficialControllerRunning()
     {
-        var processes = Process.GetProcessesByName("PowerToys.PowerDisplay");
+        var processes = Process.GetProcessesByName("PowerToys.PowerDisplay").Concat(Process.GetProcessesByName("RemoteDisplaySwitch.Worker")).ToArray();
         try
         {
             return processes.Length > 0;
