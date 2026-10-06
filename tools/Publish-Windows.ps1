@@ -36,6 +36,7 @@ Copy-Item -LiteralPath (Join-Path $root 'docs/P0-findings.md') -Destination (Joi
 Copy-Item -LiteralPath (Join-Path $root 'docs/Remote-Control.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/Android.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/Relay.md') -Destination (Join-Path $output 'docs')
+Copy-Item -LiteralPath (Join-Path $root 'docs/Pairing-v1.md') -Destination (Join-Path $output 'docs')
 New-Item -ItemType Directory -Path (Join-Path $output 'licenses') -Force | Out-Null
 Get-ChildItem -LiteralPath (Join-Path $root 'licenses') -File | Copy-Item -Destination (Join-Path $output 'licenses')
 Copy-Item -LiteralPath (Join-Path $root 'tools/Install-Windows.ps1') -Destination (Join-Path $output 'Install.ps1')

@@ -8,6 +8,11 @@
         "resolved": "1.8.0",
         "contentHash": "RuvX3PEXU6pbY/I5ItAk800jm62r+YnoPLgyS2WTgwxkOnGkOfU9ORiipHUF0LkLyqM8rlroUCA319JjRYfRFQ=="
       },
+      "BouncyCastle.Cryptography": {
+        "type": "Transitive",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
+      },
       "Microsoft.Data.Sqlite": {
         "type": "Transitive",
         "resolved": "10.0.11",
@@ -55,6 +60,16 @@
       },
       "remotedisplayswitch.contracts": {
         "type": "Project"
+      },
+      "remotedisplayswitch.discovery": {
+        "type": "Project"
+      },
+      "remotedisplayswitch.pairing": {
+        "type": "Project",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "[2.7.0, )",
+          "RemoteDisplaySwitch.Contracts": "[1.0.0, )"
+        }
       },
       "remotedisplayswitch.remote": {
         "type": "Project",

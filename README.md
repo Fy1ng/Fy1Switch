@@ -35,7 +35,9 @@
 
 2026-10-06 UI 增量：两端主页简化为可信状态对应的单一主操作，Windows 首次未绑定时只读发现并要求明确确认，设置/诊断折叠；电脑可显示现有安全配对信息二维码，手机按需申请相机权限扫码，并保留粘贴备用。已有凭据、包名与 Tile 组件保持不变。此增量 Windows 在 artifacts/windows-ui/win-x64，Android 在 artifacts/android/RemoteDisplaySwitch-ui-debug.apk。
 
-用户新增的局域网双向自动发现与短数字配对码仍待新增安全协议方案确认；当前二维码继续使用原高熵一次性凭据，未将其改为短码，也未启用未经批准的发现/监听子系统。自动地址推荐和进一步远程设置整合仍需后续完成，不宣称全部 UI 优化已交付。
+2026-10-06 用户确认六位短码方案后，已实现原生局域网双向发现和独立 SRP-6a 配对通道。两端打开配对页，自动搜索附近设备；点击对方并输入对方屏幕六位码，或继续扫码。短码五分钟有效、成功后消费、每码最多五次尝试，且进程级累计限流不因换码清零。现有二维码仍使用原高熵一次性凭据，HTTPS证书及已保存手机授权不迁移。地址候选由本机网卡生成，用户明确选择才保存，不静默覆盖旧配置。详见 docs/Pairing-v1.md。
+
+最新短码版 Windows 在 artifacts/windows-pairing/win-x64，Android 在 artifacts/android/RemoteDisplaySwitch-pairing-debug.apk。Windows 原生发布/浏览/撤销已在本机运行；C# 与 Android JVM 正向、反向 SRP→加密凭据→固定证书 HTTPS 配对都已联调通过。真实 Android NSD、OriginOS 配对页生命周期及不同路由器的组播仍需手机实测；本轮未安装 APK、未改变防火墙、未控制实体显示器。
 
 ~~~powershell
 ./tools/Publish-Windows.ps1 -OutputDirectory ./artifacts/windows-remote/win-x64

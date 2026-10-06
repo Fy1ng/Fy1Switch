@@ -26,6 +26,8 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    implementation("org.bouncycastle:bcprov-jdk18on:1.83")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.3")
     implementation(platform("androidx.compose:compose-bom:2025.08.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.material3:material3")
@@ -39,11 +41,27 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    if (name != "liveShortCodeTest") exclude("**/LiveShortCodeTest*")
     if (name != "liveWindowsTest") exclude("**/LiveWindowsIntegrationTest*")
 }
 
 afterEvaluate {
     val debugUnitTest = tasks.named<Test>("testDebugUnitTest").get()
+    tasks.register<Test>("liveShortCodeTest") {
+        group = "verification"
+        testClassesDirs = debugUnitTest.testClassesDirs
+        classpath = debugUnitTest.classpath
+        dependsOn(debugUnitTest.taskDependencies.getDependencies(debugUnitTest))
+        include("**/LiveShortCodeTest.class")
+        useJUnit()
+        doNotTrackState("One-shot fixture must never be cached.")
+        maxParallelForks = 1
+        doFirst {
+            val fixture = providers.environmentVariable("RDS_SHORT_CODE_FIXTURE").orNull
+            if (fixture.isNullOrBlank()) throw GradleException("RDS_SHORT_CODE_FIXTURE must name a temporary fixture JSON file.")
+            environment("RDS_SHORT_CODE_FIXTURE", fixture)
+        }
+    }
     tasks.register<Test>("liveWindowsTest") {
         group = "verification"
         description = "Runs the real loopback Windows HTTPS fixture supplied by RDS_ANDROID_FIXTURE."

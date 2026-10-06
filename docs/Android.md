@@ -1,5 +1,41 @@
 # Android App 与快捷设置开关
 
+## LAN 六位短码（2026-10-06）
+
+Android 配对页支持原生 `NsdManager` 双向发现/广播 `_rds-pair._tcp.`，TXT 仅 `v=1`、`role=android`、`sid=<小写 UUID>`。电脑列表自动随发现/丢失更新，有空态、失败提示和显式刷新；名称不是可信身份。可以输入电脑屏幕上的六位短码（Android SRP client），也可以在 Windows 输入手机显示的码（Android SRP server）。前导零保留。保留离线扫码和高级 JSON 粘贴；未提供手填 IP/session 的假入口。
+
+Wire 严格依据 [Pairing-v1.md](Pairing-v1.md)：BC `bcprov-jdk18on:1.83`、RFC5054 3072/SHA256、BC evidence/session key、384 字节 A/B、32 字节 M1/M2/key、transcript HKDF-SHA256、AES256GCM。Client hello 在 salt 到达前发送 A，因此 SRP6Client 子类仅在收到 challenge 后设置 BC calculateX，保留同一随机 a/A；不重新生成 A、不另造 proof。TCP JSON 行最大 16KiB；短码不明文上 wire、不写磁盘、不输出日志。
+
+只有页面处于 RESUMED 且未扫码/进行其他配对时开启临时 `ServerSocket(0)`。离页、pause、后台、SCREEN_OFF、锁屏或完成关闭监听/握手 socket、NSD 和 multicast lock；扫码启动前先清理，返回可重新开始。会话 generation 丢弃过时回调。每码最多 5 分钟/5 次 admission；进程共享 10 次/10 分钟和单握手 gate，刷新/页面重建不能重置进程限流。连接和 PAKE 总计 15 秒、配对总计 45 秒，有独立 socket 截止计时器防慢速分片；成功 proof 消费短码，后续 HTTPS 失败也须重新开始。
+
+无论 SRP 角色，Android **只在验证 PAKE 后**接收 authenticated `windows-bundle`。bundle 中的 Windows deviceId/pin 才进入既有 `DeviceRepository.pair`，使用原严格 pin HTTPS `/v1/pair` 并保存旧格式凭据；不把 mDNS device identity/pin 当 expected identity。已经配对的 deviceId 不自动重复 pair。保存成功后才发送 encrypted `android-result {success:true}`；HTTPS/证书失败发送 false。若 ack 途中断开，电脑不得假定完成，手机可能已经保存凭据。
+
+Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面重建时 `FAILURE_ALREADY_ACTIVE`。按能力取得 Wi-Fi multicast lock，API 33+ 使用 NSD network，连接时绑定解析网络（否则使用可用 Wi-Fi network）。不要求公网发现、后台保活或硬件控制。同 SSID 也可能有 AP/访客隔离、组播过滤、防火墙或 OEM NSD 限制；本地 JVM/build 不代表真机发现、锁屏、相机返回已验收。
+
+### JVM/跨语言联调 API
+
+包 `com.fy1ng.remotedisplayswitch.pairing`，不依赖 Android UI 的入口：
+
+- `PairWire.read(): JSONObject` / `write(JSONObject)`，TCP 实现 `SocketPairWire(Socket)`。
+- `ShortCodeProtocol.client(wire, serverSession, code, clientRole="android", clientSession=<UUID>, onProof={})`。
+- `ShortCodeProtocol.server(wire, serverSession, code, serverRole="android", onProof={})`。
+- 两者返回 `SecureChannel`：`encrypt(purpose, plaintext)` / `decrypt(purpose, frame)`；`transcriptHash` 可供 fixture 断言。每方向每 purpose 一次。测试可传 `windows` 角色；生产入口固定 Android。调用者负责 socket 关闭、截止时间及 admission，生产由 `LanPairing` 负责。
+- `ShortCodePairing.acceptBundle(repository, text, clientName): Boolean` 是 suspend 函数；测试用内存 StateStore，生产仍使用原 repository/store。不返回或回传 bearer。
+
+显式任务 `:app:liveShortCodeTest` 读取 `RDS_SHORT_CODE_FIXTURE` 指向的临时 UTF-8 JSON **文件路径**（可带 BOM），不进入常规 unit test。缺 env、失效 fixture、握手/身份/pin/target 断言失败均失败，不 skip、不复用缓存。测试只允许 loopback，不安装 APK、不调用电源 set。
+
+正向 fixture schema（Windows 显示码，Android JVM 连接）：
+
+```json
+{"host":"127.0.0.1","port":12345,"sessionId":"<Windows lowercase UUID>","code":"000042","expectedDeviceId":"<fixture Windows UUID>","targetId":"<simulated target UUID>"}
+```
+
+反向 fixture schema：`{"expectedDeviceId":"<UUID>","targetId":"<UUID>","reverseControlUrl":"http://127.0.0.1:<port>/<fixture-trigger>"}`。测试先开 loopback `ServerSocket(0)`，生成手机 session/code，然后向该 **测试专用 loopback CLI 协作入口** POST `{"host":"127.0.0.1","port":<actual>,"sessionId":"<Android UUID>","code":"<six digits>"}`。Windows fixture 用 SRP client 接回、发送自己创建的 bundle、验证 encrypted ack；trigger 返回 2xx。这个明文控制入口只属于显式本地 fixture，不是生产配对 wire，不加入 App。生产短码只输入对方 UI。两方向分别导出/调用一次，以免重复消费 code。
+
+`expectedDeviceId` 仅来自测试操作者可信 fixture，在 PAKE 解密 bundle 后、HTTPS pair 前断言；生产不从发现记录读取它。测试还检查 bundle HTTPS loopback 和 repository 状态中的模拟 targetId。该 schema 是此入口的集成契约，Windows CLI fixture 需按此提供；未提供真实 fixture 时不得声称 Java/C# 双向互通通过。
+
+运行：设置 `JAVA_HOME`、`ANDROID_HOME` 和 `RDS_SHORT_CODE_FIXTURE` 后执行 Gradle 8.13 `-p src/android --no-daemon --console=plain :app:liveShortCodeTest`。报告位于 `src/android/app/build/reports/tests/liveShortCodeTest/`。常规检查仍为 `testDebugUnitTest lintDebug assembleDebug`，覆盖旧测试及新增双角色、错误输入/proof/public value、transcript、GCM 篡改/重放、framing、限流/到期/消费和 repository 配对测试。
+
 ## 构建与产物
 
 - 包名：`com.fy1ng.remotedisplayswitch`。
