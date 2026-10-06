@@ -47,8 +47,9 @@ class HttpsTransport : Transport {
     internal fun controlRequest(device: DeviceProfile, route: Route, body: String): Request {
         val builder = Request.Builder().post(body.toRequestBody(JSON))
         when (route) {
-            Route.Direct -> {
-                builder.url(device.endpoint + "/v1/control")
+            Route.Direct, Route.Tailscale -> {
+                val endpoint = if (route == Route.Direct) device.endpoint else requireNotNull(device.tailscaleEndpoint)
+                builder.url(endpoint + "/v1/control")
                     .header("Authorization", "Bearer " + device.deviceToken)
             }
             Route.Relay -> {
@@ -63,12 +64,20 @@ class HttpsTransport : Transport {
 
     internal fun controlClient(device: DeviceProfile, route: Route): OkHttpClient = when (route) {
         Route.Direct -> directClient(device.endpoint, device.certificatePin)
+        Route.Tailscale -> directClient(requireNotNull(device.tailscaleEndpoint), device.certificatePin)
         Route.Relay -> systemClient
     }
 
     override suspend fun control(device: DeviceProfile, route: Route, body: String, timeoutMillis: Long): HttpResult {
         return post(controlClient(device, route), controlRequest(device, route, body), timeoutMillis,
             Instant.parse(JSONObject(body).getString("expiresAt")))
+    }
+
+    internal fun readResponse(response: Response): HttpResult = response.use {
+        if (it.code !in 200..299) return@use HttpResult(it.code, "")
+        val source = requireNotNull(it.body) { "Missing response" }.source()
+        require(!source.request(Protocol.MAX_BODY.toLong() + 1)) { "Response too large" }
+        HttpResult(it.code, source.readUtf8())
     }
 
     private suspend fun post(client: OkHttpClient, request: Request, timeoutMillis: Long, expiresAt: Instant): HttpResult =
@@ -89,13 +98,9 @@ class HttpsTransport : Transport {
 
                 override fun onResponse(call: Call, response: Response) {
                     try {
-                        val result = response.use {
-                            val source = it.body?.source() ?: throw IOException("Missing response")
-                            if (source.request(Protocol.MAX_BODY.toLong() + 1)) throw IOException("Response too large")
-                            HttpResult(it.code, source.readUtf8())
-                        }
+                        val result = readResponse(response)
                         continuation.resume(result)
-                    } catch (exception: IOException) {
+                    } catch (exception: Exception) {
                         continuation.resumeWithException(exception)
                     }
                 }

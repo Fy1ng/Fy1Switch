@@ -1,5 +1,17 @@
 # 远程控制与配对
 
+## 自动多路径（2026-10-07）
+
+同一设备可配置局域网 HTTPS、Tailscale HTTPS 和可信 Relay，按此顺序尝试；未配置的路径跳过。所有入口使用原设备身份、证书和手机授权，不需要为每条路径重新绑定显示器。旧版单地址配置继续有效。Tailscale 客户端和 Relay 服务仍须单独安装、配置，本项目不会自动登录、开放防火墙或部署中继。
+
+失败路径从整轮请求结束后冷却五秒，之后由下一次请求触发最多一秒的只读 `status` 恢复探测；没有永驻后台探测。配置 Tailscale 时两个直接入口各最多六秒，中继最多十二秒，始终受同一次请求剩余期限限制；恢复探测为后续可用路径保留时间。主界面显示最近成功路径，不把历史路径当成当前在线保证。手机清空 Tailscale 地址并保存会停用自动学习，可通过勾选自动更新重新启用。
+
+切换仅处理连接层失败；证书、身份、认证和协议错误直接提示，不以切换路径掩盖异常。一次开关操作跨路径保留相同请求内容、操作 ID 和截止时间，不并行发送开关命令。超时不能证明没有执行；结果不确定时查询已有操作，不生成新的 Toggle。
+
+Windows 的可选 Tailscale 入口与 LAN 入口共享证书；可选入口不可用不能阻止正常 LAN 入口。配对载荷与认证状态响应通过可选 `tailscaleEndpoint` 字段交付 Tailscale 地址。未经认证的局域网广播不能修改可信地址。手机高级设置可维护该地址，已有手机无需清除凭据重新配对。Tailscale 路径底层可能使用 DERP，与本应用自建 Relay 不是同一层。
+
+跨网络验收：先确认 LAN 路径；手机离开家庭 Wi-Fi 并保持 Tailscale 在线，确认切换至 Tailscale；再在已配置 Relay 的情况下关闭手机 Tailscale，确认使用中继；恢复 LAN 后确认优先路径恢复。检查每次操作仅执行一次、Tile 状态不把离线当作关闭。上述步骤需要目标手机和实际网络，自动化测试不能替代。物理拔插及整机恢复仍按原约定后置。
+
 ## 安全模型
 
 LAN、Tailscale 和应用 Relay 都要求每台手机独立的 Windows 设备凭据。Tailscale IP、设备 UUID、Relay 房间都不是密码。Windows 默认不开放网络；本地设置启用后才启动 HTTPS。没有自动修改防火墙、路由器、Tailscale 策略或部署服务器。
@@ -15,7 +27,7 @@ LAN、Tailscale 和应用 Relay 都要求每台手机独立的 Windows 设备凭
 1. 勾选启用 HTTPS。
 2. 监听 IP 默认 127.0.0.1，只能本机访问。填 Windows 的 LAN/Tailscale IP 可限定接口；0.0.0.0 监听全部 IPv4 接口，不建议无意开放到不可信网络。
 3. 端口默认 48152；手机使用地址填实际可访问的 https://地址:端口。
-4. 保存并应用。若绑定地址不存在、端口占用或私钥不可读，服务启动失败，不会假装已开启。
+4. 保存并应用。若主入口绑定地址不存在、端口占用或私钥不可读，服务启动失败，不会假装已开启。可选 Tailscale 入口单独启动，失败时显示不可用、保留主入口；恢复网卡或释放端口后重新保存设置以重试。选择 Tailscale 网卡会填入备用入口而不覆盖 LAN，两项留空可关闭该入口。
 5. 生成配对信息，复制到 Android App。临时配对 JSON 含秘密，不要发到公开聊天或保存进代码仓库。
 
 没有自动添加防火墙规则。如果手机无法直连，先核对 HTTPS 监听、Windows 防火墙、同局域网隔离、Tailscale 设备在线及 ACL。手机只能有一个活动 VPN 的系统约束也可能影响 Tailscale。按 Tailscale 地址连接时，底层可以是 UDP 直连或 DERP，不影响本项目设备认证。
@@ -49,6 +61,8 @@ requestId 用于一次通信关联，operationId 用于跨通信通道的业务�
 返回操作包括 Pending、Confirmed、AcceptedUnconfirmed、Failed、Unknown；只有硬件读回符合请求才是 Confirmed。单次 HTTP 200 并不等于实体显示器已完成开关。显示器拓扑失效后，手机不能自动更换或重新绑定另一个目标，需回到 Windows 确认。
 
 ## 本轮验证与交付
+
+2026-10-07 自动多路径：Remote 116、Pairing 50、Relay 53、HTTPS/WSS 端到端 1 项通过；Android 96 项单元测试、lint（零错误、五项警告）和 APK 构建通过，Android HttpsTransport 到本机 Windows HTTPS 模拟 Worker 联调通过。测试覆盖双入口共享身份、备用入口不可用、串行回退、去重标识、冷却恢复只读探测、认证失败拒绝回退、旧配置迁移和手动停用。Windows 自包含产物位于 `artifacts/windows-multipath/win-x64`，APK 位于 `artifacts/android/RemoteDisplaySwitch-multipath-debug.apk`。未替换运行中的程序、安装手机应用或验证真实跨网络。
 
 2026-10-05：Windows 原回归 248/248、Remote HTTPS/配对 92/92、Relay 53/53、真实 HTTPS/WSS 跨服务 1/1 通过。Android 单元测试 54/54，实际 HttpsTransport→Windows loopback HTTPS→模拟 Worker 联调 1/1 通过，包含错误 pin 拒绝和重复操作去重。Android lint 0 错误、6 警告；debug APK 签名验证通过。
 

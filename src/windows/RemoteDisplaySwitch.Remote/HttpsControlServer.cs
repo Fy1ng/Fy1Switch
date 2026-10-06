@@ -14,10 +14,38 @@ namespace RemoteDisplaySwitch.Remote;
 public sealed class HttpsControlServer(RemoteGateway gateway, DeviceSecurity security) : IAsyncDisposable
 {
     private WebApplication? _application;
+    private WebApplication? _tailscale;
+    public string TailscaleStatus { get; private set; } = "disabled";
     public async Task StartAsync(RemoteSettings settings, CancellationToken cancellationToken = default)
     {
         settings.Validate();
         if (_application is not null) throw new InvalidOperationException("already_running");
+        gateway.TailscaleEndpoint = null;
+        TailscaleStatus = "disabled";
+        _application = await StartListenerAsync(settings.ListenAddress, settings.Port, cancellationToken);
+        if (settings.TailscaleListenAddress is not { } address) return;
+        try
+        {
+            var primary = IPAddress.Parse(settings.ListenAddress);
+            var secondary = IPAddress.Parse(address);
+            if (!primary.Equals(secondary) && !primary.Equals(IPAddress.IPv6Any)
+                && !(primary.Equals(IPAddress.Any) && secondary.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork))
+                _tailscale = await StartListenerAsync(address, settings.Port, cancellationToken);
+            gateway.TailscaleEndpoint = settings.TailscaleEndpoint;
+            TailscaleStatus = "listening";
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is System.IO.IOException or System.Net.Sockets.SocketException)
+        {
+            TailscaleStatus = "unavailable";
+        }
+        catch
+        {
+            await DisposeAsync();
+            throw;
+        }
+    }
+    private async Task<WebApplication> StartListenerAsync(string address, int port, CancellationToken cancellationToken)
+    {
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options =>
@@ -25,7 +53,7 @@ public sealed class HttpsControlServer(RemoteGateway gateway, DeviceSecurity sec
             options.Limits.MaxRequestBodySize = 131072;
             options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(10);
             options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
-            options.Listen(IPAddress.Parse(settings.ListenAddress), settings.Port, listener => listener.UseHttps(security.Certificate));
+            options.Listen(IPAddress.Parse(address), port, listener => listener.UseHttps(security.Certificate));
         });
         builder.Services.AddRateLimiter(options =>
         {
@@ -68,17 +96,29 @@ public sealed class HttpsControlServer(RemoteGateway gateway, DeviceSecurity sec
             catch (Exception exception) when (exception is JsonException or BadHttpRequestException) { context.Response.StatusCode = 400; }
             catch (OperationCanceledException) { context.Response.StatusCode = 504; }
         }).RequireRateLimiting("control");
-        try { await app.StartAsync(cancellationToken); _application = app; }
+        try { await app.StartAsync(cancellationToken); return app; }
         catch { await app.DisposeAsync(); throw; }
     }
     public async ValueTask DisposeAsync()
     {
-        if (_application is { } app)
+        gateway.TailscaleEndpoint = null;
+        TailscaleStatus = "disabled";
+        var tailscale = _tailscale;
+        _tailscale = null;
+        try { if (tailscale is not null) await StopAsync(tailscale); }
+        finally
         {
-            _application = null;
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try { await app.StopAsync(timeout.Token); } finally { await app.DisposeAsync(); }
+            if (_application is { } app)
+            {
+                _application = null;
+                await StopAsync(app);
+            }
         }
+    }
+    private static async Task StopAsync(WebApplication app)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try { await app.StopAsync(timeout.Token); } finally { await app.DisposeAsync(); }
     }
     private static async Task<T?> ReadBoundedAsync<T>(HttpRequest request, CancellationToken cancellationToken)
     {

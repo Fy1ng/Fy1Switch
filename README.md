@@ -33,6 +33,8 @@
 
 ## 手机与中继版本
 
+2026-10-07 多路径增量：Android 按局域网 → Tailscale → Relay 自动选择连接，保留既有配对与操作去重；Windows 可同时绑定 LAN 和可选 Tailscale 地址。新版输出为 `artifacts/windows-multipath/win-x64` 与 `artifacts/android/RemoteDisplaySwitch-multipath-debug.apk`，不覆盖正在运行的旧版。配置与跨网络验收见 `docs/Remote-Control.md` 的自动多路径章节。
+
 2026-10-06 UI 增量：两端主页简化为可信状态对应的单一主操作，Windows 首次未绑定时只读发现并要求明确确认，设置/诊断折叠；电脑可显示现有安全配对信息二维码，手机按需申请相机权限扫码，并保留粘贴备用。已有凭据、包名与 Tile 组件保持不变。此增量 Windows 在 artifacts/windows-ui/win-x64，Android 在 artifacts/android/RemoteDisplaySwitch-ui-debug.apk。
 
 2026-10-06 用户确认六位短码方案后，已实现原生局域网双向发现和独立 SRP-6a 配对通道。两端打开配对页，自动搜索附近设备；点击对方并输入对方屏幕六位码，或继续扫码。短码五分钟有效、成功后消费、每码最多五次尝试，且进程级累计限流不因换码清零。现有二维码仍使用原高熵一次性凭据，HTTPS证书及已保存手机授权不迁移。地址候选由本机网卡生成，用户明确选择才保存，不静默覆盖旧配置。详见 docs/Pairing-v1.md。

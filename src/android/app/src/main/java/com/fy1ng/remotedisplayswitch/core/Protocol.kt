@@ -52,6 +52,7 @@ object Protocol {
         return PairBundle(
             uuid(json.getString("deviceId")), endpoint(json.getString("endpoint")),
             pin(json.getString("certificatePin")), code, expiresAt,
+            json.stringOrNull("tailscaleEndpoint")?.let(::endpoint),
         )
     }
 
@@ -105,6 +106,7 @@ object Protocol {
         uuid(json.getString("deviceId")), json.stringOrNull("targetId")?.let(::uuid),
         json.stringOrNull("displayName"), observation(json.getJSONObject("observation")),
         json.boolean("available"), json.boolean("busy"),
+        json.stringOrNull("tailscaleEndpoint")?.let(::endpoint),
     )
 
     fun operation(json: JSONObject) = OperationRecord(
@@ -123,6 +125,7 @@ object Protocol {
         .put("targetId", value.targetId?.toString() ?: JSONObject.NULL)
         .put("displayName", value.displayName ?: JSONObject.NULL)
         .put("observation", observationJson(value.observation)).put("available", value.available).put("busy", value.busy)
+        .put("tailscaleEndpoint", value.tailscaleEndpoint ?: JSONObject.NULL)
 
     fun operationJson(value: OperationRecord) = JSONObject().put("operationId", value.operationId.toString())
         .put("targetId", value.targetId.toString()).put("requested", value.requested.name)

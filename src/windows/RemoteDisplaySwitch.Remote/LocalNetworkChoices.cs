@@ -7,7 +7,11 @@ namespace RemoteDisplaySwitch.Remote;
 public sealed record LocalNetworkChoice(string Name, string Address, bool Tailscale, bool Recommended)
 {
     public string Label => $"{(Tailscale ? "Tailscale" : "局域网")} · {Name} · {Address}";
-    public RemoteSettings Apply(RemoteSettings current) => current with
+    public RemoteSettings Apply(RemoteSettings current) => Tailscale ? current with
+    {
+        TailscaleListenAddress = Address,
+        TailscaleEndpoint = new UriBuilder("https", Address, current.Port).Uri.GetLeftPart(UriPartial.Authority)
+    } : current with
     {
         ListenAddress = Address,
         PublicEndpoint = new UriBuilder("https", Address, current.Port).Uri.GetLeftPart(UriPartial.Authority)

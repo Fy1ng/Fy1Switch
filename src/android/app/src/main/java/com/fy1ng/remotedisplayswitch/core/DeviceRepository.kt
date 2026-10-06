@@ -63,6 +63,8 @@ class DeviceRepository(
         val profile = DeviceProfile(
             bundle.deviceId, paired.clientId, existing?.profile?.name ?: name, bundle.endpoint,
             bundle.certificatePin, paired.token, existing?.profile?.relay,
+            bundle.tailscaleEndpoint.takeIf { existing?.profile?.autoLearnTailscale != false } ?: existing?.profile?.tailscaleEndpoint,
+            existing?.profile?.autoLearnTailscale ?: true,
         )
         val device = DeviceState(profile, feedback = Feedback.Paired)
         persist(state.value.copy(
@@ -78,7 +80,7 @@ class DeviceRepository(
         Feedback.Saved
     }
 
-    suspend fun configure(deviceId: UUID, name: String, relayEndpoint: String, relayToken: String, clearRelay: Boolean): Feedback = guarded {
+    suspend fun configure(deviceId: UUID, name: String, relayEndpoint: String, relayToken: String, clearRelay: Boolean, tailscaleEndpoint: String? = null, autoLearnTailscale: Boolean? = null): Feedback = guarded {
         val device = find(deviceId)
         val relay = if (clearRelay || relayEndpoint.isBlank()) null else {
             val endpoint = Protocol.endpoint(relayEndpoint)
@@ -89,7 +91,11 @@ class DeviceRepository(
             require(token != device.profile.deviceToken)
             RelayConfig(endpoint, token)
         }
-        replace(device.copy(profile = device.profile.copy(name = Protocol.label(name), relay = relay)))
+        val tailscale = if (tailscaleEndpoint == null) device.profile.tailscaleEndpoint
+            else if (tailscaleEndpoint.isBlank()) null else Protocol.endpoint(tailscaleEndpoint)
+        val learn = autoLearnTailscale ?: if (tailscaleEndpoint == null) device.profile.autoLearnTailscale else tailscaleEndpoint.isNotBlank()
+        replace(device.copy(profile = device.profile.copy(name = Protocol.label(name), relay = relay,
+            tailscaleEndpoint = tailscale, autoLearnTailscale = learn)))
         Feedback.Saved
     }
 
@@ -196,7 +202,10 @@ class DeviceRepository(
                     request.command in setOf("set", "operation") && StatePolicy.unresolved(operation) -> true
                     else -> device.requiresRefresh
                 }
-                replace(device.copy(status = status, operation = operation, connected = connected, feedback = feedback, requiresRefresh = requiresRefresh))
+                val profile = device.profile.copy(tailscaleEndpoint =
+                    reply.status?.tailscaleEndpoint.takeIf { device.profile.autoLearnTailscale } ?: device.profile.tailscaleEndpoint)
+                replace(device.copy(profile = profile, status = status, operation = operation, connected = connected,
+                    feedback = feedback, requiresRefresh = requiresRefresh, lastSuccessfulRoute = delivery.route))
                 return feedback
             }
         }

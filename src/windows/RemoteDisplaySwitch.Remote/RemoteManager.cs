@@ -14,6 +14,7 @@ public sealed class RemoteManager : IAsyncDisposable
     public RemoteSettings Settings { get; private set; }
     public bool Running => _server is not null;
     public string RelayStatus => _relay?.Status ?? "disabled";
+    public string TailscaleStatus => _server?.TailscaleStatus ?? "disabled";
     public string? LastError { get; private set; }
     public RemoteManager(IDesktopController controller, Guid deviceId, string directory, ISecretProtector? protector = null)
     {
@@ -26,7 +27,7 @@ public sealed class RemoteManager : IAsyncDisposable
     public PairBundle BeginPairing()
     {
         if (!Running) throw new InvalidOperationException("remote_disabled");
-        return Security.BeginPairing(_gateway.DeviceId, Settings.PublicEndpoint);
+        return Security.BeginPairing(_gateway.DeviceId, Settings.PublicEndpoint) with { TailscaleEndpoint = _gateway.TailscaleEndpoint };
     }
     public string? ProtectedRelayToken(string? token) => string.IsNullOrWhiteSpace(token) ? null : _store.ProtectToken(token.Trim());
     public async Task ApplyAsync(RemoteSettings settings, bool persist = true)

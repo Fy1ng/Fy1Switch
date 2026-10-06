@@ -7,6 +7,7 @@ public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity 
 {
     private readonly SemaphoreSlim _slots = new(8, 8);
     public Guid DeviceId => deviceId;
+    public string? TailscaleEndpoint { get; set; }
     public PairReply? Pair(PairRequest request) => security.CompletePairing(deviceId, request);
     public async Task<(int StatusCode, RemoteReply Reply)> ControlAsync(string? token, RemoteCommand request, CancellationToken cancellationToken = default)
     {
@@ -34,7 +35,7 @@ public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity 
             }
             var snapshot = request.Command == "refresh" ? await controller.RefreshAsync(deadline.Token) : await controller.GetSnapshotAsync(deadline.Token);
             var available = snapshot.Binding is not null && !snapshot.Binding.NeedsConfirmation && snapshot.ErrorCode is null;
-            return (200, new(request.RequestId, true, Status: new(snapshot.DeviceId, snapshot.Binding?.TargetId, snapshot.Binding?.Name, snapshot.Observation, available, snapshot.Busy)));
+            return (200, new(request.RequestId, true, Status: new(snapshot.DeviceId, snapshot.Binding?.TargetId, snapshot.Binding?.Name, snapshot.Observation, available, snapshot.Busy, TailscaleEndpoint)));
         }
         catch (ControlException exception) { return (409, new(request.RequestId, false, exception.Code)); }
         catch (OperationCanceledException) { return (504, new(request.RequestId, false, "deadline_exceeded_result_unknown")); }

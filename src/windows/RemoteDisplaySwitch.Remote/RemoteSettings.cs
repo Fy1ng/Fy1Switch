@@ -5,12 +5,19 @@ using RemoteDisplaySwitch.Contracts;
 
 namespace RemoteDisplaySwitch.Remote;
 
-public sealed record RemoteSettings(bool Enabled = false, string ListenAddress = "127.0.0.1", int Port = 48152, string PublicEndpoint = "https://127.0.0.1:48152", string? RelayUrl = null, string? ProtectedRelayToken = null)
+public sealed record RemoteSettings(bool Enabled = false, string ListenAddress = "127.0.0.1", int Port = 48152, string PublicEndpoint = "https://127.0.0.1:48152", string? RelayUrl = null, string? ProtectedRelayToken = null, string? TailscaleEndpoint = null, string? TailscaleListenAddress = null)
 {
     public void Validate()
     {
         if (!IPAddress.TryParse(ListenAddress, out _) || Port is < 1024 or > 65535) throw new ArgumentException("invalid_listener");
         RequireUrl(PublicEndpoint, "https");
+        if (TailscaleEndpoint is not null || TailscaleListenAddress is not null)
+        {
+            if (TailscaleEndpoint is null || !IPAddress.TryParse(TailscaleListenAddress, out var address)
+                || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)) throw new ArgumentException("invalid_tailscale_listener");
+            var endpoint = RequireUrl(TailscaleEndpoint, "https");
+            if (endpoint.Port != Port || !IPAddress.TryParse(endpoint.Host.Trim('[', ']'), out var host) || !host.Equals(address)) throw new ArgumentException("invalid_tailscale_endpoint");
+        }
         if (!string.IsNullOrEmpty(RelayUrl)) RequireUrl(RelayUrl, "https");
     }
     public static Uri RequireUrl(string text, string scheme)

@@ -14,7 +14,7 @@ namespace RemoteDisplaySwitch.Pairing.Tests;
 public sealed class ProtocolTests
 {
     internal static PairBundle Bundle() => new(1, Guid.Parse("4d2d58cc-2e22-4087-83c3-710af7484034"),
-        "https://127.0.0.1:12345", "fixture-pin-not-a-real-certificate", "fixture-bootstrap-not-six-digits", DateTimeOffset.Parse("2030-01-01T00:00:00Z"));
+        "https://127.0.0.1:12345", "fixture-pin-not-a-real-certificate", "fixture-bootstrap-not-six-digits", DateTimeOffset.Parse("2030-01-01T00:00:00Z"), "https://100.70.1.2:12345");
 
     internal static (PairingChannel Client, PairingChannel Server) Channels(string role = "windows", string code = "000001")
     {

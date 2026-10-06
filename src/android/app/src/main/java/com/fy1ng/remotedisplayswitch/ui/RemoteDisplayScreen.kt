@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -153,6 +154,7 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
             Text(HomePolicy.status(state), style = MaterialTheme.typography.displaySmall)
             if (power != DisplayPower.Unknown) Text("最近一次确认的状态", style = MaterialTheme.typography.bodySmall)
             Text(device.feedback.text)
+            device.lastSuccessfulRoute?.let { Text("最近成功路径：" + it.label, style = MaterialTheme.typography.bodySmall) }
             androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
             Button(onClick = {
                 scope.launch {
@@ -201,10 +203,24 @@ private fun DeviceEditor(device: DeviceState, busy: Boolean, repository: DeviceR
     var name by remember(device.profile.name) { mutableStateOf(device.profile.name) }
     var endpoint by remember(device.profile.relay?.endpoint) { mutableStateOf(device.profile.relay?.endpoint.orEmpty()) }
     var token by remember { mutableStateOf("") }
+    var tailscale by remember(device.profile.tailscaleEndpoint) { mutableStateOf(device.profile.tailscaleEndpoint.orEmpty()) }
+    var autoLearn by remember(device.profile.autoLearnTailscale) { mutableStateOf(device.profile.autoLearnTailscale) }
     var confirmRemoval by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("直连地址：" + device.profile.endpoint, style = MaterialTheme.typography.bodySmall)
-        Text("地址或证书改变时请重新配对。")
+        Text("局域网地址或证书改变时请重新配对。Tailscale 地址可在此配置，也会从已认证的设备状态自动更新。")
+        OutlinedTextField(value = tailscale, onValueChange = {
+            if (it.length <= 2048) {
+                tailscale = it
+                if (it.isBlank()) autoLearn = false
+            }
+        }, label = { Text("Tailscale HTTPS 地址（可选，不带路径）") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Checkbox(checked = autoLearn, onCheckedChange = { autoLearn = it }, enabled = !busy,
+                modifier = Modifier.semantics { contentDescription = "从已认证设备自动更新 Tailscale 地址" })
+            Text("从已认证设备自动更新 Tailscale 地址")
+        }
+        Text("按局域网 → Tailscale → Relay 自动连接；Tailscale 使用原配对凭据与证书。清空地址并保存会停用自动更新，可勾选重新启用。")
         OutlinedTextField(value = name, onValueChange = { if (it.length <= 80) name = it }, label = { Text("设备名称") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = endpoint, onValueChange = { if (it.length <= 2048) endpoint = it }, label = { Text("Relay HTTPS 地址（可选，不带路径）") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
         OutlinedTextField(value = token, onValueChange = { if (it.length <= 4096) token = it }, label = { Text("Relay 控制端凭据") }, placeholder = { Text(if (device.profile.relay != null) "留空保留已存凭据" else "与设备配对 token 不同") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), enabled = !busy, modifier = Modifier.fillMaxWidth())
@@ -212,7 +228,8 @@ private fun DeviceEditor(device: DeviceState, busy: Boolean, repository: DeviceR
         Button(onClick = {
             val submitted = token
             token = ""
-            scope.launch { repository.configure(device.profile.deviceId, name, endpoint, submitted, clearRelay = false) }
+            scope.launch { repository.configure(device.profile.deviceId, name, endpoint, submitted,
+                clearRelay = false, tailscaleEndpoint = tailscale, autoLearnTailscale = autoLearn) }
         }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("保存配置") }
         if (device.profile.relay != null) TextButton(onClick = {
             token = ""

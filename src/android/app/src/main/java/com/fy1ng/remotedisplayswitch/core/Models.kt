@@ -15,6 +15,7 @@ data class RemoteStatus(
     val observation: Observation,
     val available: Boolean,
     val busy: Boolean,
+    val tailscaleEndpoint: String? = null,
 )
 data class OperationRecord(
     val operationId: UUID,
@@ -50,6 +51,7 @@ data class PairBundle(
     val certificatePin: String,
     val code: String,
     val expiresAt: Instant,
+    val tailscaleEndpoint: String? = null,
 ) {
     override fun toString() = "PairBundle(redacted)"
 }
@@ -67,6 +69,8 @@ data class DeviceProfile(
     val certificatePin: String,
     val deviceToken: String,
     val relay: RelayConfig? = null,
+    val tailscaleEndpoint: String? = null,
+    val autoLearnTailscale: Boolean = true,
 ) {
     override fun toString() = "DeviceProfile(redacted)"
 }
@@ -99,6 +103,7 @@ data class DeviceState(
     val connected: Boolean = false,
     val feedback: Feedback = Feedback.Ready,
     val requiresRefresh: Boolean = false,
+    val lastSuccessfulRoute: Route? = null,
 )
 data class AppState(
     val devices: List<DeviceState> = emptyList(),

@@ -25,6 +25,8 @@ public sealed class RemoteWindow : Window
     private readonly TextBox _listen = new();
     private readonly TextBox _port = new();
     private readonly TextBox _endpoint = new();
+    private readonly TextBox _tailscaleListen = new();
+    private readonly TextBox _tailscaleEndpoint = new();
     private readonly TextBox _relay = new();
     private readonly PasswordBox _relayToken = new();
     private readonly TextBox _bundle = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80 };
@@ -59,14 +61,19 @@ public sealed class RemoteWindow : Window
         AddButton(networkButtons, "使用所选地址", () =>
         {
             if (_networks.SelectedItem is not LocalNetworkChoice choice) throw new InvalidOperationException("select_lan_address");
-            var settings = choice.Apply(_manager.Settings); _listen.Text = settings.ListenAddress;
+            var settings = choice.Apply(_manager.Settings);
             var port = int.TryParse(_port.Text, out var parsed) ? parsed : settings.Port;
-            _endpoint.Text = new UriBuilder("https", settings.ListenAddress, port).Uri.GetLeftPart(UriPartial.Authority);
+            var endpoint = new UriBuilder("https", choice.Address, port).Uri.GetLeftPart(UriPartial.Authority);
+            if (choice.Tailscale) { _tailscaleListen.Text = choice.Address; _tailscaleEndpoint.Text = endpoint; }
+            else { _listen.Text = choice.Address; _endpoint.Text = endpoint; }
             _status.Text = "地址已填入，保存后生效；不会覆盖其他设置。"; return Task.CompletedTask;
         });
         _page.Children.Add(networkButtons);
+        Field(_page, "Tailscale 监听 IP（可选）", _tailscaleListen);
+        Field(_page, "Tailscale HTTPS 地址（可选）", _tailscaleEndpoint);
+        _page.Children.Add(Text("选择 Tailscale 网卡只填入备用入口，不覆盖局域网。两项留空可关闭；不可用时保留局域网连接，恢复网络后重新保存以重试。"));
         var advanced = new StackPanel();
-        Field(advanced, "监听 IP", _listen); Field(advanced, "HTTPS 端口", _port); Field(advanced, "手机访问 HTTPS 地址", _endpoint);
+        Field(advanced, "局域网监听 IP", _listen); Field(advanced, "共同 HTTPS 端口", _port); Field(advanced, "手机访问局域网 HTTPS 地址", _endpoint);
         Field(advanced, "Relay HTTPS 地址（可选）", _relay); Field(advanced, "Windows Relay 凭据（空白保留）", _relayToken);
         advanced.Children.Add(Text("Relay 为可信中继，可读取转发内容；不会自动修改防火墙或路由器。"));
         _page.Children.Add(new Expander { Header = "高级网络与 Relay 设置", Content = advanced });
@@ -92,6 +99,7 @@ public sealed class RemoteWindow : Window
         clients.Children.Add(revoke); _page.Children.Add(new Expander { Header = "已连接手机", Content = clients, Margin = new Thickness(0, 12, 0, 0) });
         Content = new ScrollViewer { Content = _page, Background = Background, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         _enabled.IsChecked = manager.Settings.Enabled; _listen.Text = manager.Settings.ListenAddress; _port.Text = manager.Settings.Port.ToString(); _endpoint.Text = manager.Settings.PublicEndpoint; _relay.Text = manager.Settings.RelayUrl ?? "";
+        _tailscaleListen.Text = manager.Settings.TailscaleListenAddress ?? ""; _tailscaleEndpoint.Text = manager.Settings.TailscaleEndpoint ?? "";
         LoadNetworks(); RefreshClients(); RefreshStatus(); _knownClients = _manager.Security.Clients.Count;
         Loaded += async (_, _) => { if (_manager.Running && IsLanConfiguration()) await RunAsync(StartPairingAsync); };
         _timer.Tick += (_, _) => RenderPairing(); _timer.Start();
@@ -131,19 +139,20 @@ public sealed class RemoteWindow : Window
     {
         var selected = (_networks.SelectedItem as LocalNetworkChoice)?.Address;
         var choices = LocalNetworkChoices.Get(); _networks.ItemsSource = choices;
-        _networks.SelectedItem = choices.FirstOrDefault(choice => choice.Address == selected) ?? choices.FirstOrDefault(choice => choice.Address == _manager.Settings.ListenAddress) ?? choices.FirstOrDefault();
+        _networks.SelectedItem = choices.FirstOrDefault(choice => choice.Address == selected) ?? choices.FirstOrDefault(choice => choice.Address == _manager.Settings.ListenAddress) ?? choices.FirstOrDefault(choice => !choice.Tailscale) ?? choices.FirstOrDefault();
     }
     private async Task SaveAsync()
     {
         await _lan.StopAsync(); ClearPairing();
         if (!int.TryParse(_port.Text, out var port)) throw new ArgumentException("invalid_port");
-        if (_listen.Text.Trim() == "127.0.0.1" && Uri.TryCreate(_endpoint.Text.Trim(), UriKind.Absolute, out var currentEndpoint) && currentEndpoint.IsLoopback && _networks.SelectedItem is LocalNetworkChoice initialChoice)
+        if (_listen.Text.Trim() == "127.0.0.1" && Uri.TryCreate(_endpoint.Text.Trim(), UriKind.Absolute, out var currentEndpoint) && currentEndpoint.IsLoopback && _networks.SelectedItem is LocalNetworkChoice { Tailscale: false } initialChoice)
         {
             _listen.Text = initialChoice.Address;
             _endpoint.Text = new UriBuilder("https", initialChoice.Address, port).Uri.GetLeftPart(UriPartial.Authority);
         }
         var secret = string.IsNullOrWhiteSpace(_relayToken.Password) ? _manager.Settings.ProtectedRelayToken : _manager.ProtectedRelayToken(_relayToken.Password);
-        await _manager.ApplyAsync(new(_enabled.IsChecked == true, _listen.Text.Trim(), port, _endpoint.Text.Trim(), string.IsNullOrWhiteSpace(_relay.Text) ? null : _relay.Text.Trim(), secret));
+        await _manager.ApplyAsync(new(_enabled.IsChecked == true, _listen.Text.Trim(), port, _endpoint.Text.Trim(), string.IsNullOrWhiteSpace(_relay.Text) ? null : _relay.Text.Trim(), secret,
+            string.IsNullOrWhiteSpace(_tailscaleEndpoint.Text) ? null : _tailscaleEndpoint.Text.Trim(), string.IsNullOrWhiteSpace(_tailscaleListen.Text) ? null : _tailscaleListen.Text.Trim()));
         _relayToken.Clear(); RefreshStatus();
         if (_manager.Running) await StartPairingAsync();
     }
@@ -211,6 +220,15 @@ public sealed class RemoteWindow : Window
         using var data = QRCodeGenerator.GenerateQrCode(payload, QRCodeGenerator.ECCLevel.M); using var code = new PngByteQRCode(data); using var stream = new MemoryStream(code.GetGraphic(6));
         var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.StreamSource = stream; image.EndInit(); image.Freeze(); _qr.Source = image; _qr.Visibility = Visibility.Visible;
     }
-    private void RefreshStatus() => _status.Text = $"手机连接：{(_manager.Running ? "已启用" : "未启用")} · {_manager.Settings.PublicEndpoint}";
+    private void RefreshStatus()
+    {
+        var tailscale = _manager.TailscaleStatus switch
+        {
+            "listening" => $"已启用 · {_manager.Settings.TailscaleEndpoint}",
+            "unavailable" => "暂不可用，局域网仍可连接；恢复网络后重新保存以重试",
+            _ => "未启用"
+        };
+        _status.Text = $"手机连接：{(_manager.Running ? "已启用" : "未启用")} · {_manager.Settings.PublicEndpoint}\nTailscale：{tailscale}";
+    }
     private void RefreshClients() => _clients.ItemsSource = _manager.Security.Clients.ToArray();
 }

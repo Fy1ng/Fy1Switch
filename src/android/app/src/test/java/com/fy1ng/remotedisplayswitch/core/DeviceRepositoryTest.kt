@@ -30,12 +30,18 @@ class DeviceRepositoryTest {
     @Test fun timeoutsPersistUnknownAndQueryUsesOriginalOperationWithoutReplayingSet() = runBlocking {
         val store = MemoryStore(activeState(true))
         val transport = FakeTransport().apply { handler = { throw SocketTimeoutException() } }
-        val repository = DeviceRepository(store, transport, MutableClock())
+        val clock = MutableClock()
+        val repository = DeviceRepository(store, transport, clock)
         assertEquals(Feedback.Unknown, repository.set(DEVICE, PowerIntent.Toggle))
         val original = store.value.selected!!.operation!!
         assertEquals(OperationOutcome.Unknown, original.outcome)
         assertFalse(repository.state.value.busy)
-        transport.handler = { HttpResult(200, replyJson(it.body, operation = original.copy(outcome = OperationOutcome.Confirmed))) }
+        transport.handler = {
+            if (JSONObject(it.body).getString("command") == "status") HttpResult(200, replyJson(it.body, status = status()))
+            else HttpResult(200, replyJson(it.body, operation = original.copy(outcome = OperationOutcome.Confirmed)))
+        }
+        assertEquals(Feedback.Offline, repository.queryOperation(DEVICE))
+        clock.now = NOW.plusSeconds(5)
         repository.queryOperation(DEVICE)
         val query = JSONObject(transport.attempts.last().body)
         assertEquals("operation", query.getString("command"))
@@ -59,8 +65,10 @@ class DeviceRepositoryTest {
     @Test fun refreshCanRecoverUncertainStateButCachedStatusCannot() = runBlocking {
         val store = MemoryStore()
         val transport = FakeTransport().apply { handler = { throw SocketTimeoutException() } }
-        val repository = DeviceRepository(store, transport, MutableClock())
+        val clock = MutableClock()
+        val repository = DeviceRepository(store, transport, clock)
         repository.set(DEVICE, PowerIntent.Toggle)
+        clock.now = NOW.plusSeconds(5)
         transport.handler = { HttpResult(200, replyJson(it.body, status = status().copy(observation = observation(at = NOW.plusSeconds(3600))))) }
         repository.refresh(DEVICE, live = false)
         assertEquals(TilePower.Unavailable, StatePolicy.tile(repository.state.value))
