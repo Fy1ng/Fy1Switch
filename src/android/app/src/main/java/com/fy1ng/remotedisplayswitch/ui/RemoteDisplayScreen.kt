@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,7 +31,10 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -42,61 +47,87 @@ import com.fy1ng.remotedisplayswitch.core.PowerIntent
 import com.fy1ng.remotedisplayswitch.core.StatePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun RemoteDisplayScreen(repository: DeviceRepository, scope: CoroutineScope, onAddTile: (() -> Unit)?) {
+fun RemoteDisplayScreen(
+    repository: DeviceRepository, scope: CoroutineScope, onAddTile: () -> Unit,
+    tileMessage: String?, showTileGuide: Boolean, onDismissTileGuide: () -> Unit, onPaired: () -> Unit,
+) {
     val state by repository.state.collectAsState()
-    var pairing by remember { mutableStateOf(false) }
+    var pairing by rememberSaveable { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         repository.initialize()
-        repository.state.value.selected?.let { device ->
-            scope.launch { repository.refresh(device.profile.deviceId, live = false) }
-        }
+        repository.state.first { !it.busy }.selected?.let { repository.refresh(it.profile.deviceId) }
     }
-    MaterialTheme {
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val colors = if (android.os.Build.VERSION.SDK_INT >= 31) {
+        if (dark) androidx.compose.material3.dynamicDarkColorScheme(context)
+        else androidx.compose.material3.dynamicLightColorScheme(context)
+    } else if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
+    MaterialTheme(colorScheme = colors) {
         Scaffold { padding ->
             Column(
                 Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("远程显示器", style = MaterialTheme.typography.headlineLarge)
-                Text("优先局域网直连 · 可选 Relay 回退", style = MaterialTheme.typography.bodyMedium)
-                if (!state.loaded || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    TextButton(onClick = { choosing = !choosing }, enabled = !state.busy,
+                        modifier = Modifier.weight(1f)) { Text((state.selected?.profile?.name ?: "选择设备") + " ▾") }
+                    TextButton(onClick = { editing = !editing }, enabled = !state.busy) { Text("设置") }
+                }
+                if (choosing) {
+                    Text("当前设备也用于快捷开关", style = MaterialTheme.typography.bodySmall)
+                    state.devices.forEach { device ->
+                        OutlinedButton(onClick = {
+                            choosing = false
+                            editing = false
+                            if (device.profile.deviceId != state.defaultDeviceId) scope.launch {
+                                if (repository.select(device.profile.deviceId) == Feedback.Saved) repository.refresh(device.profile.deviceId)
+                            }
+                        }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                            Text((if (device.profile.deviceId == state.defaultDeviceId) "✓ " else "") + device.profile.name)
+                        }
+                    }
+                    TextButton(onClick = { pairing = true; choosing = false }, enabled = !state.busy) { Text("添加设备") }
+                }
+                if (!state.loaded || state.busy) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(if (!state.loaded) "正在读取设备…" else "正在处理请求，请稍候…")
+                }
                 state.notice?.let { Text(it.text, color = if (state.storageFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (state.loaded && !state.storageFailed) {
-                    if (state.devices.isNotEmpty()) {
-                        Text("默认设备（同时用于快捷开关）", style = MaterialTheme.typography.titleMedium)
-                        state.devices.forEach { device ->
-                            OutlinedButton(
-                                onClick = {
-                                    editing = false
-                                    scope.launch {
-                                        if (repository.select(device.profile.deviceId) == Feedback.Saved) repository.refresh(device.profile.deviceId, live = false)
-                                    }
-                                }, enabled = !state.busy, modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text((if (device.profile.deviceId == state.defaultDeviceId) "✓ " else "") + device.profile.name)
-                            }
-                        }
-                        state.selected?.let { device ->
-                            DeviceCard(device, state, repository, scope)
-                            OutlinedButton(onClick = { editing = !editing }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (editing) "收起设备配置" else "设备名称 / Relay / 移除")
-                            }
-                            if (editing) key(device.profile.deviceId) { DeviceEditor(device, state.busy, repository, scope) }
-                        }
-                    } else Text("在 Windows 导出一次性配对 JSON，粘贴后安全连接。请只使用你信任的 Windows 端导出内容。")
-                    OutlinedButton(onClick = { pairing = !pairing }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (pairing) "收起配对" else "添加 / 重新配对设备")
+                    state.selected?.let { device ->
+                        key(device.profile.deviceId) { DeviceCard(device, state, repository, scope) }
                     }
-                    if (pairing || state.devices.isEmpty()) PairEditor(repository, scope, state.busy)
-                    if (onAddTile != null) OutlinedButton(onClick = onAddTile, modifier = Modifier.fillMaxWidth()) { Text("添加快捷设置开关") }
-                    Text("快捷开关只控制默认设备。长按打开本页；状态未知时可重新展开快捷设置或在此实时刷新。解锁成功才会发送锁屏操作。")
-                    Text("“已接受 / 未确认”不等于成功。结果未知时先查询已有操作，不要反复点击切换。", style = MaterialTheme.typography.bodySmall)
+                    if (editing) {
+                        Text("设备设置", style = MaterialTheme.typography.titleLarge)
+                        state.selected?.let { device ->
+                            key(device.profile.deviceId) { DeviceEditor(device, state.busy, repository, scope) }
+                        }
+                        OutlinedButton(onClick = { pairing = !pairing }, enabled = !state.busy,
+                            modifier = Modifier.fillMaxWidth()) { Text("添加 / 重新配对设备") }
+                        OutlinedButton(onClick = onAddTile, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("添加快捷设置开关") }
+                        Text("快捷开关控制当前设备；长按可打开此页。", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (pairing || state.devices.isEmpty()) {
+                        PairEditor(repository, scope, state.busy) { pairing = false; onPaired() }
+                        if (state.devices.isNotEmpty()) TextButton(onClick = { pairing = false }, enabled = !state.busy) { Text("收起配对") }
+                    }
+                    if (showTileGuide) Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("配对已保存。添加快捷开关，下次无需打开应用。")
+                            Button(onClick = { onDismissTileGuide(); onAddTile() }, enabled = !state.busy) { Text("添加快捷开关") }
+                            TextButton(onClick = onDismissTileGuide) { Text("以后再说") }
+                        }
+                    }
                 }
+                tileMessage?.let { Text(it) }
             }
         }
     }
@@ -105,61 +136,62 @@ fun RemoteDisplayScreen(repository: DeviceRepository, scope: CoroutineScope, onA
 @Composable
 private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceRepository, scope: CoroutineScope) {
     val deviceId = device.profile.deviceId
-    val allowed = StatePolicy.canSet(state)
+    val power = StatePolicy.confirmedPower(device)
+    val action = HomePolicy.action(state)
+    var details by remember { mutableStateOf(false) }
+    val abnormal = device.operation?.outcome?.let { it != com.fy1ng.remotedisplayswitch.core.OperationOutcome.Confirmed } == true
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(device.status?.displayName?.filterNot(Char::isISOControl)?.take(80) ?: device.profile.name, style = MaterialTheme.typography.titleLarge)
-            Text(when (StatePolicy.confirmedPower(device)) {
-                DisplayPower.On -> "已确认开启"
-                DisplayPower.Off -> "已确认关闭"
-                DisplayPower.Unknown -> if (!device.connected) "未连接 / 状态未知" else "显示器状态未知"
-            }, style = MaterialTheme.typography.headlineSmall)
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(device.status?.displayName?.filterNot(Char::isISOControl)?.take(80) ?: "显示器",
+                    style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                androidx.compose.material3.FilledTonalIconButton(
+                    onClick = { scope.launch { repository.refresh(deviceId) } }, enabled = !state.busy,
+                    modifier = Modifier.semantics { contentDescription = "刷新连接与显示器状态" },
+                ) { Text("↻") }
+            }
+            Text(HomePolicy.status(state), style = MaterialTheme.typography.displaySmall)
+            if (power != DisplayPower.Unknown) Text("最近一次确认的状态", style = MaterialTheme.typography.bodySmall)
             Text(device.feedback.text)
-            if (device.status?.busy == true) Text("Windows 正在处理操作，请稍后查询或刷新")
-            device.status?.observation?.let {
-                Text("观测时间：" + DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(it.observedAt), style = MaterialTheme.typography.bodySmall)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+            Button(onClick = {
+                scope.launch {
+                    if (action.intent == null) repository.refresh(deviceId) else repository.set(deviceId, action.intent)
+                }
+            }, enabled = action.enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
+                Text(action.label, style = MaterialTheme.typography.titleLarge)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { scope.launch { repository.set(deviceId, PowerIntent.On) } }, enabled = allowed, modifier = Modifier.weight(1f)) { Text("开启") }
-                Button(onClick = { scope.launch { repository.set(deviceId, PowerIntent.Off) } }, enabled = allowed, modifier = Modifier.weight(1f)) { Text("关闭") }
+            TextButton(onClick = { details = !details }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (details) "收起详情" else "状态与操作详情")
             }
-            OutlinedButton(onClick = { scope.launch { repository.set(deviceId, PowerIntent.Toggle) } }, enabled = allowed && StatePolicy.confirmedPower(device) != DisplayPower.Unknown, modifier = Modifier.fillMaxWidth()) { Text("切换开 / 关") }
-            OutlinedButton(onClick = { scope.launch { repository.refresh(deviceId, live = true) } }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("实时读取显示器") }
-            TextButton(onClick = { scope.launch { repository.refresh(deviceId, live = false) } }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("连接 / 获取主机已知状态") }
-            device.operation?.let { operation ->
+            if (details) {
+                device.status?.observation?.let {
+                    Text("观测时间：" + DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(it.observedAt))
+                }
+                if (power == DisplayPower.Unknown) {
+                    Text("不自动切换未知状态；仅在连接与安全条件允许时指定开启或关闭。")
+                    OutlinedButton(onClick = { scope.launch { repository.set(deviceId, PowerIntent.On) } },
+                        enabled = StatePolicy.canSet(state), modifier = Modifier.fillMaxWidth()) { Text("明确开启（ON）") }
+                    OutlinedButton(onClick = { scope.launch { repository.set(deviceId, PowerIntent.Off) } },
+                        enabled = StatePolicy.canSet(state), modifier = Modifier.fillMaxWidth()) { Text("明确关闭（OFF）") }
+                }
+            }
+            if (details || abnormal) device.operation?.let { operation ->
                 HorizontalDivider()
-                Text("最近操作：" + operation.operationId.toString().take(8) + " · " + when (operation.outcome) {
+                Text("最近操作：" + when (operation.outcome) {
                     com.fy1ng.remotedisplayswitch.core.OperationOutcome.Confirmed -> "已确认"
                     com.fy1ng.remotedisplayswitch.core.OperationOutcome.AcceptedUnconfirmed -> "已接受，未确认"
                     com.fy1ng.remotedisplayswitch.core.OperationOutcome.Pending -> "处理中"
                     com.fy1ng.remotedisplayswitch.core.OperationOutcome.Unknown -> "结果未知"
                     com.fy1ng.remotedisplayswitch.core.OperationOutcome.Failed -> "失败"
-                }, style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = { scope.launch { repository.queryOperation(deviceId) } }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("查询这次操作（不重发控制）") }
+                }, color = if (abnormal) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("操作编号：" + operation.operationId.toString().take(8), style = MaterialTheme.typography.bodySmall)
+                if (abnormal) {
+                    Text("查询只读取这次操作，不会重新发送电源命令。")
+                    OutlinedButton(onClick = { scope.launch { repository.queryOperation(deviceId) } },
+                        enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("查询这次操作") }
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolean) {
-    var bundle by remember { mutableStateOf("") }
-    var clientName by remember { mutableStateOf("Android 手机") }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("配对新设备", style = MaterialTheme.typography.titleMedium)
-            Text("配对 JSON 内含 5 分钟有效的一次性码及证书身份。请勿转发。仅支持先通过 HTTPS 直连配对。")
-            OutlinedTextField(
-                value = bundle, onValueChange = { if (it.length <= 65536) bundle = it }, label = { Text("粘贴 Windows 配对 JSON") },
-                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                enabled = !busy, modifier = Modifier.fillMaxWidth(), maxLines = 5,
-            )
-            OutlinedTextField(value = clientName, onValueChange = { if (it.length <= 80) clientName = it }, label = { Text("本手机名称（Windows 可见）") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
-            Button(onClick = {
-                val submitted = bundle
-                bundle = ""
-                scope.launch { repository.pair(submitted, clientName) }
-            }, enabled = !busy && bundle.isNotBlank() && clientName.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("验证证书并配对") }
         }
     }
 }

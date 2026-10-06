@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
     private string? _actionDetails;
     private string? _snapshotError;
     private bool _actionWarning;
+    private bool _initialDiscoveryChecked;
 
     public MainWindow(IDesktopController controller)
     {
@@ -82,7 +83,18 @@ public sealed partial class MainWindow : Window
         base.OnClosed(eventArgs);
     }
 
-    private async void WindowLoaded(object sender, RoutedEventArgs eventArgs) => await RefreshViewAsync();
+    private async void WindowLoaded(object sender, RoutedEventArgs eventArgs)
+    {
+        if (_initialDiscoveryChecked)
+        {
+            await RefreshViewAsync();
+            return;
+        }
+        _initialDiscoveryChecked = true;
+        await RefreshViewAsync();
+        if (!_closed && _snapshotAvailable && _snapshot?.Binding is null && !IsBusy)
+            await DiscoverAsync();
+    }
 
     private void ControllerChanged()
     {
@@ -116,16 +128,6 @@ public sealed partial class MainWindow : Window
                 if (!_closed && version == _snapshotVersion)
                 {
                     ApplySnapshot(snapshot);
-                    if (_lastOperation is { Outcome: OperationOutcome.Pending } pending)
-                    {
-                        var current = await _controller.GetOperationAsync(pending.OperationId, _lifetimeToken);
-                        if (!_closed && current is not null && _lastOperation?.OperationId == current.OperationId &&
-                            _snapshot?.Binding?.TargetId == current.TargetId)
-                        {
-                            _lastOperation = current;
-                            SetOperationMessage(current);
-                        }
-                    }
                 }
             }
             catch (OperationCanceledException) when (_closed)
@@ -171,6 +173,55 @@ public sealed partial class MainWindow : Window
 
     private bool IsBusy => _localBusy || _snapshot?.Busy == true;
 
+    private bool HasUnconfirmedOperation => _lastOperation?.Outcome is
+        OperationOutcome.Pending or OperationOutcome.AcceptedUnconfirmed or OperationOutcome.Unknown;
+
+    private DisplayPower PrimaryPower => _snapshotAvailable && _snapshot is { ErrorCode: null, Binding.NeedsConfirmation: false } snapshot &&
+        (!HasUnconfirmedOperation || (_lastOperation!.Outcome != OperationOutcome.Pending &&
+            snapshot.Observation.ObservedAt > _lastOperation.UpdatedAt)) &&
+        UiText.IsTrusted(snapshot.Observation, snapshot.Simulation || _controller.Simulation)
+            ? snapshot.Observation.State : DisplayPower.Unknown;
+
+    private Task PrimaryActionAsync() => PrimaryPower switch
+    {
+        DisplayPower.On => ExecuteAsync(PowerIntent.Off),
+        DisplayPower.Off => ExecuteAsync(PowerIntent.On),
+        _ => RefreshHardwareAsync()
+    };
+
+    private async Task CheckOperationAsync(OperationRecord operation, CancellationToken cancellationToken, bool refresh = true)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        cancellationToken = timeout.Token;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (_closed || _lastOperation?.OperationId != operation.OperationId || !HasUnconfirmedOperation ||
+                _snapshot?.Binding is not { NeedsConfirmation: false } binding || binding.TargetId != operation.TargetId ||
+                _snapshot.ErrorCode == "topology_changed")
+                return;
+            await Task.Delay(350 * (attempt + 1), cancellationToken);
+            var current = await _controller.GetOperationAsync(operation.OperationId, cancellationToken);
+            if (_closed || _lastOperation?.OperationId != operation.OperationId ||
+                _snapshot?.Binding?.TargetId != operation.TargetId)
+                return;
+            if (current is not null && current.OperationId == operation.OperationId && current.TargetId == operation.TargetId)
+            {
+                _lastOperation = current;
+                SetOperationMessage(current);
+            }
+            await RefreshViewAsync();
+        }
+        if (refresh && !_closed && HasUnconfirmedOperation && _lastOperation?.OperationId == operation.OperationId &&
+            _snapshot is { Busy: false, ErrorCode: null, Binding.NeedsConfirmation: false } snapshot &&
+            snapshot.Binding.TargetId == operation.TargetId && _lastOperation.Outcome != OperationOutcome.Pending)
+        {
+            ApplySnapshot(await _controller.RefreshAsync(cancellationToken));
+            if (_lastOperation is { } remaining)
+                SetOperationMessage(remaining);
+        }
+    }
+
     private async Task RunActionAsync(string message, Func<CancellationToken, Task> action)
     {
         if (_closed || IsBusy)
@@ -193,7 +244,7 @@ public sealed partial class MainWindow : Window
             if (!_closed)
             {
                 var code = ErrorCode(exception);
-                SetMessage(UiText.Error(code), code, true);
+                SetMessage(UiText.BriefError(code), $"{code}\n{UiText.Error(code)}", true);
                 if (code is "topology_changed" or "discovery_quarantined")
                     ClearDiscovery();
             }
@@ -222,7 +273,8 @@ public sealed partial class MainWindow : Window
         PopulateCandidates(discovery);
         SetMessage(discovery.Candidates.Count == 0
             ? "未发现可绑定的显示器。请检查连接和当前配置，再手动重扫。"
-            : "发现完成。请选择要控制的候选显示器，再点击“绑定所选”。发现不会自动绑定。");
+            : discovery.Candidates.Count == 1 ? "已选中唯一候选。请确认设备后点击“绑定所选”；不会自动绑定或开关。"
+            : "请选择显示器，再点击“绑定所选”。不会自动绑定或开关。");
     });
 
     private Task BindSelectedAsync()
@@ -237,8 +289,10 @@ public sealed partial class MainWindow : Window
             if (_closed)
                 return;
             ClearDiscovery();
+            if (snapshot.Binding is { NeedsConfirmation: false } && !snapshot.Busy && snapshot.ErrorCode is null)
+                ApplySnapshot(await _controller.RefreshAsync(cancellationToken));
             SetMessage(snapshot.Binding?.NeedsConfirmation == false
-                ? "绑定已保存。开关状态以读回结果为准，不代表系统级验收已完成。"
+                ? "绑定已保存，未发送开关命令。状态以读回记录为准。"
                 : "绑定尚未确认。请查看当前状态，重新发现并确认目标。", warning: snapshot.Binding?.NeedsConfirmation != false);
         });
     }
@@ -261,27 +315,46 @@ public sealed partial class MainWindow : Window
         ApplySnapshot(snapshot);
         if (_closed)
             return;
+        if (_lastOperation is { } operation && HasUnconfirmedOperation)
+        {
+            await CheckOperationAsync(operation, cancellationToken, refresh: false);
+            if (_lastOperation is { } remaining)
+                SetOperationMessage(remaining);
+            return;
+        }
         SetMessage(snapshot.ErrorCode is null
-            ? "刷新完成。请以状态来源和更新时间判断当前结果。"
-            : UiText.Error(snapshot.ErrorCode), snapshot.ErrorCode, snapshot.ErrorCode is not null);
+            ? "已刷新状态。"
+            : UiText.BriefError(snapshot.ErrorCode), snapshot.ErrorCode, snapshot.ErrorCode is not null);
     });
 
     private Task ExecuteAsync(PowerIntent intent)
     {
         if (!_snapshotAvailable || _snapshot?.Binding is not { NeedsConfirmation: false } binding ||
-            _snapshot.ErrorCode == "topology_changed")
+            _snapshot.ErrorCode == "topology_changed" || _lastOperation?.Outcome == OperationOutcome.Pending)
             return Task.CompletedTask;
         var targetId = binding.TargetId;
         var operationId = Guid.NewGuid();
         return RunActionAsync($"正在请求{UiText.Intent(intent)}，等待控制结果…", async cancellationToken =>
         {
-            var operation = await _controller.ExecuteAsync(targetId, intent, operationId, cancellationToken);
+            var operation = new OperationRecord(operationId, targetId, intent, intent,
+                OperationOutcome.Pending, null, null, DateTimeOffset.UtcNow);
+            _lastOperation = operation;
+            try
+            {
+                operation = await _controller.ExecuteAsync(targetId, intent, operationId, cancellationToken);
+            }
+            catch (Exception exception) when (!_closed)
+            {
+                operation = operation with { Outcome = OperationOutcome.Unknown, ErrorCode = ErrorCode(exception), UpdatedAt = DateTimeOffset.UtcNow };
+            }
             if (_closed)
                 return;
             if (_snapshot?.Binding?.TargetId == targetId)
             {
                 _lastOperation = operation;
                 SetOperationMessage(operation);
+                if (HasUnconfirmedOperation)
+                    await CheckOperationAsync(operation, cancellationToken);
             }
             else
                 SetMessage("绑定已变化，本次请求针对之前的目标。请查看当前绑定后再操作。", warning: true);

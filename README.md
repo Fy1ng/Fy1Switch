@@ -33,6 +33,10 @@
 
 ## 手机与中继版本
 
+2026-10-06 UI 增量：两端主页简化为可信状态对应的单一主操作，Windows 首次未绑定时只读发现并要求明确确认，设置/诊断折叠；电脑可显示现有安全配对信息二维码，手机按需申请相机权限扫码，并保留粘贴备用。已有凭据、包名与 Tile 组件保持不变。此增量 Windows 在 artifacts/windows-ui/win-x64，Android 在 artifacts/android/RemoteDisplaySwitch-ui-debug.apk。
+
+用户新增的局域网双向自动发现与短数字配对码仍待新增安全协议方案确认；当前二维码继续使用原高熵一次性凭据，未将其改为短码，也未启用未经批准的发现/监听子系统。自动地址推荐和进一步远程设置整合仍需后续完成，不宣称全部 UI 优化已交付。
+
 ~~~powershell
 ./tools/Publish-Windows.ps1 -OutputDirectory ./artifacts/windows-remote/win-x64
 ./tools/Build-Android.ps1 -Offline

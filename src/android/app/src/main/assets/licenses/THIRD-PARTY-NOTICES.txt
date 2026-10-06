@@ -10,5 +10,9 @@ https://github.com/square/okhttp
 https://github.com/square/okio
 
 These components use the Apache License, Version 2.0; see APACHE-2.0.txt.
+JourneyApps ZXing Android Embedded 4.3.0 and ZXing core (offline QR decoding)
+https://github.com/journeyapps/zxing-android-embedded
+https://github.com/zxing/zxing
+Apache License, Version 2.0; see APACHE-2.0.txt.
 Exact direct dependency versions are maintained in the Android Gradle build files.
 This application is independent of Microsoft PowerToys; its Windows companion includes the separately attributed Power Display source.

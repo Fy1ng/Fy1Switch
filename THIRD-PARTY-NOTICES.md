@@ -11,3 +11,5 @@
 Do not distribute a lone executable: the runtime files, WmiLight native files and license notices belong to the package.
 
 Remote control adds System.Security.Cryptography.ProtectedData 10.0.11 (Microsoft, MIT) and the ASP.NET Core shared framework; their license terms are included with the Microsoft runtime distributions. Android uses AndroidX/Jetpack Compose, Kotlin/coroutines and OkHttp/Okio under their respective Apache-2.0 notices; exact direct versions are recorded in src/android/app/build.gradle.kts and src/android/build.gradle.kts. Android debug APK is a development build, not a signed store release.
+
+UI pairing uses QRCoder 1.8.0 (Raffael Herrmann and Shane Krueger, MIT; licenses/QRCoder.LICENSE) for Windows QR generation, and JourneyApps ZXing Android Embedded / ZXing (Apache-2.0) for Android offline camera decoding. No QR payload is sent to an external image service.

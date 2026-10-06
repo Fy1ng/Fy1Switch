@@ -1,5 +1,8 @@
 using System;
 using System.Linq;
+using System.IO;
+using System.Windows.Media.Imaging;
+using QRCoder;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -22,10 +25,13 @@ public sealed class RemoteWindow : Window
     private readonly ListBox _clients = new() { DisplayMemberPath = "Name", MinHeight = 70 };
     private readonly StackPanel _page = new() { Margin = new Thickness(22) };
     private PairBundle? _currentBundle;
+    private readonly Image _qr = new() { Width = 260, Height = 260, Margin = new Thickness(0, 10, 0, 10), Visibility = Visibility.Collapsed };
     private bool _busy;
+    private readonly System.Windows.Threading.DispatcherTimer _expiryTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     public RemoteWindow(RemoteManager manager)
     {
         _manager = manager;
+        Resources.MergedDictionaries.Add(DesktopTheme.CreateResources());
         Title = "手机配对与远程连接"; Width = 680; Height = 790; MinWidth = 560; MinHeight = 500;
         Background = new SolidColorBrush(Color.FromRgb(246, 248, 250));
         FontFamily = new FontFamily("Segoe UI"); FontSize = 14;
@@ -43,20 +49,20 @@ public sealed class RemoteWindow : Window
             if (!int.TryParse(_port.Text, out var port)) throw new ArgumentException();
             var protectedToken = string.IsNullOrWhiteSpace(_relayToken.Password) ? _manager.Settings.ProtectedRelayToken : _manager.ProtectedRelayToken(_relayToken.Password);
             await _manager.ApplyAsync(new(_enabled.IsChecked == true, _listen.Text.Trim(), port, _endpoint.Text.Trim(), string.IsNullOrWhiteSpace(_relay.Text) ? null : _relay.Text.Trim(), protectedToken));
-            _relayToken.Clear(); _bundle.Clear(); _currentBundle = null; RefreshStatus();
+            _relayToken.Clear(); ClearPairing(); RefreshStatus();
         });
         Button(buttons, "刷新连接状态", () => { RefreshStatus(); return System.Threading.Tasks.Task.CompletedTask; });
         _page.Children.Add(buttons);
         _page.Children.Add(_status);
         _page.Children.Add(new TextBlock { Text = "配对信息包含临时秘密，只应交给自己的手机。配对后每台手机获得独立凭据；Relay 是可信服务器，可读取转发内容，不是端到端加密。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) });
         var pairButtons = new WrapPanel();
-        Button(pairButtons, "生成一次性配对信息", () => { _currentBundle = _manager.BeginPairing(); _bundle.Text = WireJson.Serialize(_currentBundle); _status.Text = "请在手机 App 粘贴配对信息，五分钟内完成。旧配对码已失效。"; return System.Threading.Tasks.Task.CompletedTask; });
+        Button(pairButtons, "显示配对二维码", () => { _currentBundle = _manager.BeginPairing(); _bundle.Text = WireJson.Serialize(_currentBundle); RenderQr(_bundle.Text); _status.Text = "用手机 App 扫码，五分钟内完成。旧二维码已失效。"; return System.Threading.Tasks.Task.CompletedTask; });
         Button(pairButtons, "复制配对信息", () =>
         {
             if (_currentBundle is null || _currentBundle.ExpiresAt <= DateTimeOffset.UtcNow) throw new InvalidOperationException();
             Clipboard.SetText(_bundle.Text); _status.Text = "已复制；配对完成后请手动清除剪贴板中的配对信息。"; return System.Threading.Tasks.Task.CompletedTask;
         });
-        _page.Children.Add(pairButtons); _page.Children.Add(_bundle);
+        _page.Children.Add(pairButtons); _page.Children.Add(_qr); _page.Children.Add(new Expander { Header = "无法扫码？复制配对信息", Content = _bundle });
         _page.Children.Add(new TextBlock { Text = "已配对手机", Margin = new Thickness(0, 12, 0, 6), FontWeight = FontWeights.SemiBold });
         _page.Children.Add(_clients);
         var revokeButtons = new WrapPanel();
@@ -66,7 +72,27 @@ public sealed class RemoteWindow : Window
         Content = new ScrollViewer { Content = _page, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Background = Background };
         _enabled.IsChecked = manager.Settings.Enabled; _listen.Text = manager.Settings.ListenAddress; _port.Text = manager.Settings.Port.ToString(); _endpoint.Text = manager.Settings.PublicEndpoint; _relay.Text = manager.Settings.RelayUrl ?? string.Empty;
         RefreshStatus(); RefreshClients();
-        Closed += (_, _) => { _manager.Security.CancelPairing(); _bundle.Clear(); _relayToken.Clear(); };
+        _expiryTimer.Tick += (_, _) =>
+        {
+            if (_currentBundle is { } bundle && bundle.ExpiresAt <= DateTimeOffset.UtcNow)
+            {
+                ClearPairing(); _status.Text = "二维码已过期，请重新生成。";
+            }
+        };
+        _expiryTimer.Start();
+        Closed += (_, _) => { _expiryTimer.Stop(); _manager.Security.CancelPairing(); ClearPairing(); _relayToken.Clear(); };
+    }
+    private void ClearPairing()
+    {
+        _currentBundle = null; _bundle.Clear(); _qr.Source = null; _qr.Visibility = Visibility.Collapsed;
+    }
+    private void RenderQr(string payload)
+    {
+        using var data = QRCodeGenerator.GenerateQrCode(payload, QRCodeGenerator.ECCLevel.M);
+        using var code = new PngByteQRCode(data);
+        using var stream = new MemoryStream(code.GetGraphic(6));
+        var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.StreamSource = stream; image.EndInit(); image.Freeze();
+        _qr.Source = image; _qr.Visibility = Visibility.Visible;
     }
     private void Field(string label, Control input)
     {
@@ -79,10 +105,10 @@ public sealed class RemoteWindow : Window
         button.Click += async (_, _) =>
         {
             if (_busy) return;
-            _busy = true; button.IsEnabled = false;
+            _busy = true; _page.IsEnabled = false;
             try { await action(); }
             catch { _status.Text = "操作失败。请检查 IP、端口、HTTPS 地址或 Relay 凭据；服务若未成功启动，不会开放控制。"; }
-            finally { _busy = false; button.IsEnabled = true; }
+            finally { _busy = false; _page.IsEnabled = true; }
         };
         panel.Children.Add(button);
     }

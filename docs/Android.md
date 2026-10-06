@@ -122,3 +122,10 @@ Tile：已确认 On → STATE_ACTIVE；已确认 Off → STATE_INACTIVE；未知
 - 多设备切换时 App 和 Tile 只作用于当前默认设备；重新配对、Relay 凭据变更、卸载重装/迁移、不备份、Keystore 失效路径正确。
 
 实际显示器面板反应、OEM 解锁/后台行为以及 Windows/Relay 联调均未以本地构建成功代替验证。
+
+### 2026-10-06 Android 日常主页与扫码入口
+
+- 主页改为顶部当前设备选择/设置、大状态和单主按钮：已知 On/Off 发送明确 Off/On，Unknown 主操作为刷新；安全条件允许时，详情保留明确 ON/OFF。统一为一次实时刷新入口，打开页面/切换设备各刷新一次，不持续轮询；异常操作突出并可手动查询原 operationId，不重发命令。没有真实 lastRoute 来源，故不展示猜测的直连/中继标签。
+- 跟随系统深浅色及 Android 12+ dynamic color；设置、历史正常操作详情收起。系统快捷开关添加结果区分已添加、成功、取消及不可用，配对后的非模态引导只主动展示一次，设置中仍可手动添加。
+- 使用 JourneyApps ZXing Embedded 4.3.0 离线扫描 PairBundle，仅点扫码时请求相机权限；拒绝/无相机可使用高级备用 JSON 粘贴。只解析既有协议并交给 repository.pair，再验 pin/有效期；不打开二维码网址、不执行电源操作，不保存扫码图片。包名、Tile 组件、encrypted store、配对协议及 Repository Mutex 未改变，不需要旧用户重新配对。未实现短配对码或 LAN 发现。
+- 新增纯 UI 状态测试及二维码输入/离线编解码测试。构建入口仍为 tools/Build-Android.ps1（testDebugUnitTest、lintDebug、assembleDebug）；未运行 liveWindowsTest、adb 安装或真实 Windows 硬件控制。lint 通过不代表零警告；相机授权/旋转、OEM Tile 回调、深浅色/大字体/窄屏与真实配对仍需真机验收。

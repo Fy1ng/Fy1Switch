@@ -5,6 +5,21 @@ namespace RemoteDisplaySwitch.Host.UI;
 
 internal static class UiText
 {
+    internal static bool IsTrusted(PowerObservation observation, bool simulation) =>
+        observation.ObservedAt != default && (simulation
+            ? observation.Source is "simulation" or "simulated"
+            : observation.Source is "hardware_read" or "hardware" or "hardware_readback" or "hardware-readback" or "ddc" or "ddc-ci" or "ddc_readback");
+
+    internal static string BriefError(string code) => code switch
+    {
+        "topology_changed" => "连接已变化，请重新确认绑定。",
+        "discovery_quarantined" => "发现已安全暂停，请查看诊断记录。",
+        "busy" or "controller_busy" or "operation_in_progress" => "已有操作进行中，请稍候。",
+        "state_unknown" or "read_failed" or "readback_failed" => "状态尚不能确认，请先刷新。",
+        "not_bound" or "binding_required" or "no_binding" => "请先在设置中绑定显示器。",
+        _ => "操作未完成，请查看设置中的诊断记录。"
+    };
+
     internal static string Error(string? code) => code switch
     {
         "worker_unavailable" or "worker_start_failed" or "worker_disconnected" => "显示器控制进程暂时不可用。请稍后重试；若持续出现，请从托盘退出后重新启动程序。",
@@ -67,12 +82,11 @@ internal static class UiText
         {
             OperationOutcome.Confirmed => simulation
                 ? "模拟状态已确认；不代表实体显示器发生变化。"
-                : "控制层已确认本次操作，当前开关状态请见读回记录；系统级验收仍需另行完成。",
-            OperationOutcome.AcceptedUnconfirmed => "请求已接受，但尚未确认显示器状态。请手动刷新核对，不要连续重复开关。",
-            OperationOutcome.Pending => "请求仍在处理中，尚未确认结果。状态变化时界面会更新，请勿重复操作。",
-            OperationOutcome.Failed => "操作失败。" + Error(operation.ErrorCode),
-            _ => "操作结果未知。请先手动刷新状态，再决定是否重试。" +
-                (operation.ErrorCode is null ? string.Empty : Error(operation.ErrorCode))
+                : "本次操作已由控制层确认。",
+            OperationOutcome.AcceptedUnconfirmed => "请求已接受，结果尚未确认。请先刷新，勿连续开关。",
+            OperationOutcome.Pending => "请求仍在处理中，尚未确认。请勿重复操作。",
+            OperationOutcome.Failed => "操作失败，请查看诊断记录。",
+            _ => "操作结果未知。请先刷新状态，勿连续开关。"
         });
     }
 }
