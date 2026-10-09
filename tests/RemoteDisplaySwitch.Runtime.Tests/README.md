@@ -18,6 +18,7 @@ dotnet test tests/RemoteDisplaySwitch.Runtime.Tests/RemoteDisplaySwitch.Runtime.
 - `DesktopControllerTests.cs`：默认 Unknown、发现与绑定指纹、显式 ON/OFF、Toggle 权威读取、Unknown 拒绝、重复 operationId 与冲突，以及 Fake 启动注册。
 - `DesktopControllerRecoveryTests.cs`：超时与断连的 Unknown、跨重启去重、绑定失效持久化、重新绑定后的 targetId、Pending 恢复且不重放。
 - `DesktopControllerConcurrencyTests.cs`：并发命令及 Toggle 读写对的串行、并发重复请求、取消与拓扑变化竞态，以及请求未完成时快照在一秒内返回 Busy。
+- `DisplaySettingsRevalidationTests.cs`：显示设置或恢复通知的只读复核、保留相同拓扑的绑定及 targetId、连续通知合并、拒绝过时发现结果、真实变化仍失效、与控制命令串行，以及不重放未确认写入。
 - `StateStoreTests.cs`：真实 SQLite 的设备 ID、绑定保存/删除、操作日志更新、终态不变、所有 Pending 转 Unknown，并验证再次重启不改写恢复结果。
 - `WireProtocolTests.cs`：纯内存协议行长度边界、未终止行、EOF、版本与 ID。无效请求使用空 controller 哨兵，确保版本/ID 检查先于派发且无需初始化任何运行时资源。
 

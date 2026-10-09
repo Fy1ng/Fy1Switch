@@ -33,6 +33,8 @@
 
 ## 手机与中继版本
 
+2026-10-09 显示器绑定修复：Windows 显示设置或睡眠恢复通知先通过新 Worker 只读核验；完整拓扑指纹、唯一目标和配置类型不变时保留原绑定及 targetId，避免复制模式下仅因系统通知反复要求重新发现。真实拓扑变化和已失效绑定仍需人工确认，不自动重放开关操作。新版输出为 `artifacts/windows-topology-fix/win-x64`，不覆盖运行中的旧版；已有失效标记需要手动发现并确认一次，后续使用新的通知处理逻辑。
+
 2026-10-07 多路径增量：Android 按局域网 → Tailscale → Relay 自动选择连接，保留既有配对与操作去重；Windows 可同时绑定 LAN 和可选 Tailscale 地址。新版输出为 `artifacts/windows-multipath/win-x64` 与 `artifacts/android/RemoteDisplaySwitch-multipath-debug.apk`，不覆盖正在运行的旧版。配置与跨网络验收见 `docs/Remote-Control.md` 的自动多路径章节。
 
 2026-10-06 UI 增量：两端主页简化为可信状态对应的单一主操作，Windows 首次未绑定时只读发现并要求明确确认，设置/诊断折叠；电脑可显示现有安全配对信息二维码，手机按需申请相机权限扫码，并保留粘贴备用。已有凭据、包名与 Tile 组件保持不变。此增量 Windows 在 artifacts/windows-ui/win-x64，Android 在 artifacts/android/RemoteDisplaySwitch-ui-debug.apk。

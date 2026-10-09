@@ -58,6 +58,7 @@ internal sealed class FakeWorkerTransport : IWorkerTransport
 
     public bool IsRunning { get; set; }
     public bool Disposed { get; private set; }
+    public int StopCount { get; private set; }
     public int MaximumConcurrentRequests => Volatile.Read(ref maximumConcurrentRequests);
     public WorkerRequest[] Requests => requests.ToArray();
     public WorkerRequest[] Writes => Requests.Where(request => request.Command == "set").ToArray();
@@ -97,6 +98,7 @@ internal sealed class FakeWorkerTransport : IWorkerTransport
 
     public Task StopAsync()
     {
+        StopCount++;
         IsRunning = false;
         return Task.CompletedTask;
     }

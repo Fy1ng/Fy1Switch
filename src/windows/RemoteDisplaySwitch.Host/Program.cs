@@ -194,8 +194,13 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
         }
         catch { ShowSettings(); }
     }
-    private void DisplayChanged(object? sender, EventArgs args) { if (!options.Simulation) _controller?.NotifyTopologyChanged(); }
-    private void PowerChanged(object sender, PowerModeChangedEventArgs args) { if (!options.Simulation && args.Mode == PowerModes.Resume) _controller?.NotifyTopologyChanged(); }
+    private void DisplayChanged(object? sender, EventArgs args) { if (!options.Simulation) _ = RevalidateDisplaySettingsAsync(); }
+    private void PowerChanged(object sender, PowerModeChangedEventArgs args) { if (!options.Simulation && args.Mode == PowerModes.Resume) _ = RevalidateDisplaySettingsAsync(); }
+    private async Task RevalidateDisplaySettingsAsync()
+    {
+        try { if (_controller is not null) await _controller.RevalidateTopologyAsync(); }
+        catch (Exception exception) { SaveHostError(exception); }
+    }
     private void RenderPreview(string target)
     {
         var root = (FrameworkElement)(options.RemotePreview ? _remoteWindow!.Content : _window!.Content);
