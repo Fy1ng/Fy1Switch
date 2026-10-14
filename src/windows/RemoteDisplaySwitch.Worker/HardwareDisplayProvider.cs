@@ -37,6 +37,7 @@ internal sealed class HardwareDisplayProvider : IDisplayProvider
         if (discoveryAttempted) throw new DisplayProviderException("discovery_restart_required", false);
         AcquireLease();
         Guard();
+        ArchiveInterruptedDiscovery();
         backend ??= createBackend();
         var topology = backend.CaptureTopology();
         TopologyPolicy.Validate(topology);
@@ -148,9 +149,14 @@ internal sealed class HardwareDisplayProvider : IDisplayProvider
     private void Guard()
     {
         if (topologyInvalidated) throw new DisplayProviderException("topology_changed", false);
-        if (Path.Exists(Path.Combine(dataDirectory, "discovery.lock")))
-            throw new DisplayProviderException("discovery_quarantined", false);
         if (checkConflict() is { } conflict) throw new DisplayProviderException(conflict, false);
+    }
+
+    private void ArchiveInterruptedDiscovery()
+    {
+        var lockPath = Path.Combine(dataDirectory, "discovery.lock");
+        if (File.Exists(lockPath))
+            File.Move(lockPath, $"{lockPath}.{Guid.NewGuid():N}.previous");
     }
 
     private void AcquireLease()

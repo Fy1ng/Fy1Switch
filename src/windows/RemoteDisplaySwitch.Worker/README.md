@@ -20,7 +20,7 @@ RemoteDisplaySwitch.Worker --pipe <name> --parent-pid <pid> --data-dir <absolute
 ## 安全与结果语义
 
 - 检测到 `PowerToys.PowerDisplay` 或 `RemoteDisplaySwitch.Probe` 进程时返回 `display_process_conflict`，不会停止它们。数据目录中的独占 `worker.instance.lock` 防止同目录重复 Worker。
-- 已有 `discovery.lock` 返回 `discovery_quarantined`，不读取内容、不自动删除。正常上游发现仍管理它自己本次创建的锁。需要 Host/用户在检查后决定恢复；Worker 不做自动重试。
+- 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并通过进程冲突检查后, 将既有 `discovery.lock` 移至同目录唯一命名的 `discovery.lock.<GUID>.previous` 保留现场, 再正常调用底层发现. 上游仍管理本次发现锁; 冲突拦截, 拓扑确认和同一 Worker 不自动重试发现的约束不变.
 - `WriteAccepted` 独立表示底层写入返回值：未写为 false，底层写调用抛出且结果未知为 null，写后拓扑变化仍保留实际返回值。`Success=true` 的 set 仅表示写被接受，不表示物理关屏或读回匹配；Host 必须按 `WriteAccepted`、`Observation`、`ErrorCode` 联合判断。读回失败仍可返回 `WriteAccepted=true`、Unknown 和 `power_read_failed`。
 - 原始核心日志不直接转发，只将事件级别转换为固定安全代码写入 stderr。异常消息、设备路径、原始能力字符串不进入日志或协议。stdout 不用于协议。
 - 父进程超时、挂起终止、Host/CLI 状态机由 Runtime/Host 负责。此组件不宣称消除拓扑采样与驱动调用之间的系统级竞态，也不能取消已经进入驱动的同步调用。进程冲突检测是调用前采样，不是与第三方程序的跨进程互斥协议。

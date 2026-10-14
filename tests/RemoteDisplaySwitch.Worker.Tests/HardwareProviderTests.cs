@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using PowerDisplay.Common.Services;
 using RemoteDisplaySwitch.Contracts;
 using RemoteDisplaySwitch.Worker;
 
@@ -215,21 +216,69 @@ public sealed class HardwareProviderTests
     }
 
     [TestMethod]
-    public async Task ExistingQuarantineIsPreservedWithoutReadingOrCreatingHardware()
+    public async Task InterruptedDiscoveryIsArchivedWithoutBlockingDiscoveryOrPowerControl()
     {
         using var directory = new TestDirectory();
         var lockPath = Path.Combine(directory.Path, "discovery.lock");
         await File.WriteAllTextAsync(lockPath, "prior interrupted discovery");
-        using var provider = new HardwareDisplayProvider(directory.Path, () => throw new AssertFailedException("Native factory called"), () => null);
-        var reply = await new WorkerProtocol(provider).HandleAsync(ProtocolFixture.Request("discover"));
-        Assert.AreEqual("discovery_quarantined", reply.ErrorCode);
-        Assert.AreEqual("prior interrupted discovery", await File.ReadAllTextAsync(lockPath));
+        var previousArchive = $"{lockPath}.{Guid.NewGuid():N}.previous";
+        await File.WriteAllTextAsync(previousArchive, "earlier interrupted discovery");
+        var backend = new FakeBackend();
+        backend.OnDiscovery = () =>
+        {
+            using var scope = CrashDetectionScope.Begin(lockPath);
+            Assert.IsTrue(File.Exists(lockPath));
+        };
+        using var provider = new HardwareDisplayProvider(directory.Path, () => backend, () => null);
+        var protocol = new WorkerProtocol(provider);
+        var reply = await protocol.HandleAsync(ProtocolFixture.Request("discover"));
+        Assert.IsTrue(reply.Success, reply.ErrorCode);
+        Assert.IsFalse(File.Exists(lockPath));
+        var archives = Directory.GetFiles(directory.Path, "discovery.lock.*.previous");
+        Assert.AreEqual(2, archives.Length);
+        Assert.AreEqual("earlier interrupted discovery", await File.ReadAllTextAsync(previousArchive));
+        Assert.AreEqual("prior interrupted discovery", await File.ReadAllTextAsync(archives.Single(path => path != previousArchive)));
+        var fingerprint = reply.Discovery!.TopologyFingerprint;
+        Assert.IsTrue((await protocol.HandleAsync(Request("read", fingerprint))).Success);
+        Assert.IsTrue((await protocol.HandleAsync(Request("set", fingerprint, PowerIntent.On))).Success);
+        Assert.IsTrue((await protocol.HandleAsync(ProtocolFixture.Request("discover"))).Success);
+        Assert.AreEqual(1, backend.DiscoveryCalls);
+    }
+
+    [TestMethod]
+    public async Task InterruptedDiscoveryRequiresNewWorkerButDoesNotQuarantineIt()
+    {
+        using var directory = new TestDirectory();
+        var lockPath = Path.Combine(directory.Path, "discovery.lock");
+        var backend = new FakeBackend();
+        backend.OnDiscovery = () =>
+        {
+            File.WriteAllText(lockPath, "interrupted discovery");
+            throw new IOException("simulated discovery failure");
+        };
+        using (var provider = new HardwareDisplayProvider(directory.Path, () => backend, () => null))
+        {
+            var protocol = new WorkerProtocol(provider);
+            Assert.AreEqual("provider_failed", (await protocol.HandleAsync(ProtocolFixture.Request("discover"))).ErrorCode);
+            Assert.AreEqual("discovery_restart_required", (await protocol.HandleAsync(ProtocolFixture.Request("discover"))).ErrorCode);
+            Assert.AreEqual(1, backend.DiscoveryCalls);
+            Assert.AreEqual("interrupted discovery", await File.ReadAllTextAsync(lockPath));
+            Assert.AreEqual(0, Directory.GetFiles(directory.Path, "discovery.lock.*.previous").Length);
+        }
+
+        using var restarted = new HardwareDisplayProvider(directory.Path, () => new FakeBackend(), () => null);
+        Assert.IsTrue((await new WorkerProtocol(restarted).HandleAsync(ProtocolFixture.Request("discover"))).Success);
+        Assert.IsFalse(File.Exists(lockPath));
+        var archive = Directory.GetFiles(directory.Path, "discovery.lock.*.previous").Single();
+        Assert.AreEqual("interrupted discovery", await File.ReadAllTextAsync(archive));
     }
 
     [TestMethod]
     public async Task ConflictingProcessPreventsDiscoveryAndSubsequentWrites()
     {
         using var directory = new TestDirectory();
+        var lockPath = Path.Combine(directory.Path, "discovery.lock");
+        await File.WriteAllTextAsync(lockPath, "discovery in progress");
         var backend = new FakeBackend();
         string? conflict = "display_process_conflict";
         var factories = 0;
@@ -237,6 +286,8 @@ public sealed class HardwareProviderTests
         var protocol = new WorkerProtocol(provider);
         Assert.AreEqual(conflict, (await protocol.HandleAsync(ProtocolFixture.Request("discover"))).ErrorCode);
         Assert.AreEqual(0, factories);
+        Assert.AreEqual("discovery in progress", await File.ReadAllTextAsync(lockPath));
+        Assert.AreEqual(0, Directory.GetFiles(directory.Path, "discovery.lock.*.previous").Length);
         conflict = null;
         var snapshot = await provider.DiscoverAsync(default);
         conflict = "display_process_conflict";
@@ -247,13 +298,34 @@ public sealed class HardwareProviderTests
     }
 
     [TestMethod]
+    public async Task ConflictDetectedAfterLeaseDoesNotArchiveDiscoveryLock()
+    {
+        using var directory = new TestDirectory();
+        var lockPath = Path.Combine(directory.Path, "discovery.lock");
+        await File.WriteAllTextAsync(lockPath, "discovery in progress");
+        var checks = 0;
+        using var provider = new HardwareDisplayProvider(directory.Path,
+            () => throw new AssertFailedException("Native factory called"),
+            () => ++checks == 1 ? null : "display_process_conflict");
+        var reply = await new WorkerProtocol(provider).HandleAsync(ProtocolFixture.Request("discover"));
+        Assert.AreEqual("display_process_conflict", reply.ErrorCode);
+        Assert.AreEqual(2, checks);
+        Assert.AreEqual("discovery in progress", await File.ReadAllTextAsync(lockPath));
+        Assert.AreEqual(0, Directory.GetFiles(directory.Path, "discovery.lock.*.previous").Length);
+    }
+
+    [TestMethod]
     public async Task SeparateProvidersCannotDiscoverInSameDataDirectory()
     {
         using var directory = new TestDirectory();
         using var first = new HardwareDisplayProvider(directory.Path, () => new FakeBackend(), () => null);
         await first.DiscoverAsync(default);
+        var lockPath = Path.Combine(directory.Path, "discovery.lock");
+        await File.WriteAllTextAsync(lockPath, "discovery in progress");
         using var second = new HardwareDisplayProvider(directory.Path, () => throw new AssertFailedException("Second factory called"), () => null);
         Assert.AreEqual("worker_already_running", (await new WorkerProtocol(second).HandleAsync(ProtocolFixture.Request("discover"))).ErrorCode);
+        Assert.AreEqual("discovery in progress", await File.ReadAllTextAsync(lockPath));
+        Assert.AreEqual(0, Directory.GetFiles(directory.Path, "discovery.lock.*.previous").Length);
     }
 
     [TestMethod]

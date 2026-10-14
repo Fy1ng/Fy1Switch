@@ -31,6 +31,8 @@
 
 宿主本地控制使用当前用户命名管道；远程 HTTPS 默认关闭，仅在“手机配对与远程设置”显式启用后监听。不要直接暴露本地 IPC。P0 诊断工具与新 Worker 互相避让，不能同时操作硬件。
 
+Worker 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并通过进程冲突检查后, 将遗留 `discovery.lock` 移至同目录唯一命名的 `discovery.lock.<GUID>.previous` 保留现场, 再正常发现. 上游仍管理本次发现锁; 冲突拦截, 拓扑确认和同一 Worker 不自动重试发现的约束不变.
+
 ## 手机与中继版本
 
 2026-10-09 显示器绑定修复：Windows 显示设置或睡眠恢复通知先通过新 Worker 只读核验；完整拓扑指纹、唯一目标和配置类型不变时保留原绑定及 targetId，避免复制模式下仅因系统通知反复要求重新发现。真实拓扑变化和已失效绑定仍需人工确认，不自动重放开关操作。新版输出为 `artifacts/windows-topology-fix/win-x64`，不覆盖运行中的旧版；已有失效标记需要手动发现并确认一次，后续使用新的通知处理逻辑。
@@ -115,7 +117,7 @@ PowerToys 与本工具没有共同的硬件锁。检测到官方进程时拒绝�
 - 状态目录：%LOCALAPPDATA%/RemoteDisplaySwitch/Probe；不使用 Microsoft/PowerToys 的状态、事件或单实例名称。
 - 标准输出为逐行 JSON；标准错误为脱敏上游日志。可在本地重定向保存，报告仍可能含显示型号和拓扑信息，不要无审查上传。
 - targetKey 是规范化 DevicePath 的 SHA-256，仅供本地诊断选择，不是认证秘密、实体身份证明或跨端口永久 ID。
-- orphan discovery.lock 表示前次发现中断，下一次拒绝自动探测。先排查原因，再由操作者审查并移走本工具的锁文件；不要删除官方 PowerToys 文件。
+- 仅 P0 Probe 诊断工具保留旧策略: 遗留 `discovery.lock` 时拒绝自动探测, 应先排查再由操作者移走该工具的锁文件; 当前 Windows Worker 使用前述自动留档流程. 不要修改官方 PowerToys 文件.
 - 电源适配直接复用上游 IVcpFeatureReader；离散 D6 成功读回不会因 max=0 被连续数值范围验证误判。默认写入走原始 MonitorManager → DdcCiController → SetVCPFeature；实验直接使用同一个上游 DdcCiController.SetPowerStateAsync，不另写 DDC 传输。
 
 常用退出码：0=调用完成；2=参数无效；3=工作进程超时；4=已有探测运行；5=无目标；6=官方控制者运行；7=发现隔离/黑名单资源异常；8=目标缺失或不唯一；9=读回或写入未确认；10=异常；11=能力/初始状态/拓扑安全条件不满足；12=复制模式绑定未验证或实验条件变化。

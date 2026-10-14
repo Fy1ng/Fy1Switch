@@ -245,7 +245,7 @@ public sealed partial class MainWindow : Window
             {
                 var code = ErrorCode(exception);
                 SetMessage(UiText.BriefError(code), $"{code}\n{UiText.Error(code)}", true);
-                if (code is "topology_changed" or "discovery_quarantined")
+                if (code == "topology_changed")
                     ClearDiscovery();
             }
         }
