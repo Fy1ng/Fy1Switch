@@ -13,6 +13,7 @@ internal static class UiText
     internal static string BriefError(string code) => code switch
     {
         "topology_changed" => "连接已变化，请重新确认绑定。",
+        "topology_unavailable" => "暂时无法检查显示器连接, 请稍后刷新。",
         "busy" or "controller_busy" or "operation_in_progress" => "已有操作进行中，请稍候。",
         "state_unknown" or "read_failed" or "readback_failed" => "状态尚不能确认，请先刷新。",
         "not_bound" or "binding_required" or "no_binding" => "请先在设置中绑定显示器。",
@@ -26,6 +27,7 @@ internal static class UiText
         "worker_protocol_error" => "主程序与显示器控制组件通信异常。请使用同一版本的完整程序目录，再退出并重启。",
         "timeout" or "worker_timeout" => "等待显示器响应超时，结果尚不能确认。请先刷新状态，避免连续重复开关。",
         "topology_changed" => "显示器连接或排列已变化。为避免控制错误的设备，请重新发现、选择并绑定目标。",
+        "topology_unavailable" => "暂时无法检查显示器连接。请稍后刷新状态; 连接检查恢复后可继续使用原绑定。",
         "other_controller_running" or "display_process_conflict" or "worker_already_running" => "另一个控制程序正在使用显示器。请先关闭其他控制实例，再重试。",
         "busy" or "controller_busy" or "operation_in_progress" => "已有操作正在进行，请等待完成后再试。",
         "not_bound" or "binding_required" or "no_binding" => "尚未绑定显示器。请先发现设备，明确选择候选并绑定。",

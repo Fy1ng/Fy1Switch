@@ -189,12 +189,15 @@ public sealed class DisplaySettingsRevalidationTests
     [DataTestMethod]
     [DataRow("worker_timeout")]
     [DataRow("io_exception")]
+    [DataRow("topology_unavailable")]
     public async Task TransientWorkerFailurePreservesBindingAndDoesNotWriteOrRetry(string failure)
     {
         await using var fixture = new ControllerFixture();
         var binding = await fixture.BindAsync();
         var requests = fixture.Worker.Requests.Length;
-        fixture.Worker.Handler = (_, _) => Task.FromException<WorkerReply>(failure == "io_exception" ? new IOException("Fake worker failure") : new ControlException(failure));
+        fixture.Worker.Handler = (request, _) => failure == "topology_unavailable"
+            ? Task.FromResult(new WorkerReply(request.RequestId, false, failure))
+            : Task.FromException<WorkerReply>(failure == "io_exception" ? new IOException("Fake worker failure") : new ControlException(failure));
 
         await fixture.Controller.RevalidateTopologyAsync();
 

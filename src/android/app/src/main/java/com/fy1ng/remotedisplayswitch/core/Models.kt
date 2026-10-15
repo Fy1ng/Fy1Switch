@@ -112,11 +112,20 @@ data class AppState(
     val loaded: Boolean = false,
     val storageFailed: Boolean = false,
     val notice: Feedback? = null,
+    val request: RepositoryRequest? = null,
 ) {
     val selected: DeviceState? get() = devices.find { it.profile.deviceId == defaultDeviceId }
 }
 
-enum class TilePower { Active, Inactive, Unavailable }
+enum class RepositoryAction { Other, Refresh, Set }
+data class RepositoryRequest(
+    val id: UUID,
+    val action: RepositoryAction,
+    val deviceId: UUID?,
+    val result: Feedback? = null,
+)
+
+enum class TilePower { Active, Inactive, Refreshing, Unavailable }
 
 object StatePolicy {
     fun unresolved(operation: OperationRecord?) = operation?.outcome in setOf(
@@ -126,22 +135,30 @@ object StatePolicy {
     fun confirmedPower(device: DeviceState?): DisplayPower {
         if (device == null || !device.connected) return DisplayPower.Unknown
         val status = device.status ?: return DisplayPower.Unknown
-        if (!status.available || status.targetId == null || status.busy) return DisplayPower.Unknown
+        if (status.deviceId != device.profile.deviceId || !status.available || status.targetId == null || status.busy) return DisplayPower.Unknown
         if (device.requiresRefresh) return DisplayPower.Unknown
         return status.observation.state
     }
 
+    fun refreshing(state: AppState): Boolean = state.loaded && !state.storageFailed && state.busy &&
+        state.selected != null && state.request?.action == RepositoryAction.Refresh &&
+        state.request.deviceId == state.defaultDeviceId
+
     fun tile(state: AppState): TilePower = when {
-        !state.loaded || state.busy || state.storageFailed -> TilePower.Unavailable
+        !state.loaded || state.storageFailed -> TilePower.Unavailable
+        refreshing(state) -> TilePower.Refreshing
+        state.busy -> TilePower.Unavailable
         confirmedPower(state.selected) == DisplayPower.On -> TilePower.Active
         confirmedPower(state.selected) == DisplayPower.Off -> TilePower.Inactive
         else -> TilePower.Unavailable
     }
 
-    fun canSet(state: AppState): Boolean {
+    fun canSet(state: AppState, intent: PowerIntent? = null): Boolean {
         val device = state.selected ?: return false
         return state.loaded && !state.busy && !state.storageFailed && device.connected &&
-            device.status?.available == true && device.status.targetId != null && !device.status.busy &&
-            !device.requiresRefresh && (!unresolved(device.operation) || confirmedPower(device) != DisplayPower.Unknown)
+            device.status?.available == true && device.status.deviceId == device.profile.deviceId &&
+            device.status.targetId != null && !device.status.busy &&
+            !device.requiresRefresh && (!unresolved(device.operation) || confirmedPower(device) != DisplayPower.Unknown) &&
+            (intent != PowerIntent.Toggle || confirmedPower(device) != DisplayPower.Unknown)
     }
 }

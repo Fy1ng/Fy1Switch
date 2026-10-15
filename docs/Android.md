@@ -107,13 +107,13 @@ lint 的 `CustomX509TrustManager` 警告对应上述明确要求的 pin-only 自
 
 App 与 Tile 使用同一进程内单例 DeviceRepository / Mutex，不创建独立网络路径。配对、配置修改、默认设备切换、请求之间串行，防止 UI/Tile 并发重复操作。set 在发包前持久化 Pending；保存失败则不发送。请求中的设备和 target 在操作期间固定，不跟随后收到的 body 改变。
 
-`Confirmed` 才展示操作确认。`AcceptedUnconfirmed`、`Pending`、`Unknown` 分别明确展示“已接受未确认 / 处理中 / 结果未知”。旧 on/off 观测不会在不确定操作之后继续作为成功证据。查询未找到记录也不表示未执行。仅显式成功的实时 refresh 或对应的已确认观测能够解除“不确定后需刷新”标记；不会比较手机与 Windows 的时钟来猜测缓存是否足够新。实时刷新恢复当前状态不把此前 Unknown 操作改写为 Confirmed。
+`Confirmed` 才展示操作确认。`AcceptedUnconfirmed`、`Pending`、`Unknown` 分别明确展示“已接受未确认 / 处理中 / 结果未知”。旧 on/off 观测不会在不确定操作之后继续作为成功证据。查询未找到记录也不表示未执行。显式成功的实时 refresh 或对应的已确认观测能够解除“不确定后需刷新”标记; 确定未发出的失败或可信终态 `Failed` 也不保留该标记, 包括恢复旧版持久化记录. 设备在线且绑定有效时, Unknown 可明确 ON/OFF, 仍不能 Toggle. 不会比较手机与 Windows 的时钟来猜测缓存是否足够新。实时刷新恢复当前状态不把此前 Unknown 操作改写为 Confirmed。
 
 Tile 为 non-active 模式，每次 onStartListening 发起短 `refresh`。仅 listening 期间获取临时 qsTile 并 updateTile，不长期持有 qsTile；停止 listening/销毁时取消观察订阅，已开始的短请求可完成并持久化结果。进程被系统结束后不重放 set：重建时 Pending 转 Unknown、保留操作查询 UUID、缓存状态先视为未连接。
 
-Tile：已确认 On → STATE_ACTIVE；已确认 Off → STATE_INACTIVE；未知、离线、远端 busy、本地 busy → STATE_UNAVAILABLE。长按通过 QS_TILE_PREFERENCES 打开 MainActivity。API 34+ 展开 App 使用 PendingIntent；不设置会绕过 onClick 的固定 activityLaunchForClick，因此正常单击仍执行切换。
+Tile: 已确认 On 映射 STATE_ACTIVE, 已确认 Off 映射 STATE_INACTIVE. 当前设备实时刷新期间使用可点击的 STATE_INACTIVE 并显示刷新提示, 该外观不表示已关闭; 最多排队一次点击, 同次刷新成功且返回可信 On/Off 后才执行一次 Toggle. 刷新失败/取消/超时, 切换设备或目标, 面板关闭/组件销毁均取消排队, 不使用旧缓存执行. 其他未知/离线/远端 busy/本地写操作映射 STATE_UNAVAILABLE. 长按通过 QS_TILE_PREFERENCES 打开 MainActivity. API 34+ 展开 App 使用 PendingIntent; 不设置会绕过 onClick 的固定 activityLaunchForClick, 因此正常单击仍执行切换.
 
-锁屏点击先 unlockAndRun；解锁回调到达、仍为同一默认设备、状态允许操作，才发送 Toggle。解锁前不占用 repository busy；取消解锁没有任何写命令，也不会卡 busy。解锁回调一次性使用，30 秒后丢弃；允许解锁导致面板收起后再回调，但组件已销毁时不发送。
+锁屏点击先 unlockAndRun; 解锁回调到达, 仍为同一默认设备/目标/请求且状态允许操作时, 才发送 Toggle. 解锁前不占用 repository busy; 取消解锁没有任何写命令, 也不会卡 busy. 解锁回调一次性使用, 30 秒后丢弃; 非刷新点击允许解锁导致面板收起后再回调, 但组件销毁或新一轮 listening 后不发送. 刷新排队仅在同一 listening 生命周期内有效, 刷新先于解锁完成时等待同次解锁授权, 面板关闭则取消.
 
 ## 验证边界及 OriginOS 必测
 

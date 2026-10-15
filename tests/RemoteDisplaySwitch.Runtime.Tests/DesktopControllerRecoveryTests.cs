@@ -132,6 +132,39 @@ public sealed class DesktopControllerRecoveryTests
     }
 
     [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task TransientTopologyFailurePreservesBindingAndDeduplicationAfterRestart(bool writeAccepted)
+    {
+        await using var fixture = new ControllerFixture();
+        var binding = await fixture.BindAsync();
+        var operationId = Guid.NewGuid();
+        fixture.Worker.Handler = (request, _) => Task.FromResult(new WorkerReply(request.RequestId, false, "topology_unavailable", WriteAccepted: writeAccepted));
+
+        var original = await fixture.Controller.ExecuteAsync(binding.TargetId, PowerIntent.Off, operationId);
+        var snapshot = await fixture.Controller.GetSnapshotAsync();
+        Assert.AreEqual(writeAccepted ? OperationOutcome.Unknown : OperationOutcome.Failed, original.Outcome);
+        Assert.AreEqual("topology_unavailable", original.ErrorCode);
+        Assert.AreEqual(binding, snapshot.Binding);
+        Assert.IsFalse(snapshot.Binding!.NeedsConfirmation);
+        Assert.AreEqual(DisplayPower.Unknown, snapshot.Observation.State);
+        var requests = fixture.Worker.Requests.Length;
+        Assert.AreEqual(original, await fixture.Controller.ExecuteAsync(binding.TargetId, PowerIntent.Off, operationId));
+        Assert.AreEqual(requests, fixture.Worker.Requests.Length);
+
+        await fixture.RestartAsync();
+        Assert.AreEqual(binding, (await fixture.Controller.GetSnapshotAsync()).Binding);
+        Assert.AreEqual(original, await fixture.Controller.ExecuteAsync(binding.TargetId, PowerIntent.Off, operationId));
+        Assert.AreEqual(0, fixture.Worker.Requests.Length);
+        fixture.Worker.Reading = FakeWorkerTransport.Observe(DisplayPower.On);
+        await fixture.Controller.RefreshAsync();
+        Assert.AreEqual(DisplayPower.On, (await fixture.Controller.GetSnapshotAsync()).Observation.State);
+        var recovered = await fixture.Controller.ExecuteAsync(binding.TargetId, PowerIntent.On, Guid.NewGuid());
+        Assert.AreEqual(OperationOutcome.Confirmed, recovered.Outcome);
+        Assert.AreEqual(1, fixture.Worker.Writes.Length);
+    }
+
+    [DataTestMethod]
     [DataRow("topology_changed")]
     [DataRow("target_not_found")]
     [DataRow("target_ambiguous")]

@@ -16,11 +16,12 @@ RemoteDisplaySwitch.Worker --pipe <name> --parent-pid <pid> --data-dir <absolute
 - 固定 profile 为 `sac2563-mtt1337-gdi-v1`。指纹是 `SHA256(UTF8(profile + "\n" + WireJson.Serialize(TopologyDiagnostics.Capture())))` 的小写十六进制；不裁剪、重排或忽略完整诊断中的字段及非活动 GDI 条目。
 - 同一会话重复 discover 只校验拓扑并返回已有快照，不重新分配句柄。发现已经进入 DDC 后若失败，需由 Host 显式决定是否重启；检测到拓扑变化后，该 Worker 永久拒绝当前会话操作，不静默重映射。
 - 每次 read/set 写前检查请求指纹、会话指纹和当前拓扑，目标键大小写也必须精确一致。写后及读回后再次核对拓扑；变化返回 `topology_changed`，不附带可误认为确认的观察。写入只有 01/04；观察仅来自 `ReadPowerObservationAsync`，01=On，02..05=Off，失败或未知值=Unknown，source 恒为 `hardware_read`。
+- 临时拓扑读取失败返回 `topology_unavailable`, 不锁死 Worker 或原绑定. 当次操作不返回可信观察, 写前失败不写入, 写后失败保留实际 WriteAccepted 且不重放; 后续请求必须重新核验完整指纹, 检测到真实变化后仍锁定至 Worker 重启.
 
 ## 安全与结果语义
 
 - 检测到 `PowerToys.PowerDisplay` 或 `RemoteDisplaySwitch.Probe` 进程时返回 `display_process_conflict`，不会停止它们。数据目录中的独占 `worker.instance.lock` 防止同目录重复 Worker。
-- 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并通过进程冲突检查后, 将既有 `discovery.lock` 移至同目录唯一命名的 `discovery.lock.<GUID>.previous` 保留现场, 再正常调用底层发现. 上游仍管理本次发现锁; 冲突拦截, 拓扑确认和同一 Worker 不自动重试发现的约束不变.
+- 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并通过进程冲突检查后, 尝试将既有 `discovery.lock` 移至同目录唯一命名的 `discovery.lock.<GUID>.previous` 保留现场. IO 或权限问题导致留档失败时, 仅记录 `discovery_archive_failed`, 保留原文件并继续发现. 上游仍管理本次发现锁; 冲突拦截, 拓扑确认和同一 Worker 不自动重试发现的约束不变.
 - `WriteAccepted` 独立表示底层写入返回值：未写为 false，底层写调用抛出且结果未知为 null，写后拓扑变化仍保留实际返回值。`Success=true` 的 set 仅表示写被接受，不表示物理关屏或读回匹配；Host 必须按 `WriteAccepted`、`Observation`、`ErrorCode` 联合判断。读回失败仍可返回 `WriteAccepted=true`、Unknown 和 `power_read_failed`。
 - 原始核心日志不直接转发，只将事件级别转换为固定安全代码写入 stderr。异常消息、设备路径、原始能力字符串不进入日志或协议。stdout 不用于协议。
 - 父进程超时、挂起终止、Host/CLI 状态机由 Runtime/Host 负责。此组件不宣称消除拓扑采样与驱动调用之间的系统级竞态，也不能取消已经进入驱动的同步调用。进程冲突检测是调用前采样，不是与第三方程序的跨进程互斥协议。

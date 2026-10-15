@@ -119,7 +119,7 @@ public sealed class HardwareProviderTests
     }
 
     [TestMethod]
-    public async Task TopologyCaptureFailureBeforeWriteFailsClosed()
+    public async Task TopologyCaptureFailureBeforeWriteFailsClosedButAllowsRecovery()
     {
         using var directory = new TestDirectory();
         var backend = new FakeBackend();
@@ -127,9 +127,62 @@ public sealed class HardwareProviderTests
         var snapshot = await provider.DiscoverAsync(default);
         backend.FailCapture = true;
         var reply = await new WorkerProtocol(provider).HandleAsync(Request("set", snapshot.TopologyFingerprint, PowerIntent.Off));
-        Assert.AreEqual("topology_changed", reply.ErrorCode);
+        Assert.AreEqual("topology_unavailable", reply.ErrorCode);
         Assert.AreEqual(false, reply.WriteAccepted);
         Assert.AreEqual(0, backend.Writes.Count);
+        backend.FailCapture = false;
+        Assert.AreSame(snapshot, await provider.DiscoverAsync(default));
+        Assert.AreEqual(DisplayPower.On, (await provider.ReadAsync(FakeBackend.TargetKey, snapshot.TopologyFingerprint, default)).State);
+        Assert.IsTrue((await new WorkerProtocol(provider).HandleAsync(Request("set", snapshot.TopologyFingerprint, PowerIntent.Off))).Success);
+        CollectionAssert.AreEqual(new[] { 4 }, backend.Writes);
+        Assert.AreEqual(1, backend.DiscoveryCalls);
+    }
+
+    [TestMethod]
+    public async Task TopologyCaptureFailureAfterReadDiscardsObservationAndAllowsRecovery()
+    {
+        using var directory = new TestDirectory();
+        var backend = new FakeBackend();
+        using var provider = new HardwareDisplayProvider(directory.Path, () => backend, () => null);
+        var snapshot = await provider.DiscoverAsync(default);
+        backend.OnRead = () => backend.FailCapture = true;
+        var reply = await new WorkerProtocol(provider).HandleAsync(Request("read", snapshot.TopologyFingerprint));
+        Assert.AreEqual("topology_unavailable", reply.ErrorCode);
+        Assert.IsNull(reply.Observation);
+        Assert.AreEqual(0, backend.Writes.Count);
+        backend.OnRead = null;
+        backend.FailCapture = false;
+        Assert.AreEqual(DisplayPower.On, (await provider.ReadAsync(FakeBackend.TargetKey, snapshot.TopologyFingerprint, default)).State);
+        Assert.AreEqual(1, backend.DiscoveryCalls);
+    }
+
+    [TestMethod]
+    [DataRow(true, false)]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    [DataRow(false, true)]
+    public async Task TopologyCaptureFailureAfterWritePreservesAcceptanceWithoutReplaying(bool accepted, bool duringReadback)
+    {
+        using var directory = new TestDirectory();
+        var backend = new FakeBackend { WriteAccepted = accepted };
+        using var provider = new HardwareDisplayProvider(directory.Path, () => backend, () => null);
+        var snapshot = await provider.DiscoverAsync(default);
+        if (duringReadback) backend.OnRead = () => backend.FailCapture = true;
+        else backend.OnWrite = () => backend.FailCapture = true;
+        var reply = await new WorkerProtocol(provider).HandleAsync(Request("set", snapshot.TopologyFingerprint, PowerIntent.Off));
+        Assert.AreEqual("topology_unavailable", reply.ErrorCode);
+        Assert.AreEqual(accepted, reply.WriteAccepted);
+        Assert.IsNull(reply.Observation);
+        CollectionAssert.AreEqual(new[] { 4 }, backend.Writes);
+        backend.OnRead = null;
+        backend.OnWrite = null;
+        backend.FailCapture = false;
+        Assert.AreEqual(DisplayPower.On, (await provider.ReadAsync(FakeBackend.TargetKey, snapshot.TopologyFingerprint, default)).State);
+        CollectionAssert.AreEqual(new[] { 4 }, backend.Writes);
+        backend.ChangeTopology();
+        Assert.AreEqual("topology_changed", (await new WorkerProtocol(provider).HandleAsync(Request("read", snapshot.TopologyFingerprint))).ErrorCode);
+        backend.Topology = FakeBackend.ValidTopology();
+        Assert.AreEqual("topology_changed", (await new WorkerProtocol(provider).HandleAsync(Request("read", snapshot.TopologyFingerprint))).ErrorCode);
     }
 
     [TestMethod]
@@ -243,6 +296,27 @@ public sealed class HardwareProviderTests
         Assert.IsTrue((await protocol.HandleAsync(Request("set", fingerprint, PowerIntent.On))).Success);
         Assert.IsTrue((await protocol.HandleAsync(ProtocolFixture.Request("discover"))).Success);
         Assert.AreEqual(1, backend.DiscoveryCalls);
+    }
+
+    [TestMethod]
+    public async Task UnmovableDiscoveryLockIsPreservedWithoutBlockingDiscoveryOrPowerControl()
+    {
+        using var directory = new TestDirectory();
+        var lockPath = Path.Combine(directory.Path, "discovery.lock");
+        await File.WriteAllTextAsync(lockPath, "prior interrupted discovery");
+        using var locked = new FileStream(lockPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var backend = new FakeBackend();
+        using var provider = new HardwareDisplayProvider(directory.Path, () => backend, () => null);
+        var protocol = new WorkerProtocol(provider);
+        var discovered = await protocol.HandleAsync(ProtocolFixture.Request("discover"));
+        Assert.IsTrue(discovered.Success, discovered.ErrorCode);
+        Assert.AreEqual("prior interrupted discovery", await File.ReadAllTextAsync(lockPath));
+        Assert.AreEqual(0, Directory.GetFiles(directory.Path, "discovery.lock.*.previous").Length);
+        var fingerprint = discovered.Discovery!.TopologyFingerprint;
+        Assert.IsTrue((await protocol.HandleAsync(Request("read", fingerprint))).Success);
+        Assert.IsTrue((await protocol.HandleAsync(Request("set", fingerprint, PowerIntent.On))).Success);
+        Assert.AreEqual(1, backend.DiscoveryCalls);
+        CollectionAssert.AreEqual(new[] { 1 }, backend.Writes);
     }
 
     [TestMethod]

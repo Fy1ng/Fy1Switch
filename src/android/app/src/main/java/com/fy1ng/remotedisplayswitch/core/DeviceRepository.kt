@@ -30,7 +30,11 @@ class DeviceRepository(
         mutex.withLock {
             if (!state.value.loaded) withContext(Dispatchers.IO) {
                 mutableState.value = try {
-                    store.read().copy(loaded = true, busy = false)
+                    store.read().let { restored ->
+                        restored.copy(loaded = true, busy = false, request = null, devices = restored.devices.map { device ->
+                            if (device.operation?.outcome == OperationOutcome.Failed) device.copy(requiresRefresh = false) else device
+                        })
+                    }
                 } catch (_: Exception) {
                     AppState(loaded = true, storageFailed = true, notice = Feedback.Storage)
                 }
@@ -106,7 +110,9 @@ class DeviceRepository(
         Feedback.Saved
     }
 
-    suspend fun refresh(deviceId: UUID, live: Boolean = true): Feedback = guarded { readStatusInternal(deviceId, live) }
+    suspend fun refresh(deviceId: UUID, live: Boolean = true): Feedback = guarded(
+        if (live) RepositoryAction.Refresh else RepositoryAction.Other, deviceId,
+    ) { readStatusInternal(deviceId, live) }
 
     private suspend fun readStatusInternal(deviceId: UUID, live: Boolean): Feedback {
         val device = find(deviceId)
@@ -114,9 +120,9 @@ class DeviceRepository(
         return applyDelivery(deviceId, request, router.send(device.profile, request))
     }
 
-    suspend fun set(deviceId: UUID, intent: PowerIntent): Feedback = guarded {
+    suspend fun set(deviceId: UUID, intent: PowerIntent): Feedback = guarded(RepositoryAction.Set, deviceId) {
         require(state.value.defaultDeviceId == deviceId)
-        if (!StatePolicy.canSet(state.value.copy(busy = false))) return@guarded Feedback.Busy
+        if (!StatePolicy.canSet(state.value.copy(busy = false), intent)) return@guarded Feedback.Busy
         val device = find(deviceId)
         val targetId = requireNotNull(device.status?.targetId)
         val operationId = UUID.randomUUID()
@@ -148,7 +154,7 @@ class DeviceRepository(
                 ) else device.operation
                 val feedback = if (request.command == "set" && delivery.mayHaveExecuted) Feedback.Unknown else delivery.feedback
                 replace(device.copy(operation = operation, connected = false, feedback = feedback,
-                    requiresRefresh = device.requiresRefresh || request.command == "set"))
+                    requiresRefresh = if (request.command == "set") delivery.mayHaveExecuted else device.requiresRefresh))
                 return feedback
             }
             is Delivery.Reply -> {
@@ -198,6 +204,7 @@ class DeviceRepository(
                 val confirmedRead = confirmedObservation?.state in setOf(DisplayPower.On, DisplayPower.Off) &&
                     status?.targetId == reply.operation?.targetId
                 val requiresRefresh = when {
+                    request.command in setOf("set", "operation") && reply.operation?.outcome == OperationOutcome.Failed -> false
                     freshRead || confirmedRead -> false
                     request.command in setOf("set", "operation") && StatePolicy.unresolved(operation) -> true
                     else -> device.requiresRefresh
@@ -222,13 +229,20 @@ class DeviceRepository(
         mutableState.value = next
     }
 
-    private suspend fun guarded(action: suspend () -> Feedback): Feedback {
+    private suspend fun guarded(
+        kind: RepositoryAction = RepositoryAction.Other,
+        deviceId: UUID? = null,
+        action: suspend () -> Feedback,
+    ): Feedback {
         initialize()
         if (state.value.storageFailed) return Feedback.Storage
         if (!mutex.tryLock()) return Feedback.Busy
-        mutableState.value = state.value.copy(busy = true, notice = null)
+        val request = RepositoryRequest(UUID.randomUUID(), kind, deviceId)
+        var result: Feedback? = null
+        mutableState.value = state.value.copy(busy = true, notice = null, request = request)
         try {
             val feedback = withContext(Dispatchers.IO) { action() }
+            result = feedback
             mutableState.value = state.value.copy(notice = feedback)
             return feedback
         } catch (exception: CancellationException) {
@@ -245,12 +259,14 @@ class DeviceRepository(
             throw exception
         } catch (_: StorageFailure) {
             storageFailure()
+            result = Feedback.Storage
             return Feedback.Storage
         } catch (_: Exception) {
             mutableState.value = state.value.copy(notice = Feedback.InvalidInput)
+            result = Feedback.InvalidInput
             return Feedback.InvalidInput
         } finally {
-            mutableState.value = state.value.copy(busy = false)
+            mutableState.value = state.value.copy(busy = false, request = request.copy(result = result))
             mutex.unlock()
         }
     }

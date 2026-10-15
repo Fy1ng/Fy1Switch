@@ -27,7 +27,7 @@ P1 是独立 Windows 本地控制版本，不是完整远程产品。包含 WPF 
 - 命令有 operationId，重复的同一操作返回持久化结果，不重复执行；不同目标或命令复用 ID 被拒绝。
 - Pending 操作跨宿主重启转为 Unknown，不自动重放。SQLite 中保存当前绑定和操作记录，不存原始物理句柄。
 - Worker 原生调用无法被可靠取消；读写等待上限 10 秒、发现 90 秒，超时隔离该工作进程。下一次请求可以显式重新启动，不进行无限自动恢复。
-- Worker 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并通过进程冲突检查后, 将遗留 `discovery.lock` 移至同目录唯一命名的 `discovery.lock.<GUID>.previous` 保留现场, 再正常发现. 上游仍管理本次发现锁; 冲突拦截, 拓扑确认和同一 Worker 不自动重试发现的约束不变. 不要修改 PowerToys 自己的文件.
+- Worker 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并通过进程冲突检查后, 尝试将遗留 `discovery.lock` 移至同目录唯一命名的 `discovery.lock.<GUID>.previous` 保留现场. 留档失败仅记录 `discovery_archive_failed`, 保留原文件并继续发现. 上游仍管理本次发现锁; 冲突拦截, 拓扑确认和同一 Worker 不自动重试发现的约束不变. 临时拓扑读取失败返回 `topology_unavailable`, 不持久化重新确认要求, 恢复后重新核验完整指纹; 真实变化仍使绑定失效. 不要修改 PowerToys 自己的文件.
 
 ## 本地 CLI 与 IPC
 

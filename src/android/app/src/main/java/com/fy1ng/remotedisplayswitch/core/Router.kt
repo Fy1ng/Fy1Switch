@@ -70,10 +70,11 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
                     if (retryAt > clock.instant()) continue
                     val fallback = configured.drop(index + 1).firstOrNull { keys.getValue(it) !in cooldowns }
                     fallbackReserve = fallback?.let { limit(device, it) } ?: 0L
-                    val reserve = fallback?.let { limit(device, it) } ?: 1_000L
+                    val reserve = if (fallback == null) 1_000L else fallbackReserve
                     if (remaining <= reserve) continue
+                    val probeLimit = if (fallback == null) limit(device, route) else 1_000L
                     val probe = RemoteCommand(UUID.randomUUID(), device.deviceId, "status", request.expiresAt)
-                    when (val result = exchange(device, route, probe, Protocol.command(probe), minOf(1_000L, remaining - reserve))) {
+                    when (val result = exchange(device, route, probe, Protocol.command(probe), minOf(probeLimit, remaining - reserve))) {
                         is Delivery.Failure -> {
                             if (result.feedback != Feedback.Offline) return result.copy(mayHaveExecuted = attempted)
                             failedThisRequest.add(key)

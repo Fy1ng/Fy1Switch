@@ -20,7 +20,37 @@ class StatePolicyTest {
             state.copy(devices = listOf(device.copy(status = status().copy(available = false)))),
             state.copy(devices = listOf(device.copy(status = status().copy(busy = true)))),
             state.copy(devices = listOf(device.copy(status = status().copy(targetId = null)))),
+            state.copy(devices = listOf(device.copy(status = status(deviceId = OTHER)))),
         ).forEach { assertEquals(TilePower.Unavailable, StatePolicy.tile(it)) }
+    }
+
+    @Test fun mismatchedDeviceIdentityBlocksAllPowerIntents() {
+        val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(status = status(deviceId = OTHER)))) }
+        for (intent in PowerIntent.entries) assertFalse(StatePolicy.canSet(state, intent))
+    }
+
+    @Test fun unknownPowerAllowsExplicitCommandsButNeverToggle() {
+        val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(status = status(DisplayPower.Unknown)))) }
+        assertTrue(StatePolicy.canSet(state))
+        assertTrue(StatePolicy.canSet(state, PowerIntent.On))
+        assertTrue(StatePolicy.canSet(state, PowerIntent.Off))
+        assertFalse(StatePolicy.canSet(state, PowerIntent.Toggle))
+        assertEquals(TilePower.Unavailable, StatePolicy.tile(state))
+    }
+
+    @Test fun onlySelectedLiveRefreshRemainsClickableWhileBusy() {
+        val state = activeState().let { it.copy(
+            devices = listOf(it.selected!!.copy(connected = false, status = status(DisplayPower.Unknown))),
+            busy = true, request = RepositoryRequest(REQUEST, RepositoryAction.Refresh, DEVICE),
+        ) }
+        assertEquals(TilePower.Refreshing, StatePolicy.tile(state))
+        assertFalse(StatePolicy.canSet(state, PowerIntent.Toggle))
+        for (request in listOf(null, RepositoryRequest(REQUEST, RepositoryAction.Set, DEVICE),
+            RepositoryRequest(REQUEST, RepositoryAction.Other, DEVICE), RepositoryRequest(REQUEST, RepositoryAction.Refresh, OTHER))) {
+            assertEquals(TilePower.Unavailable, StatePolicy.tile(state.copy(request = request)))
+        }
+        assertEquals(TilePower.Unavailable, StatePolicy.tile(state.copy(storageFailed = true)))
+        assertEquals(TilePower.Unavailable, StatePolicy.tile(state.copy(loaded = false)))
     }
 
     @Test fun uncertainOperationsDoNotReusePreviousOnObservation() {
@@ -40,13 +70,15 @@ class StatePolicyTest {
     }
 
     @Test fun storageRoundTripPreservesDevicesCredentialsAndDefaultButNotLiveState() {
-        val state = activeState(true).copy(devices = listOf(activeState(true).selected!!, DeviceState(profile(deviceId = OTHER))), defaultDeviceId = OTHER, busy = true)
+        val state = activeState(true).copy(devices = listOf(activeState(true).selected!!, DeviceState(profile(deviceId = OTHER))),
+            defaultDeviceId = OTHER, busy = true, request = RepositoryRequest(REQUEST, RepositoryAction.Refresh, OTHER))
         val restored = StateCodec.decode(StateCodec.encode(state))
         assertEquals(2, restored.devices.size)
         assertEquals(OTHER, restored.defaultDeviceId)
         assertEquals("fixture-device-token", restored.devices.first().profile.deviceToken)
         assertEquals("fixture-controller-token", restored.devices.first().profile.relay?.controllerToken)
         assertFalse(restored.busy)
+        assertNull(restored.request)
         assertFalse(restored.devices.first().connected)
         assertEquals(TilePower.Unavailable, StatePolicy.tile(restored))
     }

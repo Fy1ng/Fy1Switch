@@ -132,8 +132,7 @@ internal sealed class HardwareDisplayProvider : IDisplayProvider
         }
         catch (Exception)
         {
-            topologyInvalidated = true;
-            throw new DisplayProviderException("topology_changed", writeAccepted);
+            throw new DisplayProviderException("topology_unavailable", writeAccepted);
         }
 
         if (snapshot is null || current != snapshot.TopologyFingerprint)
@@ -155,8 +154,16 @@ internal sealed class HardwareDisplayProvider : IDisplayProvider
     private void ArchiveInterruptedDiscovery()
     {
         var lockPath = Path.Combine(dataDirectory, "discovery.lock");
-        if (File.Exists(lockPath))
-            File.Move(lockPath, $"{lockPath}.{Guid.NewGuid():N}.previous");
+        try
+        {
+            if (File.Exists(lockPath))
+                File.Move(lockPath, $"{lockPath}.{Guid.NewGuid():N}.previous");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Archiving is diagnostic only; the instance lease and conflict checks own exclusion.
+            SafeWorkerLog.Write("discovery_archive_failed");
+        }
     }
 
     private void AcquireLease()
