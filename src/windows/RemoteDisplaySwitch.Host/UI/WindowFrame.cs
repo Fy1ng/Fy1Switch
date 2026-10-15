@@ -1,8 +1,10 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Interop;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Shell;
@@ -19,7 +21,8 @@ internal static class WindowFrame
         {
             CaptionHeight = 44,
             ResizeBorderThickness = new Thickness(6),
-            GlassFrameThickness = new Thickness(0),
+            // A nonzero DWM frame keeps the native window shadow with a custom caption.
+            GlassFrameThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             UseAeroCaptionButtons = false,
         });
@@ -116,6 +119,34 @@ internal static class WindowFrame
             maximize.ToolTip = maximized ? "还原" : "最大化";
             AutomationProperties.SetName(maximize, maximized ? "还原" : "最大化");
         };
-        return root;
+        var frame = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromRgb(198, 207, 219)),
+            CornerRadius = new CornerRadius(8),
+            Background = window.Background,
+            Child = root,
+            SnapsToDevicePixels = true,
+        };
+        void UpdateBorder()
+        {
+            var dpi = VisualTreeHelper.GetDpi(window);
+            frame.BorderThickness = new Thickness(1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY, 1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY);
+        }
+        UpdateBorder();
+        window.DpiChanged += (_, _) => UpdateBorder();
+        window.SourceInitialized += (_, _) =>
+        {
+            UpdateBorder();
+            // Windows 11 has its own 1px border; keep only the one drawn above.
+            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+            {
+                var noBorder = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE
+                _ = DwmSetWindowAttribute(new WindowInteropHelper(window).Handle, 34, ref noBorder, sizeof(int));
+            }
+        };
+        return frame;
     }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 }
