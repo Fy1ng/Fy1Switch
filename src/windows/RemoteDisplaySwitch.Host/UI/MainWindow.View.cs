@@ -32,6 +32,7 @@ public sealed partial class MainWindow
     private readonly TextBlock _identity = Text();
     private readonly Border _simulationBanner = new();
     private readonly Border _statusBox = new();
+    private Border _powerCard = null!;
     private readonly Expander _detailsSection = new() { Header = "详细信息" };
     private readonly Expander _bindingSection = new() { Header = "显示器绑定" };
     private readonly ListBox _candidates = new() { MinHeight = 72, MaxHeight = 174 };
@@ -50,9 +51,9 @@ public sealed partial class MainWindow
     private void InitializeView()
     {
         Title = "RemoteDisplaySwitch";
-        Width = 740;
-        Height = 600;
-        MinWidth = 600;
+        Width = 640;
+        Height = 570;
+        MinWidth = 480;
         MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = new SolidColorBrush(Color.FromRgb(246, 248, 250));
@@ -63,9 +64,14 @@ public sealed partial class MainWindow
         SnapsToDevicePixels = true;
         Resources.MergedDictionaries.Add(DesktopTheme.CreateResources());
 
-        var page = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
-        page.Children.Add(Text("显示器开关", 28, FontWeights.SemiBold));
-        page.Children.Add(Text("RemoteDisplaySwitch · 关闭窗口后仍可从托盘打开", 12, margin: new Thickness(0, 4, 0, 20)));
+        var page = new StackPanel { Margin = new Thickness(24, 12, 24, 20) };
+        var heading = new DockPanel { Margin = new Thickness(0, 0, 0, 16) };
+        _remote.Margin = new Thickness(12, 0, 0, 0);
+        DockPanel.SetDock(_remote, Dock.Right);
+        heading.Children.Add(_remote);
+        heading.Children.Add(Text("显示器开关", 25, FontWeights.SemiBold));
+        _remote.Click += (_, _) => { if (!IsBusy) RemoteSettingsRequested?.Invoke(); };
+        page.Children.Add(heading);
         _simulationBanner.Background = new SolidColorBrush(Color.FromRgb(255, 242, 204));
         _simulationBanner.BorderBrush = new SolidColorBrush(Color.FromRgb(171, 119, 20));
         _simulationBanner.BorderThickness = new Thickness(1);
@@ -93,12 +99,13 @@ public sealed partial class MainWindow
         _toggle.Background = FrozenBrush(45, 92, 180);
         _toggle.Foreground = Brushes.White;
         state.Children.Add(_toggle);
-        state.Children.Add(Text("以最近可信读回为准 · 未知状态不会盲目切换", 12));
-        page.Children.Add(Card(state));
+        _powerCard = Card(state);
+        page.Children.Add(_powerCard);
 
         var commands = new WrapPanel { Margin = new Thickness(0, 12, 0, 6) };
         foreach (var button in new[] { _on, _off, _refresh })
             commands.Children.Add(button);
+        state.Children.Add(commands);
         _on.ToolTip = "请求开启当前绑定的显示器，等待控制结果，不提前改变状态。";
         _off.ToolTip = "请求关闭当前绑定的显示器，等待控制结果，不提前改变状态。";
         _toggle.ToolTip = "已知状态时发送明确的开启或关闭请求；未知时只刷新状态。";
@@ -117,21 +124,11 @@ public sealed partial class MainWindow
         _statusBox.Margin = new Thickness(0, 12, 0, 16);
         page.Children.Add(_statusBox);
 
-        var phone = new StackPanel();
-        phone.Children.Add(Text("手机也能控制", 18, FontWeights.SemiBold));
-        phone.Children.Add(Text("配对手机，随时查看和控制这台显示器。", margin: new Thickness(0, 5, 0, 12)));
-        _remote.HorizontalAlignment = HorizontalAlignment.Left;
-        _remote.Click += (_, _) => { if (!IsBusy) RemoteSettingsRequested?.Invoke(); };
-        phone.Children.Add(_remote);
-        page.Children.Add(Card(phone));
-
         var settings = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        var settingsSection = new Expander { Header = "设置与诊断", Content = settings, Margin = new Thickness(0, 18, 0, 0) };
-        _bindingSection.Expanded += (_, _) => settingsSection.IsExpanded = true;
+        var settingsSection = new Expander { Header = "设置", Content = settings, Margin = new Thickness(0, 8, 0, 0) };
 
         var binding = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-        binding.Children.Add(Text("1. 发现或重扫 → 2. 明确选择候选 → 3. 绑定所选", weight: FontWeights.SemiBold));
-        binding.Children.Add(Text("唯一候选会预选，仍需你确认绑定；绑定不会开关显示器。", margin: new Thickness(0, 5, 0, 8)));
+        binding.Children.Add(Text("选择要控制的显示器, 确认后绑定。", margin: new Thickness(0, 0, 0, 8)));
         var bindingCommands = new WrapPanel();
         foreach (var button in new[] { _scan, _bind, _unbind })
             bindingCommands.Children.Add(button);
@@ -144,23 +141,17 @@ public sealed partial class MainWindow
         System.Windows.Automation.AutomationProperties.SetName(_candidates, "候选显示器，确认选择后点击绑定所选");
         binding.Children.Add(_candidates);
         _bindingSection.Content = binding;
-        settings.Children.Add(_bindingSection);
+        page.Children.Add(_bindingSection);
 
         _startup.Margin = new Thickness(0, 12, 0, 6);
         _startup.Click += StartupClicked;
         settings.Children.Add(_startup);
-        settings.Children.Add(Text("高级控制", 16, FontWeights.SemiBold, new Thickness(0, 16, 0, 4)));
-        settings.Children.Add(Text("状态未知但绑定有效时，可明确请求开启或关闭。结果未确认时，请勿连续重复操作。", 12));
-        settings.Children.Add(commands);
-        settings.Children.Add(Text("仅已验证的 G4Q + MTT VDD 配置；连接变化后需重新确认绑定。", 12));
         var diagnostics = new StackPanel();
         diagnostics.Children.Add(_source);
         diagnostics.Children.Add(_updated);
         diagnostics.Children.Add(_worker);
         diagnostics.Children.Add(_operation);
         diagnostics.Children.Add(_detailsSection);
-        diagnostics.Children.Add(Text("首次无绑定时只读发现一次；仅对具体未确认请求进行最多 3 次查询和一次读回，不重发开关。系统级硬件验收仍需另行完成。", 12,
-            margin: new Thickness(0, 10, 0, 0)));
         settings.Children.Add(new Expander { Header = "诊断记录", Content = diagnostics, Margin = new Thickness(0, 12, 0, 0) });
         var identitySection = new Expander { Header = "设备标识", Content = _identity, Margin = new Thickness(0, 10, 0, 0) };
         _identity.FontSize = 12;
@@ -176,13 +167,13 @@ public sealed partial class MainWindow
         _bind.Click += async (_, _) => await BindSelectedAsync();
         _unbind.Click += async (_, _) => await UnbindAsync();
 
-        Content = new ScrollViewer
+        Content = WindowFrame.Wrap(this, new ScrollViewer
         {
             Background = Background,
             Content = page,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-        };
+        }, "关闭窗口后仍在托盘运行");
     }
 
     private void Render()
@@ -198,11 +189,14 @@ public sealed partial class MainWindow
             var needsConfirmation = binding?.NeedsConfirmation == true || snapshot?.ErrorCode == "topology_changed";
             var busy = IsBusy;
             var canControl = _snapshotAvailable && binding is not null && !needsConfirmation && !busy;
+            _powerCard.Visibility = binding is null && _snapshotAvailable ? Visibility.Collapsed : Visibility.Visible;
             _simulationBanner.Visibility = simulation ? Visibility.Visible : Visibility.Collapsed;
             _device.Text = simulation ? "当前设备：模拟 Windows 设备" : $"当前设备：{Environment.MachineName}";
             _binding.Text = binding is null ? "还未连接显示器" : $"{binding.Name}" +
                 (needsConfirmation ? " · 需要重新确认" : string.Empty);
             var power = PrimaryPower;
+            _on.Visibility = _off.Visibility = power == DisplayPower.Unknown ? Visibility.Visible : Visibility.Collapsed;
+            _refresh.Visibility = power == DisplayPower.Unknown ? Visibility.Collapsed : Visibility.Visible;
             _power.Text = (power switch { DisplayPower.On => "●  显示器已开启", DisplayPower.Off => "◐  显示器已关闭", _ => "?  状态待确认" }) +
                 (simulation ? "（模拟）" : string.Empty);
             _power.Foreground = power switch
@@ -249,14 +243,15 @@ public sealed partial class MainWindow
             var warning = _actionWarning || error is not null || needsConfirmation || HasUnconfirmedOperation;
             var message = _localBusy ? _actionMessage ?? "操作进行中，请等待…"
                 : _snapshotError is not null ? "无法加载最新状态，请稍后重试。"
-                : needsConfirmation ? "连接已变化，请在设置中重新确认绑定。"
+                : needsConfirmation ? "连接已变化, 请在下方重新确认显示器。"
                 : error is not null ? UiText.BriefError(error)
                 : snapshot?.Busy == true ? "控制器正在处理操作，请等待完成。"
                 : HasUnconfirmedOperation ? UiText.Operation(_lastOperation!, simulation)
                 : _actionMessage ?? (snapshot is null ? "正在加载本机已保存的状态，不扫描硬件…"
                     : binding is null ? "先发现并选择一台显示器，再绑定。未绑定前不会发送开关命令。"
-                    : "连接变化后请重新确认绑定；未知时先刷新状态。");
+                    : "");
             _status.Text = message;
+            _statusBox.Visibility = string.IsNullOrWhiteSpace(message) ? Visibility.Collapsed : Visibility.Visible;
             _statusBox.Background = new SolidColorBrush(warning ? Color.FromRgb(255, 244, 224) : Color.FromRgb(234, 240, 246));
             _details.Text = string.Join("\n", new[] { _actionDetails, error is null ? null : $"当前错误代码：{error}\n{UiText.Error(error)}" });
             _detailsSection.Visibility = string.IsNullOrWhiteSpace(_details.Text) ? Visibility.Collapsed : Visibility.Visible;
@@ -280,8 +275,8 @@ public sealed partial class MainWindow
         foreach (var candidate in discovery.Candidates)
         {
             var label = new StackPanel { Margin = new Thickness(4) };
-            label.Children.Add(Text($"{candidate.Name} · {candidate.Profile}", weight: FontWeights.SemiBold));
-            label.Children.Add(Text($"目标：{candidate.TargetKey}", 12, margin: new Thickness(0, 3, 0, 0)));
+            label.Children.Add(Text(candidate.Name, weight: FontWeights.SemiBold));
+            label.ToolTip = $"{candidate.Profile}\n目标: {candidate.TargetKey}";
             _candidates.Items.Add(new ListBoxItem { Content = label, Tag = candidate, HorizontalContentAlignment = HorizontalAlignment.Stretch });
         }
         _candidates.SelectedIndex = discovery.Candidates.Count == 1 ? 0 : -1;

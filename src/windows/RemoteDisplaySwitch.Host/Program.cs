@@ -166,7 +166,13 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
     {
         try { File.AppendAllText(Path.Combine(options.DataDirectory, "host.log"), $"{DateTimeOffset.UtcNow:O} {exception.GetType().Name}{Environment.NewLine}"); } catch { }
     }
-    private void ShowSettings() { if (_window is null || _exiting) return; _window.Show(); _window.Activate(); }
+    private void ShowSettings() { if (_window is null || _exiting) return; BringToFront(_window); }
+    private static void BringToFront(Window window)
+    {
+        window.Show();
+        if (window.WindowState == WindowState.Minimized) SystemCommands.RestoreWindow(window);
+        window.Activate();
+    }
     private void ShowRemoteSettings()
     {
         if (_remote is null) { MessageBox.Show("远程身份存储未能初始化，请检查本程序诊断。", "RemoteDisplaySwitch"); return; }
@@ -175,7 +181,7 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             _remoteWindow = new RemoteWindow(_remote);
             _remoteWindow.Closed += (_, _) => _remoteWindow = null;
         }
-        _remoteWindow.Show(); _remoteWindow.Activate();
+        BringToFront(_remoteWindow);
     }
     private async Task TrayRefreshAsync()
     {
