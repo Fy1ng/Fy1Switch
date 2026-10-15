@@ -116,7 +116,7 @@ Windows 回 `RelayResponse { id, statusCode, reply: RemoteReply, pair: null, err
 - 入口在认证前使用真实 TCP peer IP 固定一分钟窗口限流，并有 `min(设备数 × requestsPerMinute, 6000)` 的全局每分钟上限；无 token 作为限流 key，无请求等待队列。代理后的用户共享代理 IP 额度，应在代理另加按客户端来源的限流。
 - 本实现不处理/信任任何 Forwarded/X-Forwarded-*，即使环境开启 ASP.NET Core 转发头自动处理，也将其禁用。不要靠客户端声称的 https 判断安全，TLS 与网络访问控制是反代部署责任。若未来需要真实客户端 IP，必须先明确配置可信代理地址/网段，不能直接信任全部来源。
 
-## Linux Docker / Compose（手动步骤，未自动部署）
+## Linux Docker / Compose 部署
 
 仓库根目录作为构建 context：
 
@@ -163,3 +163,32 @@ Nginx 等替代代理需配置 HTTP/1.1 Upgrade/Connection 转发、请求 body 
 覆盖认证/设备隔离、第二连接 409、离线、deadline/超时、同 UUID/枚举透传、控制/配对回复、重放、断线重连、取消、16 pending、错误响应、HTTP 固定长度/chunked 超限、WebSocket 分片/超限及伪造转发头限流。
 
 验收边界：本地自动化不能替代 Linux 容器实际启动、公网 HTTPS/WSS、反代证书、真实 Windows/Android 互通或硬件业务验收。请以执行者最终报告区分已运行与未运行验证。
+
+## Huawei 实例部署记录 (2026-10-16)
+
+- SSH 目标为 `huawei`, 公网入口为 `https://screlay.fy1ng.cn`, Windows 连接使用同域名 WSS. DNS 已核对指向目标服务器, 公网 TLS 校验通过.
+- 应用源码版本为 `d297ddf`. 使用本机发布的 Linux x64 自包含程序构建运行时容器, 不在服务器安装 .NET SDK. 基础镜像固定到拉取后的 digest, 应用镜像为 `remote-display-switch-relay:d297ddf`; 完整摘要和压缩包 SHA-256 记录在服务器 release 目录的 `build-info.json`.
+- 单实例 Compose 位于 `/opt/remote-display-switch-relay/compose.yaml`, release 位于 `/opt/remote-display-switch-relay/releases/d297ddf`. 容器名为 `remote-display-switch-relay`, UID/GID 为 `1654:1654`, 根文件系统只读, 后端仅发布 `127.0.0.1:5080`.
+- Caddy 使用 `/etc/caddy/Caddyfile`, 负责公网 HTTPS/WSS 和证书自动续期. 未开启请求访问日志, 同时排除可能携带请求头的 HTTP 错误日志, 保留 TLS 和服务运行日志. Docker 和 Caddy 已设置开机启动, 容器使用 `unless-stopped`; 未通过重启服务器验证恢复.
+- 服务端凭据位于 `/etc/remote-display-switch-relay/relay.config.json`, 目录权限 `0750`, 文件权限 `0640`, 所有者 `root:1654`, 只读挂载进容器. 已按现有 Windows 实际设备 ID 配置一台设备, 分别生成两个角色的随机凭据, 未改动 Windows 的设备身份或现有手机授权.
+- 本机客户端填写说明及凭据存放在受 ACL 保护的 `.local/relay-deploy/client-setup.private.md`, 不纳入 Git. Windows 填 Windows Relay 凭据, Android 填独立的控制端凭据, 两端地址均为 `https://screlay.fy1ng.cn`. 配置客户端后再进行实际互通验收.
+
+维护命令:
+
+```sh
+ssh huawei 'cd /opt/remote-display-switch-relay && docker compose ps'
+ssh huawei 'systemctl status caddy --no-pager'
+ssh huawei 'cd /opt/remote-display-switch-relay && docker compose restart relay'
+```
+
+回滚基线位于 `/root/rds-relay-rollback-20261015T173517Z`. 回滚脚本先检查专用 Caddy 配置是否仍与本次部署一致, 防止停掉后来加入的其他站点:
+
+```sh
+ssh huawei '/opt/remote-display-switch-relay/rollback.sh --check'
+# 需要停止本次部署时, 明确执行:
+ssh huawei '/opt/remote-display-switch-relay/rollback.sh --apply'
+```
+
+该回滚停止本项目的容器和专用 Caddy 服务, 保留凭据、release 文件及安装的依赖包. 服务重启或回滚会中断连接和内存路由, 不会保留或重发离线命令.
+
+本次仅完成必要的部署核验: 非 root 只读容器运行, 回环后端未认证返回 401, 公网 HTTPS 证书校验及未认证 401, 使用 Windows 角色凭据完成一次空 WSS 握手并正常关闭, 控制端凭据通过认证后因缺少每手机 token 返回 400. 未转发任何控制命令, 未改客户端配置, 未验证真实 Windows/Android 跨网控制或硬件开关.
