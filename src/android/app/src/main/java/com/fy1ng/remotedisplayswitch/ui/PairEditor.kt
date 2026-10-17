@@ -2,6 +2,7 @@ package com.fy1ng.remotedisplayswitch.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -38,10 +39,25 @@ object PairingInput {
     }
 }
 
+/** One automatic attempt per target/code input. Failures require an edit or an explicit retry. */
+internal class ShortCodeSubmission {
+    private var lastInput: Pair<String, String>? = null
+
+    fun edit() { lastInput = null }
+
+    fun claim(target: String, code: String): Boolean {
+        if (!ShortCodeProtocol.validCode(code)) return false
+        val input = target to code
+        if (lastInput == input) return false
+        lastInput = input
+        return true
+    }
+}
+
 @Composable
 fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolean, onPaired: () -> Unit) {
     var bundle by remember { mutableStateOf("") }
-    var clientName by remember { mutableStateOf("Android 手机") }
+    var clientName by remember { mutableStateOf(Build.MODEL.orEmpty().ifBlank { "Android 手机" }.take(80)) }
     var nearby by remember { mutableStateOf(false) }
     var advanced by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -53,6 +69,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
     val lanState by lan.state.collectAsState()
     var selected by remember { mutableStateOf<NearbyComputer?>(null) }
     var shortCode by remember { mutableStateOf("") }
+    val submissions = remember { ShortCodeSubmission() }
+    fun targetKey(computer: NearbyComputer) = "${computer.sessionId}/${computer.host.hostAddress}/${computer.port}"
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lanEnabled = nearby && bundle.isBlank() && !scanning && !qrPairing && (!busy || lanState.busy)
     DisposableEffect(lan, lifecycle, lanEnabled) {
@@ -74,17 +92,31 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
         }
     }
     val blocked = busy || scanning || qrPairing || lanState.busy
+    LaunchedEffect(lanState.computers) {
+        val current = selected
+        if (current != null && lanState.computers.none { targetKey(it) == targetKey(current) }) {
+            selected = null
+            shortCode = ""
+            submissions.edit()
+        }
+        if (selected == null && lanState.computers.size == 1) selected = lanState.computers.single()
+    }
+    fun submitCode(computer: NearbyComputer, retry: Boolean = false) {
+        if (blocked || clientName.isBlank() || lanState.computers.none { targetKey(it) == targetKey(computer) }) return
+        if (retry) submissions.edit()
+        if (submissions.claim(targetKey(computer), shortCode)) lan.connect(computer, shortCode, clientName)
+    }
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         scanning = false
         if (result.contents == null) {
-            message = "已取消扫码. 可重新扫描或选择其他配对方式."
+            message = "已取消扫码。可重新扫描或选择其他配对方式。"
         } else {
             try {
                 bundle = PairingInput.validate(result.contents)
-                message = "已读取配对信息. 请确认二维码来自你信任的电脑."
+                message = "已读取配对信息。请确认二维码来自你信任的电脑。"
             } catch (_: Exception) {
                 bundle = ""
-                message = "二维码无效或已过期. 请在电脑重新生成."
+                message = "二维码无效或已过期。请在电脑重新生成。"
             }
         }
     }
@@ -103,13 +135,13 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                 .setCaptureActivity(PairCaptureActivity::class.java))
         } catch (_: Exception) {
             scanning = false
-            message = "无法打开相机. 可选择下方的其他配对方式."
+            message = "无法打开相机。可选择下方的其他配对方式。"
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) launchScan() else {
             scanning = false
-            message = "未获得相机权限. 可在系统设置中允许相机, 或选择其他配对方式."
+            message = "未获得相机权限。可在系统设置中允许相机，或选择其他配对方式。"
         }
     }
     val confirmBundle: () -> Unit = {
@@ -124,7 +156,7 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                 val parsed = try {
                     Protocol.pairBundle(PairingInput.validate(submitted), Instant.now())
                 } catch (_: Exception) {
-                    message = "配对信息无效或已过期. 请在电脑重新获取."
+                    message = "配对信息无效或已过期。请在电脑重新获取。"
                     return@launch
                 }
                 val previous = repository.state.value.devices.find { it.profile.deviceId == parsed.deviceId }?.profile
@@ -140,7 +172,7 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("扫描二维码", style = MaterialTheme.typography.titleLarge)
-                Text("在电脑打开\"连接手机\", 显示配对二维码.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("在电脑打开“连接手机”，显示配对二维码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = {
                     if (context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launchScan()
                     else {
@@ -152,7 +184,7 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                             permission.launch(Manifest.permission.CAMERA)
                         } catch (_: Exception) {
                             scanning = false
-                            message = "无法申请相机权限. 可选择其他配对方式."
+                            message = "无法申请相机权限。可选择其他配对方式。"
                         }
                     }
                 }, enabled = !blocked, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
@@ -162,7 +194,7 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                     message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     if (qrPairing) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Text("正在验证证书并配对...", style = MaterialTheme.typography.bodyMedium)
+                        Text("正在连接电脑…", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 if (!advanced && bundle.isNotBlank()) {
@@ -186,59 +218,58 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                     if (!nearby) lan.stop()
                 }, enabled = !scanning && !qrPairing && (!busy || lanState.busy),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text(if (nearby) "收起附近电脑与短码配对" else "其他方式: 附近电脑与短码配对")
+                    Text(if (nearby) "收起附近电脑与短码配对" else "其他方式：附近电脑与短码配对")
                 }
                 if (nearby) {
-                    Text("两端打开配对页, 并连接同一 Wi-Fi.", style = MaterialTheme.typography.bodyMedium)
-                    lanState.code?.let {
-                        Text("本手机短码", style = MaterialTheme.typography.labelLarge)
-                        Text(it, style = MaterialTheme.typography.headlineMedium)
-                        Text("剩余 ${lanState.seconds} 秒. 可在电脑输入这个短码.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text("在电脑打开“连接手机”，并让两端连接同一 Wi-Fi。输入电脑上显示的短码。", style = MaterialTheme.typography.bodyMedium)
                     if (lanState.busy) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Text("正在配对, 请保持本页在前台...")
+                        Text("正在配对，请保持本页在前台…")
                     }
                     lanState.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     if (lanState.computers.isNotEmpty()) {
                         HorizontalDivider()
                         Text("选择电脑", style = MaterialTheme.typography.titleSmall)
                         lanState.computers.forEach { computer ->
-                            OutlinedButton(onClick = { selected = computer; shortCode = "" }, enabled = !blocked,
+                            OutlinedButton(onClick = { selected = computer; shortCode = ""; submissions.edit() }, enabled = !blocked,
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                                Text(computer.name.filterNot(Char::isISOControl))
+                                Text(computer.name.filterNot(Char::isISOControl) + if (selected?.let(::targetKey) == targetKey(computer)) "（已选择）" else "")
                             }
                         }
                     } else if (!lanState.busy && lanState.message == null) {
-                        Text("尚未发现电脑. 请确认电脑已打开配对页.",
+                        Text("尚未发现电脑。请确认电脑已打开“连接手机”。",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     selected?.let { computer ->
+                        OutlinedTextField(value = clientName, onValueChange = { if (it.length <= 80) clientName = it },
+                            label = { Text("本手机名称") }, supportingText = { Text("配对后显示在电脑上") },
+                            enabled = !blocked, singleLine = true, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(value = shortCode,
-                            onValueChange = { if (it.length <= 6 && it.all { digit -> digit in '0'..'9' }) shortCode = it },
+                            onValueChange = {
+                                if (it.length <= 6 && it.all { digit -> digit in '0'..'9' } && it != shortCode) {
+                                    shortCode = it
+                                    submissions.edit()
+                                    if (it.length == 6) submitCode(computer)
+                                }
+                            },
                             label = { Text("电脑上的六位短码") },
-                            supportingText = { Text("请核对 ${computer.name.filterNot(Char::isISOControl)} 上显示的短码.") },
-                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            visualTransformation = PasswordVisualTransformation(), enabled = !blocked, modifier = Modifier.fillMaxWidth())
-                        Button(onClick = {
-                            val submitted = shortCode
-                            shortCode = ""
-                            selected = null
-                            lan.connect(computer, submitted)
-                        }, enabled = !blocked && ShortCodeProtocol.validCode(shortCode) &&
+                            supportingText = { Text("输入满六位后自动连接。请核对 ${computer.name.filterNot(Char::isISOControl)} 上显示的短码。") },
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = !blocked, modifier = Modifier.fillMaxWidth())
+                        Button(onClick = { submitCode(computer, retry = true) }, enabled = !blocked && clientName.isNotBlank() && ShortCodeProtocol.validCode(shortCode) &&
                             lanState.computers.any { it.sessionId == computer.sessionId && it.host == computer.host && it.port == computer.port },
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text("验证短码并配对")
+                            Text("重新尝试连接")
                         }
                     }
                     TextButton(onClick = {
                         selected = null
                         shortCode = ""
+                        submissions.edit()
                         lan.stop()
                         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) lan.start()
                     }, enabled = !blocked, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text("重新查找并更新短码")
+                        Text("重新查找电脑")
                     }
                 }
             }
@@ -258,7 +289,7 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                     Text(if (advanced) "收起高级备用方式" else "高级备用方式")
                 }
                 if (advanced) {
-                    Text("粘贴电脑导出的配对 JSON. 配对信息短时有效, 请勿转发.",
+                    Text("粘贴电脑导出的配对 JSON。配对信息短时有效，请勿转发。",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(value = bundle, onValueChange = {
                         if (it.length <= Protocol.MAX_BODY) {
@@ -272,7 +303,7 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                     message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     if (qrPairing) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Text("正在验证证书并配对...", style = MaterialTheme.typography.bodyMedium)
+                        Text("正在连接电脑…", style = MaterialTheme.typography.bodyMedium)
                     }
                     if (bundle.isNotBlank()) {
                         PairConfirmation(clientName, { clientName = it }, !blocked, confirmBundle) { bundle = "" }
@@ -293,7 +324,7 @@ private fun PairConfirmation(
         enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth())
     Button(onClick = onConfirm, enabled = enabled && clientName.isNotBlank(),
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-        Text("验证证书并配对")
+        Text("确认连接")
     }
     TextButton(onClick = onCancel, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Text("清除配对信息")

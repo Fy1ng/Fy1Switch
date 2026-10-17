@@ -4,6 +4,8 @@ Approved 2026-10-06: six decimal digits, original UI/QR direction retained. This
 
 ## Scope and roles
 
+UI update (2026-10-18): Windows displays the code and Android accepts it in “添加电脑”. The reverse entry has been removed from both interfaces; the wire protocol and existing credentials remain compatible. Android shows input digits and submits one attempt when six digits are entered. Failure requires editing or an explicit retry. The open Windows window renews natural expiry only, preserving the shared process admission limit; it never renews through an active handshake, failed authentication, exhausted attempts, stop, close or lock.
+
 mDNS DNS-SD service type _rds-pair._tcp; TXT v=1, role=windows|android, sid=lowercase UUID. Service display name is untrusted. Advertise only while pairing page/session is active. Discovery never establishes trust. Windows chooses a LAN interface; Android is foreground only, closes on background/lock/page exit. No bearer, code or certificate pin in mDNS. Both directions use TCP, port from DNS-SD, same protocol. Showing-code device is SRP server; input-code device is SRP client. Only opposite platforms accepted. Codes 000000..999999 uniformly random, preserving zeros; valid at most 5 minutes, successful SRP proof consumes the code. Five total admitted handshakes per code, not per IP. In-memory device-wide limit 10 admissions/10 minutes survives code renewal within the process, outbound attempts use same limit. At most one active handshake; connect/handshake 15 seconds, total pairing 45 seconds; frames <=16KiB UTF-8 JSON newline terminated. No network or hardware control commands accepted here.
 
 ## Cryptography and exact wire

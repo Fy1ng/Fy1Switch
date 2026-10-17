@@ -31,18 +31,56 @@ public sealed partial class MainWindow : Window
     private string? _snapshotError;
     private bool _actionWarning;
     private bool _initialDiscoveryChecked;
+    private bool _startupSaving;
+    private bool _hasHiddenToTray;
+    private readonly DispatcherTimer _feedbackTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+    private readonly DispatcherTimer _relativeTimeTimer = new() { Interval = TimeSpan.FromMinutes(1) };
 
     public MainWindow(IDesktopController controller)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _lifetimeToken = _lifetime.Token;
         InitializeView();
+        _feedbackTimer.Tick += (_, _) =>
+        {
+            _feedbackTimer.Stop();
+            if (!_actionWarning && !_localBusy)
+            {
+                _actionMessage = null;
+                Render();
+            }
+        };
+        _relativeTimeTimer.Tick += (_, _) => { if (IsVisible) Render(); };
+        _relativeTimeTimer.Start();
         _controller.Changed += ControllerChanged;
         Loaded += WindowLoaded;
         Render();
     }
 
     public event Action? RemoteSettingsRequested;
+    internal event Action? PresentationChanged;
+    internal event Action? FirstHiddenToTray;
+    internal DisplayPower ConfirmedPower => PrimaryPower;
+    internal bool CanRefreshFromTray => _snapshotAvailable && _snapshot?.Binding is { NeedsConfirmation: false } &&
+        _snapshot.ErrorCode != "topology_changed" && !IsBusy;
+    internal bool CanControlFromTray => CanRefreshFromTray && PrimaryPower != DisplayPower.Unknown && !HasUnconfirmedOperation;
+    internal void ObserveOperation(OperationRecord operation)
+    {
+        if (!_closed && _snapshot?.Binding?.TargetId == operation.TargetId)
+        {
+            _lastOperation = operation;
+            SetOperationMessage(operation);
+        }
+    }
+    internal string TrayStatus => !_snapshotAvailable ? "显示器状态待确认"
+        : _snapshot?.Binding is null ? "尚未绑定显示器"
+        : IsBusy ? "正在处理显示器操作…"
+        : PrimaryPower switch
+        {
+            DisplayPower.On => "显示器已开启",
+            DisplayPower.Off => "显示器已关闭",
+            _ => "显示器状态待确认"
+        };
 
     public Task RefreshViewAsync()
     {
@@ -70,12 +108,19 @@ public sealed partial class MainWindow : Window
         {
             eventArgs.Cancel = true;
             Hide();
+            if (!_hasHiddenToTray)
+            {
+                _hasHiddenToTray = true;
+                FirstHiddenToTray?.Invoke();
+            }
         }
     }
 
     protected override void OnClosed(EventArgs eventArgs)
     {
         _closed = true;
+        _feedbackTimer.Stop();
+        _relativeTimeTimer.Stop();
         _controller.Changed -= ControllerChanged;
         Loaded -= WindowLoaded;
         _lifetime.Cancel();
@@ -150,6 +195,7 @@ public sealed partial class MainWindow : Window
     {
         if (_closed)
             return;
+        var operationWasUnconfirmed = HasUnconfirmedOperation;
         var bindingChanged = _snapshot?.Binding?.TargetId != snapshot.Binding?.TargetId;
         var newlyInvalidated =
             (snapshot.Binding?.NeedsConfirmation == true && _snapshot?.Binding?.NeedsConfirmation != true) ||
@@ -168,17 +214,26 @@ public sealed partial class MainWindow : Window
         _snapshotAvailable = true;
         _snapshotError = null;
         _snapshotVersion++;
+        if (operationWasUnconfirmed && !HasUnconfirmedOperation)
+        {
+            _actionMessage = null;
+            _actionWarning = false;
+            _feedbackTimer.Stop();
+        }
         Render();
     }
 
     private bool IsBusy => _localBusy || _snapshot?.Busy == true;
 
-    private bool HasUnconfirmedOperation => _lastOperation?.Outcome is
-        OperationOutcome.Pending or OperationOutcome.AcceptedUnconfirmed or OperationOutcome.Unknown;
+    private bool HasUnconfirmedOperation => _lastOperation is { } operation &&
+        (operation.Outcome == OperationOutcome.Pending ||
+         operation.Outcome is OperationOutcome.AcceptedUnconfirmed or OperationOutcome.Unknown &&
+         !(_snapshotAvailable && _snapshot is { ErrorCode: null, Binding.NeedsConfirmation: false } snapshot &&
+           snapshot.Binding.TargetId == operation.TargetId && snapshot.Observation.ObservedAt > operation.UpdatedAt &&
+           snapshot.Observation.State != DisplayPower.Unknown && UiText.IsTrusted(snapshot.Observation, snapshot.Simulation || _controller.Simulation)));
 
     private DisplayPower PrimaryPower => _snapshotAvailable && _snapshot is { ErrorCode: null, Binding.NeedsConfirmation: false } snapshot &&
-        (!HasUnconfirmedOperation || (_lastOperation!.Outcome != OperationOutcome.Pending &&
-            snapshot.Observation.ObservedAt > _lastOperation.UpdatedAt)) &&
+        !HasUnconfirmedOperation &&
         UiText.IsTrusted(snapshot.Observation, snapshot.Simulation || _controller.Simulation)
             ? snapshot.Observation.State : DisplayPower.Unknown;
 
@@ -227,6 +282,7 @@ public sealed partial class MainWindow : Window
         if (_closed || IsBusy)
             return;
         _localBusy = true;
+        _feedbackTimer.Stop();
         _actionMessage = message;
         _actionDetails = null;
         _actionWarning = false;
@@ -258,6 +314,7 @@ public sealed partial class MainWindow : Window
                 {
                     _localBusy = false;
                     Render();
+                    StartFeedbackTimer();
                 }
             }
         }
@@ -273,8 +330,8 @@ public sealed partial class MainWindow : Window
         PopulateCandidates(discovery);
         SetMessage(discovery.Candidates.Count == 0
             ? "未发现可绑定的显示器。请检查连接和当前配置，再手动重扫。"
-            : discovery.Candidates.Count == 1 ? "已选中唯一候选。请确认设备后点击“绑定所选”；不会自动绑定或开关。"
-            : "请选择显示器，再点击“绑定所选”。不会自动绑定或开关。");
+            : discovery.Candidates.Count == 1 ? "已选中显示器，请确认后点击“绑定所选”。"
+            : "请选择显示器，再点击“绑定所选”。", warning: discovery.Candidates.Count == 0);
     });
 
     private Task BindSelectedAsync()
@@ -292,7 +349,7 @@ public sealed partial class MainWindow : Window
             if (snapshot.Binding is { NeedsConfirmation: false } && !snapshot.Busy && snapshot.ErrorCode is null)
                 ApplySnapshot(await _controller.RefreshAsync(cancellationToken));
             SetMessage(snapshot.Binding?.NeedsConfirmation == false
-                ? "绑定已保存，未发送开关命令。状态以读回记录为准。"
+                ? "已绑定显示器。"
                 : "绑定尚未确认。请查看当前状态，重新发现并确认目标。", warning: snapshot.Binding?.NeedsConfirmation != false);
         });
     }
@@ -309,7 +366,7 @@ public sealed partial class MainWindow : Window
             : "绑定仍然存在，请查看当前状态。", warning: snapshot.Binding is not null);
     });
 
-    private Task RefreshHardwareAsync() => RunActionAsync("正在主动读回显示器状态…", async cancellationToken =>
+    private Task RefreshHardwareAsync() => RunActionAsync("正在刷新显示器状态…", async cancellationToken =>
     {
         var snapshot = await _controller.RefreshAsync(cancellationToken);
         ApplySnapshot(snapshot);
@@ -330,11 +387,11 @@ public sealed partial class MainWindow : Window
     private Task ExecuteAsync(PowerIntent intent)
     {
         if (!_snapshotAvailable || _snapshot?.Binding is not { NeedsConfirmation: false } binding ||
-            _snapshot.ErrorCode == "topology_changed" || _lastOperation?.Outcome == OperationOutcome.Pending)
+            _snapshot.ErrorCode == "topology_changed" || HasUnconfirmedOperation)
             return Task.CompletedTask;
         var targetId = binding.TargetId;
         var operationId = Guid.NewGuid();
-        return RunActionAsync($"正在请求{UiText.Intent(intent)}，等待控制结果…", async cancellationToken =>
+        return RunActionAsync($"正在{UiText.Intent(intent)}显示器…", async cancellationToken =>
         {
             var operation = new OperationRecord(operationId, targetId, intent, intent,
                 OperationOutcome.Pending, null, null, DateTimeOffset.UtcNow);
@@ -361,29 +418,53 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private void SetOperationMessage(OperationRecord operation) =>
-        SetMessage(UiText.Operation(operation, _snapshot?.Simulation == true || _controller.Simulation),
+    private void SetOperationMessage(OperationRecord operation)
+    {
+        var simulation = _snapshot?.Simulation == true || _controller.Simulation;
+        var confirmed = operation.Outcome == OperationOutcome.Confirmed && operation.Observation is { } observation &&
+            observation.State is DisplayPower.On or DisplayPower.Off && UiText.IsTrusted(observation, simulation);
+        SetMessage(confirmed
+                ? operation.Observation!.State switch
+                {
+                    DisplayPower.On => "显示器已开启。",
+                    DisplayPower.Off => "显示器已关闭。",
+                    _ => "显示器状态待确认，请刷新。"
+                }
+                : operation.Outcome == OperationOutcome.Confirmed ? "显示器状态待确认，请刷新。" : UiText.Operation(operation, simulation),
             $"操作 ID：{operation.OperationId}\n结果：{operation.Outcome}" +
+            $"\n{UiText.Operation(operation, simulation)}" +
             (operation.ErrorCode is null ? string.Empty : $"\n错误代码：{operation.ErrorCode}"),
-            operation.Outcome != OperationOutcome.Confirmed);
+            !confirmed);
+    }
 
     private async void StartupClicked(object sender, RoutedEventArgs eventArgs)
     {
         if (_rendering || _closed)
             return;
         var enabled = _startup.IsChecked == true;
-        Render();
-        if (!_snapshotAvailable)
-            return;
-        await RunActionAsync("正在保存登录自动启动设置…", async cancellationToken =>
+        if (!_snapshotAvailable || IsBusy)
         {
-            var snapshot = await _controller.SetStartupAsync(enabled, cancellationToken);
-            ApplySnapshot(snapshot);
-            if (!_closed)
-                SetMessage(snapshot.StartupEnabled == enabled
-                    ? (enabled ? "已开启登录自动启动。" : "已关闭登录自动启动。")
-                    : "自动启动设置未生效，请重试或查看当前状态。", warning: snapshot.StartupEnabled != enabled);
-        });
+            Render();
+            return;
+        }
+        _startupSaving = true;
+        try
+        {
+            await RunActionAsync("正在保存自动启动设置…", async cancellationToken =>
+            {
+                var snapshot = await _controller.SetStartupAsync(enabled, cancellationToken);
+                ApplySnapshot(snapshot);
+                if (!_closed)
+                    SetMessage(snapshot.StartupEnabled == enabled
+                        ? (enabled ? "已开启登录自动启动。" : "已关闭登录自动启动。")
+                        : "自动启动设置未生效，请重试。", warning: snapshot.StartupEnabled != enabled);
+            });
+        }
+        finally
+        {
+            _startupSaving = false;
+            Render();
+        }
     }
 
     private void SetMessage(string message, string? details = null, bool warning = false)
@@ -393,7 +474,15 @@ public sealed partial class MainWindow : Window
         _actionMessage = message;
         _actionDetails = details;
         _actionWarning = warning;
+        _feedbackTimer.Stop();
+        StartFeedbackTimer();
         Render();
+    }
+
+    private void StartFeedbackTimer()
+    {
+        if (!_closed && !_localBusy && !_actionWarning && !string.IsNullOrEmpty(_actionMessage))
+            _feedbackTimer.Start();
     }
 
     private static string ErrorCode(Exception exception) => exception switch

@@ -27,10 +27,12 @@ internal static class WindowFrame
             UseAeroCaptionButtons = false,
         });
 
-        var root = new Grid { Background = window.Background };
+        var root = new Grid();
+        root.SetResourceReference(Panel.BackgroundProperty, DesktopTheme.WindowBrush);
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(44) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        var caption = new DockPanel { LastChildFill = true, Background = window.Background };
+        var caption = new DockPanel { LastChildFill = true };
+        caption.SetResourceReference(Panel.BackgroundProperty, DesktopTheme.WindowBrush);
         var controls = new StackPanel { Orientation = Orientation.Horizontal };
         DockPanel.SetDock(controls, Dock.Right);
         caption.Children.Add(controls);
@@ -40,9 +42,9 @@ internal static class WindowFrame
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(46, 57, 75)),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
+        title.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.ForegroundBrush);
         title.SetBinding(TextBlock.TextProperty, new Binding(nameof(Window.Title)) { Source = window });
         caption.Children.Add(title);
         root.Children.Add(caption);
@@ -53,7 +55,7 @@ internal static class WindowFrame
             <Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="Button">
               <Setter Property="Background" Value="Transparent"/>
-              <Setter Property="Foreground" Value="#344054"/>
+              <Setter Property="Foreground" Value="{DynamicResource Rds.ForegroundBrush}"/>
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="Button">
@@ -62,13 +64,13 @@ internal static class WindowFrame
                     </Border>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
-                        <Setter TargetName="Surface" Property="Background" Value="#E4E9F0"/>
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Rds.SubtleBrush}"/>
                       </Trigger>
                       <Trigger Property="IsPressed" Value="True">
-                        <Setter TargetName="Surface" Property="Background" Value="#CDD7E3"/>
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Rds.BorderBrush}"/>
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Surface" Property="BorderBrush" Value="#3974D2"/>
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Rds.AccentBrush}"/>
                         <Setter TargetName="Surface" Property="BorderThickness" Value="2"/>
                       </Trigger>
                       <Trigger Property="Tag" Value="close">
@@ -79,8 +81,8 @@ internal static class WindowFrame
                           <Condition Property="Tag" Value="close"/>
                           <Condition Property="IsMouseOver" Value="True"/>
                         </MultiTrigger.Conditions>
-                        <Setter TargetName="Surface" Property="Background" Value="#C42B1C"/>
-                        <Setter Property="Foreground" Value="White"/>
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Rds.AccentBrush}"/>
+                        <Setter Property="Foreground" Value="{DynamicResource Rds.AccentForegroundBrush}"/>
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -121,12 +123,12 @@ internal static class WindowFrame
         };
         var frame = new Border
         {
-            BorderBrush = new SolidColorBrush(Color.FromRgb(198, 207, 219)),
             CornerRadius = new CornerRadius(8),
-            Background = window.Background,
             Child = root,
             SnapsToDevicePixels = true,
         };
+        frame.SetResourceReference(Border.BackgroundProperty, DesktopTheme.WindowBrush);
+        frame.SetResourceReference(Border.BorderBrushProperty, DesktopTheme.BorderBrush);
         void UpdateBorder()
         {
             var dpi = VisualTreeHelper.GetDpi(window);
@@ -141,11 +143,72 @@ internal static class WindowFrame
             if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
             {
                 var noBorder = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE
-                _ = DwmSetWindowAttribute(new WindowInteropHelper(window).Handle, 34, ref noBorder, sizeof(int));
+                var handle = new WindowInteropHelper(window).Handle;
+                _ = DwmSetWindowAttribute(handle, 34, ref noBorder, sizeof(int));
+                EnableSnapLayouts(window, maximize, handle);
             }
         };
         return frame;
     }
+
+    private static void EnableSnapLayouts(Window window, Button maximize, IntPtr handle)
+    {
+        // Return the native maximize hit-test before WPF's WindowChrome consumes it.
+        // DefSubclassProc continues receiving non-client hover messages, allowing the
+        // Windows 11 shell to display Snap Layouts over our custom caption button.
+        var pressed = false;
+        bool IsOver(IntPtr point)
+        {
+            if (!maximize.IsVisible || !maximize.IsEnabled || window.WindowState == WindowState.Minimized ||
+                PresentationSource.FromVisual(maximize) is null)
+                return false;
+            var value = point.ToInt64();
+            var screen = new Point(unchecked((short)(value & 0xffff)), unchecked((short)((value >> 16) & 0xffff)));
+            return new Rect(new Point(), maximize.RenderSize).Contains(maximize.PointFromScreen(screen));
+        }
+        SubclassProc procedure = (hwnd, message, wParam, lParam, _, _) =>
+        {
+            if (message == 0x0084 && IsOver(lParam)) // WM_NCHITTEST
+                return new IntPtr(9); // HTMAXBUTTON
+            if (message is 0x00A1 or 0x00A3 && wParam.ToInt32() == 9) // WM_NCLBUTTONDOWN / DBLCLK
+            {
+                pressed = true;
+                return IntPtr.Zero;
+            }
+            if (message == 0x00A2) // WM_NCLBUTTONUP
+            {
+                var activate = pressed && IsOver(lParam);
+                pressed = false;
+                if (activate)
+                {
+                    window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+                    return IntPtr.Zero;
+                }
+            }
+            if (message is 0x0008 or 0x0215) pressed = false; // focus/capture lost
+            return DefSubclassProc(hwnd, message, wParam, lParam);
+        };
+        if (!SetWindowSubclass(handle, procedure, new UIntPtr(1), UIntPtr.Zero))
+            return;
+        window.Closed += (_, _) =>
+        {
+            _ = RemoveWindowSubclass(handle, procedure, new UIntPtr(1));
+            GC.KeepAlive(procedure);
+        };
+    }
+
+    private delegate IntPtr SubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowSubclass(IntPtr window, SubclassProc procedure, UIntPtr id, UIntPtr data);
+
+    [DllImport("comctl32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RemoveWindowSubclass(IntPtr window, SubclassProc procedure, UIntPtr id);
+
+    [DllImport("comctl32.dll")]
+    private static extern IntPtr DefSubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);

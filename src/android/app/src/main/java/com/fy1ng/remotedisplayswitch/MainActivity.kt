@@ -22,20 +22,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         showTileGuide = savedInstanceState?.getBoolean("tileGuide") ?: false
-        tileMessage = savedInstanceState?.getString("tileMessage")
         setContent {
             RemoteDisplayScreen(app.repository, app.scope, onAddTile = ::addTile,
                 tileMessage = tileMessage, showTileGuide = showTileGuide,
-                onDismissTileGuide = { showTileGuide = false }, onPaired = ::offerTile)
+                onDismissTileGuide = { showTileGuide = false }, onPaired = ::offerTile,
+                onTileMessageConsumed = { if (tileMessage == it) tileMessage = null },
+                onPairingVisibilityChanged = { pairing ->
+                    if (pairing) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                })
         }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("tileGuide", showTileGuide)
-        outState.putString("tileMessage", tileMessage)
         super.onSaveInstanceState(outState)
     }
 

@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun DeviceSettingsScreen(
     device: DeviceState, state: AppState, repository: DeviceRepository, scope: CoroutineScope,
-    onBack: () -> Unit, onPair: () -> Unit, onAddTile: () -> Unit, tileMessage: String?,
+    onBack: () -> Unit, onPair: () -> Unit, onAddTile: () -> Unit,
     onDirtyChanged: (Boolean) -> Unit,
 ) {
     val profile = device.profile
@@ -48,7 +48,6 @@ internal fun DeviceSettingsScreen(
                 FilledTonalButton(onClick = onAddTile, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
                     AppIcon(AppIconType.Add); Spacer(Modifier.width(8.dp)); Text("添加快捷开关")
                 }
-                tileMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
         OutlinedCard(shape = RoundedCornerShape(20.dp)) {
@@ -60,16 +59,16 @@ internal fun DeviceSettingsScreen(
                     Text(if (advanced) "收起" else "展开", style = MaterialTheme.typography.labelMedium)
                 }
                 if (advanced) {
-                    Text("自动按直连, Tailscale, Relay 顺序连接", style = MaterialTheme.typography.bodySmall,
+                    Text("自动按直连，Tailscale，Relay 顺序连接", style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("直连地址", style = MaterialTheme.typography.labelLarge)
                     Text(profile.endpoint, style = MaterialTheme.typography.bodySmall)
-                    Text("直连地址或证书变化时, 请重新配对", style = MaterialTheme.typography.bodySmall)
+                    Text("直连地址或证书变化时，请重新配对", style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider()
                     Text("Tailscale 备用直连", style = MaterialTheme.typography.titleSmall)
                     OutlinedTextField(value = tailscale, onValueChange = {
                         if (it.length <= 2048) { tailscale = it; if (it.isBlank()) autoLearn = false }
-                    }, label = { Text("HTTPS 地址 (可选)") }, singleLine = true, enabled = !state.busy,
+                    }, label = { Text("HTTPS 地址（可选）") }, singleLine = true, enabled = !state.busy,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("从电脑自动更新地址", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -79,14 +78,14 @@ internal fun DeviceSettingsScreen(
                     HorizontalDivider()
                     Text("Relay 中继", style = MaterialTheme.typography.titleSmall)
                     OutlinedTextField(value = endpoint, onValueChange = { if (it.length <= 2048) endpoint = it },
-                        label = { Text("Relay HTTPS 地址 (可选)") }, singleLine = true, enabled = !state.busy,
+                        label = { Text("Relay HTTPS 地址（可选）") }, singleLine = true, enabled = !state.busy,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = token, onValueChange = { if (it.length <= 4096) token = it },
                         label = { Text("控制端凭据") },
                         placeholder = { Text(if (profile.relay != null) "留空保留已存凭据" else "填写 Relay 的控制端凭据") },
                         visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !state.busy,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
-                    Text("只配置可信中继。更换地址需重新填写凭据, 清空地址并保存会停用中继。",
+                    Text("只配置可信中继。更换地址需重新填写凭据，清空地址并保存会停用中继。",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Text(if (profile.relay != null) "已配置中继" else "使用已配对的连接地址",
@@ -117,7 +116,7 @@ internal fun DeviceSettingsScreen(
             modifier = Modifier.fillMaxWidth()) { Text("移除此电脑") }
     }
     if (confirmRemoval) AlertDialog(
-        onDismissRequest = { confirmRemoval = false }, title = { Text("移除此电脑?") },
+        onDismissRequest = { confirmRemoval = false }, title = { Text("移除此电脑？") },
         text = { Text("删除本手机保存的配对和操作记录。电脑端授权仍需在 Windows 上撤销。") },
         confirmButton = { TextButton(onClick = {
             confirmRemoval = false

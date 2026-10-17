@@ -19,24 +19,24 @@ class HomePolicyTest {
         assertEquals("刷新状态", HomePolicy.action(state).label)
         assertTrue(HomePolicy.action(state).enabled)
         assertTrue(StatePolicy.canSet(state))
-        assertEquals("显示器状态未知", HomePolicy.status(state))
+        assertEquals("显示器状态待确认", HomePolicy.status(state))
     }
 
     @Test fun offlineNeverLooksOffOrSendsPowerCommand() {
         val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(connected = false, status = status(DisplayPower.Off)))) }
         assertNull(HomePolicy.action(state).intent)
         assertEquals("重新连接", HomePolicy.action(state).label)
-        assertEquals("离线 · 状态未知", HomePolicy.status(state))
+        assertEquals("显示器状态待确认", HomePolicy.status(state))
         assertFalse(StatePolicy.canSet(state))
     }
 
     @Test fun pendingUnknownAndAcceptedAreNotSuccess() {
         for (outcome in listOf(OperationOutcome.Pending, OperationOutcome.Unknown, OperationOutcome.AcceptedUnconfirmed)) {
             val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(operation = operation(outcome), requiresRefresh = true))) }
-            assertEquals("结果待确认", HomePolicy.status(state))
+            assertEquals("显示器状态待确认", HomePolicy.status(state))
             assertNull(HomePolicy.action(state).intent)
             assertTrue(HomePolicy.action(state).queryOperation)
-            assertEquals("查询操作结果", HomePolicy.action(state).label)
+            assertEquals("确认上次结果", HomePolicy.action(state).label)
             assertTrue(HomePolicy.action(state).enabled)
             assertFalse(StatePolicy.canSet(state))
         }
@@ -77,8 +77,15 @@ class HomePolicyTest {
         for (remote in listOf(status(DisplayPower.Off).copy(busy = true), status(DisplayPower.Off).copy(available = false))) {
             val next = state.copy(devices = listOf(state.selected!!.copy(status = remote)))
             assertNull(HomePolicy.action(next).intent)
-            assertTrue(HomePolicy.status(next).contains("未知"))
+            assertEquals("显示器状态待确认", HomePolicy.status(next))
             assertFalse(StatePolicy.canSet(next))
         }
+    }
+
+    @Test fun chooserConnectionLabelsOnlyClaimObservedConnection() {
+        val device = activeState().selected!!
+        assertEquals("最近连接成功", HomePolicy.connectionStatus(device))
+        assertEquals("连接状态待确认", HomePolicy.connectionStatus(device.copy(connected = false)))
+        assertEquals("最近连接失败", HomePolicy.connectionStatus(device.copy(connected = false, feedback = Feedback.Offline)))
     }
 }

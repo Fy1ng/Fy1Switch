@@ -77,6 +77,11 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
     private Task? _serverTask;
     private bool _exiting;
     private DispatcherTimer? _exitTimer;
+    private TrayIcons? _trayIcons;
+    private Forms.ToolStripItem? _trayRefresh;
+    private Forms.ToolStripItem? _trayOn;
+    private Forms.ToolStripItem? _trayOff;
+    private bool _trayBusy;
 
     protected override async void OnStartup(StartupEventArgs args)
     {
@@ -98,6 +103,8 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             _controller = new DesktopController(worker, new StartupRegistration(Environment.ProcessPath!, options.Simulation), options.DataDirectory, options.Simulation);
             _window = new MainWindow(_controller);
             _window.RemoteSettingsRequested += ShowRemoteSettings;
+            _window.PresentationChanged += UpdateTray;
+            _window.FirstHiddenToTray += () => _tray?.ShowBalloonTip(5000, "已最小化到托盘", "程序仍在运行。双击托盘图标可打开窗口；如需退出，请使用托盘菜单。", Forms.ToolTipIcon.Info);
             MainWindow = _window;
             if (options.PreviewPath is not null)
             {
@@ -132,14 +139,20 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             _ = WatchServerAsync(_serverTask);
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("打开设置", null, (_, _) => ShowSettings());
-            menu.Items.Add("手机配对与远程设置", null, (_, _) => ShowRemoteSettings());
-            menu.Items.Add("刷新状态", null, async (_, _) => await TrayRefreshAsync());
-            menu.Items.Add("开启显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.On));
-            menu.Items.Add("关闭显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.Off));
+            menu.Items.Add("连接手机", null, (_, _) => ShowRemoteSettings());
+            _trayRefresh = menu.Items.Add("刷新状态", null, async (_, _) => await TrayRefreshAsync());
+            _trayOn = menu.Items.Add("开启显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.On));
+            _trayOff = menu.Items.Add("关闭显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.Off));
             menu.Items.Add(new Forms.ToolStripSeparator());
             menu.Items.Add("退出", null, async (_, _) => await ExitAsync());
-            _tray = new Forms.NotifyIcon { Text = options.Simulation ? "RemoteDisplaySwitch · 模拟" : "RemoteDisplaySwitch", Icon = System.Drawing.SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
+            _trayIcons = new TrayIcons();
+            _tray = new Forms.NotifyIcon { Text = "RemoteDisplaySwitch", Icon = _trayIcons.For(DisplayPower.Unknown), ContextMenuStrip = menu, Visible = true };
             _tray.DoubleClick += (_, _) => ShowSettings();
+            _tray.BalloonTipClicked += (_, _) => ShowSettings();
+            menu.Opening += (_, _) => UpdateTray();
+            SystemEvents.UserPreferenceChanged += ThemeChanged;
+            await _window.RefreshViewAsync();
+            UpdateTray();
             SystemEvents.DisplaySettingsChanged += DisplayChanged;
             SystemEvents.PowerModeChanged += PowerChanged;
             if (!options.Background) _window.Show();
@@ -185,20 +198,79 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
     }
     private async Task TrayRefreshAsync()
     {
-        try { if (_controller is not null) await _controller.RefreshAsync(); }
-        catch { ShowSettings(); }
+        if (_controller is null || _trayBusy || _window?.CanRefreshFromTray != true) return;
+        _trayBusy = true;
+        UpdateTray();
+        try
+        {
+            var snapshot = await _controller.RefreshAsync();
+            if (snapshot.ErrorCode is { } error) TrayFailure(UiText.BriefError(error));
+            else if (!UiText.IsTrusted(snapshot.Observation, snapshot.Simulation) || snapshot.Observation.State == DisplayPower.Unknown)
+                TrayFailure("显示器状态待确认，请检查连接后刷新。");
+        }
+        catch (Exception exception) { TrayFailure(TrayError(exception)); }
+        finally
+        {
+            if (_window is not null) await _window.RefreshViewAsync();
+            _trayBusy = false;
+            UpdateTray();
+        }
     }
     private async Task TrayPowerAsync(PowerIntent intent)
     {
-        if (_controller is null) return;
+        if (_controller is null || _trayBusy || _window?.CanControlFromTray != true) return;
+        _trayBusy = true;
+        UpdateTray();
         try
         {
             var snapshot = await _controller.GetSnapshotAsync();
-            if (snapshot.Busy || snapshot.Binding is null || snapshot.Binding.NeedsConfirmation) { ShowSettings(); return; }
+            if (snapshot.Busy || snapshot.Binding is null || snapshot.Binding.NeedsConfirmation || snapshot.ErrorCode is not null ||
+                !UiText.IsTrusted(snapshot.Observation, snapshot.Simulation) || snapshot.Observation.State == DisplayPower.Unknown)
+            {
+                TrayFailure(snapshot.Binding is null ? "请先打开设置并绑定显示器。" : "显示器状态待确认，请先刷新。");
+                return;
+            }
             var result = await _controller.ExecuteAsync(snapshot.Binding.TargetId, intent, Guid.NewGuid());
-            if (result.Outcome != OperationOutcome.Confirmed) ShowSettings();
+            _window?.ObserveOperation(result);
+            if (result.Outcome != OperationOutcome.Confirmed)
+                TrayFailure(result.ErrorCode is { } error ? UiText.BriefError(error) : "暂时无法确认操作结果，请先刷新显示器状态。");
         }
-        catch { ShowSettings(); }
+        catch (Exception exception) { TrayFailure(TrayError(exception)); }
+        finally
+        {
+            if (_window is not null) await _window.RefreshViewAsync();
+            _trayBusy = false;
+            UpdateTray();
+        }
+    }
+    private void UpdateTray()
+    {
+        if (_tray is null || _trayIcons is null || _window is null || _exiting) return;
+        _tray.Icon = _trayIcons.For(_window.ConfirmedPower);
+        _tray.Text = "RemoteDisplaySwitch：" + (_trayBusy ? "正在处理…" : _window.TrayStatus) + (options.Simulation ? "（模拟）" : string.Empty);
+        if (_trayRefresh is not null) _trayRefresh.Enabled = !_trayBusy && _window.CanRefreshFromTray;
+        if (_trayOn is not null) _trayOn.Enabled = !_trayBusy && _window.CanControlFromTray && _window.ConfirmedPower != DisplayPower.On;
+        if (_trayOff is not null) _trayOff.Enabled = !_trayBusy && _window.CanControlFromTray && _window.ConfirmedPower != DisplayPower.Off;
+    }
+    private void TrayFailure(string reason) => _tray?.ShowBalloonTip(6000, "操作未完成", reason, Forms.ToolTipIcon.Warning);
+    private static string TrayError(Exception exception) => UiText.BriefError(exception switch
+    {
+        ControlException control => control.Code,
+        TimeoutException => "timeout",
+        OperationCanceledException => "operation_cancelled",
+        _ => "unexpected_error"
+    });
+    private void ThemeChanged(object sender, UserPreferenceChangedEventArgs args)
+    {
+        if (_exiting || Dispatcher.HasShutdownStarted) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_exiting) return;
+            var previous = _trayIcons;
+            _trayIcons = new TrayIcons();
+            UpdateTray();
+            previous?.Dispose();
+        }));
     }
     private void DisplayChanged(object? sender, EventArgs args) { if (!options.Simulation) _ = RevalidateDisplaySettingsAsync(); }
     private void PowerChanged(object sender, PowerModeChangedEventArgs args) { if (!options.Simulation && args.Mode == PowerModes.Resume) _ = RevalidateDisplaySettingsAsync(); }
@@ -224,13 +296,14 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
         _exitTimer?.Stop();
         SystemEvents.DisplaySettingsChanged -= DisplayChanged;
         SystemEvents.PowerModeChanged -= PowerChanged;
+        SystemEvents.UserPreferenceChanged -= ThemeChanged;
         _stop.Cancel();
         _remoteWindow?.Close();
         if (_remote is not null) { try { await _remote.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); } }
         if (_serverTask is not null) { try { await _serverTask; } catch { } }
         if (_controller is not null) { try { await _controller.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); } }
         _window?.AllowClose(); _window?.Close();
-        _tray?.Dispose(); _instance?.Dispose();
+        _tray?.Dispose(); _trayIcons?.Dispose(); _instance?.Dispose();
         Shutdown(code);
     }
 }

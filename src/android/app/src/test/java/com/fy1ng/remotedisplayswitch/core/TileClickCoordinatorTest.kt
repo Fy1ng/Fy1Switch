@@ -10,6 +10,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TileClickCoordinatorTest {
+    @Test fun unknownPowerClickOnlyRefreshesAndCannotQueueAToggleAfterSuccessfulRead() {
+        val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(status = status(DisplayPower.Unknown)))) }
+        assertTrue(StatePolicy.tileRefreshOnly(state))
+        val refreshing = state.copy(busy = true, request = RepositoryRequest(REQUEST, RepositoryAction.Refresh, DEVICE))
+        val coordinator = coordinator()
+        assertTrue(StatePolicy.tileRefreshOnly(refreshing))
+        assertNull(coordinator.queue(refreshing, 100))
+        assertNull(coordinator.takeReady(completed(), 200, locked = false))
+        assertFalse(coordinator.hasPending)
+        assertFalse(StatePolicy.tileRefreshOnly(activeState()))
+        assertFalse(StatePolicy.tileRefreshOnly(state.copy(storageFailed = true)))
+        assertFalse(StatePolicy.tileRefreshOnly(state.copy(busy = true, request = RepositoryRequest(REQUEST, RepositoryAction.Set, DEVICE))))
+    }
+
     private fun refreshing() = activeState().copy(
         busy = true, request = RepositoryRequest(REQUEST, RepositoryAction.Refresh, DEVICE),
     )

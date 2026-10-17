@@ -3,6 +3,7 @@ package com.fy1ng.remotedisplayswitch
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.SystemClock
 import android.service.quicksettings.Tile
@@ -65,6 +66,7 @@ class DisplayTileService : TileService() {
         if (!listening) return
         val current = app.repository.state.value
         val refreshing = StatePolicy.refreshing(current)
+        val refreshOnly = StatePolicy.tileRefreshOnly(current)
         if (current.busy && !refreshing) return
         val deviceId = current.defaultDeviceId
         val targetId = current.selected?.status?.targetId
@@ -78,7 +80,13 @@ class DisplayTileService : TileService() {
             if ((!refreshing || listening) && attempt == unlockAttempt && SystemClock.elapsedRealtime() - startedAt < 30_000 && !isLocked) {
                 unlockAttempt += 1
                 val latest = app.repository.state.value
-                if (refreshing) {
+                if (refreshOnly) {
+                    // The click was made while power was unknown. A later successful read cannot turn it into a write.
+                    if (latest.loaded && !latest.storageFailed && latest.defaultDeviceId == deviceId &&
+                        latest.request?.id == requestId && deviceId != null) {
+                        if (!latest.busy) app.scope.launch { app.repository.refresh(deviceId, live = true) }
+                    } else openConfiguration()
+                } else if (refreshing) {
                     if (queued != null && clicks.authorize(queued)) deliverQueuedClick()
                     else if (listening) openConfiguration()
                 } else if (!initiallyAvailable || latest.defaultDeviceId != deviceId || latest.selected?.status?.targetId != targetId ||
@@ -111,18 +119,23 @@ class DisplayTileService : TileService() {
             TilePower.Active -> Tile.STATE_ACTIVE
             TilePower.Inactive -> Tile.STATE_INACTIVE
             TilePower.Refreshing -> Tile.STATE_INACTIVE
-            TilePower.Unavailable -> Tile.STATE_UNAVAILABLE
+            TilePower.Unavailable -> if (StatePolicy.tileRefreshOnly(state)) Tile.STATE_INACTIVE else Tile.STATE_UNAVAILABLE
         }
+        tile.icon = Icon.createWithResource(this, when (power) {
+            TilePower.Active -> R.drawable.ic_display_on
+            TilePower.Inactive -> R.drawable.ic_display_off
+            else -> R.drawable.ic_display_refresh
+        })
         tile.label = state.selected?.profile?.name ?: getString(R.string.tile_name)
         tile.subtitle = when {
-            power == TilePower.Refreshing -> if (clicks.hasPending) "等待刷新后切换" else "正在刷新, 可点击等待"
-            state.busy && state.request?.action == RepositoryAction.Set -> "正在切换..."
-            state.busy -> "正在处理..."
+            power == TilePower.Refreshing -> if (clicks.hasPending) "等待刷新后切换" else "正在刷新"
+            state.busy && state.request?.action == RepositoryAction.Set -> "正在切换…"
+            state.busy -> "正在处理…"
             state.storageFailed -> "请打开应用检查"
             state.selected == null -> "长按配对"
-            power == TilePower.Active -> "已确认开启"
-            power == TilePower.Inactive -> "已确认关闭"
-            else -> "未知 · 展开刷新 / 长按"
+            power == TilePower.Active -> "显示器已开启"
+            power == TilePower.Inactive -> "显示器已关闭"
+            else -> "点按刷新"
         }
         tile.contentDescription = tile.label.toString() + "，" + tile.subtitle
         if (Build.VERSION.SDK_INT >= 30) tile.stateDescription = tile.subtitle

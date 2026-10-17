@@ -13,11 +13,11 @@ internal static class UiText
     internal static string BriefError(string code) => code switch
     {
         "topology_changed" => "连接已变化，请重新确认绑定。",
-        "topology_unavailable" => "暂时无法检查显示器连接, 请稍后刷新。",
+        "topology_unavailable" => "暂时无法检查显示器连接，请稍后刷新。",
         "busy" or "controller_busy" or "operation_in_progress" => "已有操作进行中，请稍候。",
         "state_unknown" or "read_failed" or "readback_failed" => "状态尚不能确认，请先刷新。",
         "not_bound" or "binding_required" or "no_binding" => "请先在设置中绑定显示器。",
-        _ => "操作未完成，请查看设置中的诊断记录。"
+        _ => "操作未完成，请查看诊断记录。"
     };
 
     internal static string Error(string? code) => code switch
@@ -27,14 +27,14 @@ internal static class UiText
         "worker_protocol_error" => "主程序与显示器控制组件通信异常。请使用同一版本的完整程序目录，再退出并重启。",
         "timeout" or "worker_timeout" => "等待显示器响应超时，结果尚不能确认。请先刷新状态，避免连续重复开关。",
         "topology_changed" => "显示器连接或排列已变化。为避免控制错误的设备，请重新发现、选择并绑定目标。",
-        "topology_unavailable" => "暂时无法检查显示器连接。请稍后刷新状态; 连接检查恢复后可继续使用原绑定。",
+        "topology_unavailable" => "暂时无法检查显示器连接。请稍后刷新状态；连接检查恢复后可继续使用原绑定。",
         "other_controller_running" or "display_process_conflict" or "worker_already_running" => "另一个控制程序正在使用显示器。请先关闭其他控制实例，再重试。",
         "busy" or "controller_busy" or "operation_in_progress" => "已有操作正在进行，请等待完成后再试。",
         "not_bound" or "binding_required" or "no_binding" => "尚未绑定显示器。请先发现设备，明确选择候选并绑定。",
         "confirmation_required" or "needs_confirmation" => "当前绑定需要重新确认。请重新发现并选择目标后绑定。",
         "target_not_found" or "monitor_not_found" => "找不到所选显示器。请检查连接后重新发现，不要继续使用旧候选。",
         "target_mismatch" or "target_changed" or "stale_target" or "invalid_target" => "所选目标已失效或与当前绑定不同。请查看最新绑定并重新选择。",
-        "state_unknown" => "当前开关状态未知，无法安全切换。请先刷新状态，或明确选择开启、关闭。",
+        "state_unknown" => "显示器状态待确认。请先刷新状态，或选择开启、关闭。",
         "unsupported_profile" or "unsupported_monitor" or "unsupported_topology" or "target_not_unique_or_not_ddc" => "该显示器配置不在当前验证范围内。本版本仅面向已验证的 G4Q + MTT VDD 配置。",
         "discovery_restart_required" => "当前控制进程需要重新初始化。请点击重新扫描；程序不会自动重复硬件探测。",
         "operation_id_conflict" => "操作标识已被另一条命令使用，本次操作未执行。",
@@ -71,9 +71,16 @@ internal static class UiText
         };
     }
 
-    internal static string Time(DateTimeOffset time) => time == default
-        ? "尚无记录"
-        : time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz");
+    internal static string Time(DateTimeOffset time, DateTimeOffset? now = null)
+    {
+        if (time == default) return "尚无记录";
+        var elapsed = (now ?? DateTimeOffset.UtcNow) - time;
+        if (elapsed.TotalMinutes < 1) return "刚刚";
+        if (elapsed.TotalHours < 1) return $"{(int)elapsed.TotalMinutes} 分钟前";
+        if (elapsed.TotalDays < 1) return $"{(int)elapsed.TotalHours} 小时前";
+        if (elapsed.TotalDays < 7) return $"{(int)elapsed.TotalDays} 天前";
+        return time.ToLocalTime().ToString("yyyy/MM/dd HH:mm");
+    }
 
     internal static string Operation(OperationRecord operation, bool simulation)
     {

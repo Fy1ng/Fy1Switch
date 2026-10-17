@@ -1,8 +1,8 @@
 # Android App 与快捷设置开关
 
-## LAN 六位短码（2026-10-06）
+## LAN 六位短码（2026-10-18 更新）
 
-Android 配对页支持原生 `NsdManager` 双向发现/广播 `_rds-pair._tcp.`，TXT 仅 `v=1`、`role=android`、`sid=<小写 UUID>`。电脑列表自动随发现/丢失更新，有空态、失败提示和显式刷新；名称不是可信身份。可以输入电脑屏幕上的六位短码（Android SRP client），也可以在 Windows 输入手机显示的码（Android SRP server）。前导零保留。保留离线扫码和高级 JSON 粘贴；未提供手填 IP/session 的假入口。
+Android“添加电脑”支持原生 `NsdManager` 发现/广播 `_rds-pair._tcp.`，TXT 仅 `v=1`、`role=android`、`sid=<小写 UUID>`。电脑列表自动随发现/丢失更新，只有一台时自动选中；名称不是可信身份。界面统一输入电脑屏幕上的六位短码（Android SRP client），明文保留前导零，输入六位后仅自动提交一次，失败后需要修改或手动重试。底层 Android SRP server 保留协议兼容，手机不再显示反向配对短码。保留离线扫码和高级 JSON 粘贴；未提供手填 IP/session 的假入口。本手机名称默认采用设备型号，可手动修改。
 
 Wire 严格依据 [Pairing-v1.md](Pairing-v1.md)：BC `bcprov-jdk18on:1.83`、RFC5054 3072/SHA256、BC evidence/session key、384 字节 A/B、32 字节 M1/M2/key、transcript HKDF-SHA256、AES256GCM。Client hello 在 salt 到达前发送 A，因此 SRP6Client 子类仅在收到 challenge 后设置 BC calculateX，保留同一随机 a/A；不重新生成 A、不另造 proof。TCP JSON 行最大 16KiB；短码不明文上 wire、不写磁盘、不输出日志。
 
@@ -66,9 +66,9 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 3. 配对成功后加密保存 token 并立即请求 `status`。若配对成功但连接状态获取失败，配对仍保留，可实时刷新。配对超时不自动重放一次性码；应检查 Windows，必要时重新导出。
 4. 在设备列表切换默认设备；此选择同时决定 Tile 控制对象。设备配置可更改显示名称、添加/更新/删除 Relay，或移除本机配对。直连地址或证书变更需重新配对。
 5. “连接 / 获取主机已知状态”发送 `status`，不要求硬件读；“实时读取显示器”发送 `refresh`。开启、关闭、切换均为真实协议请求，而非本地 UI 模拟。
-6. 在系统快捷设置编辑页添加“远程显示器”；API 33+ 也可使用 App 的添加按钮。长按开关打开配置。未知/离线开关可能不可点击，重新展开触发刷新，或从启动器/长按打开 App 恢复。
+6. 在系统快捷设置编辑页添加“远程显示器”；API 33+ 也可使用 App 的添加按钮。长按开关打开配置。显示器状态待确认时，点按快捷开关只刷新，不发送切换操作；尚未配对或操作进行中时不可点击。
 
-一次最多保存 20 台设备。编辑中的配对 JSON / Relay token 不进入 SavedState；提交后清空输入。配对码不会落盘。截图及最近任务预览受 FLAG_SECURE 保护。App 不主动清理系统剪贴板，用户可自行清除其中的配对 JSON。
+一次最多保存 20 台设备。编辑中的配对 JSON / Relay token 不进入 SavedState；提交后清空输入。配对码不会落盘。仅“添加电脑”和扫码页面通过 FLAG_SECURE 保护截图及最近任务预览，主页可截图。App 不主动清理系统剪贴板，用户可自行清除其中的配对 JSON。
 
 ## 协议和通道边界
 

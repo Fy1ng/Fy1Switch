@@ -6,6 +6,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PairingInputTest {
+    @Test fun completeCodeSubmitsOnceUntilUserEditsOrExplicitlyRetries() {
+        val input = ShortCodeSubmission()
+        assertFalse(input.claim("computer-session", "12345"))
+        assertFalse(input.claim("computer-session", "12345x"))
+        assertTrue(input.claim("computer-session", "123456"))
+        assertFalse(input.claim("computer-session", "123456"))
+        input.edit()
+        assertTrue(input.claim("computer-session", "123456"))
+        assertFalse(input.claim("computer-session", "123456"))
+        assertTrue(input.claim("new-computer-session", "123456"))
+    }
+
     @Test fun offlineQrRoundTripPreservesPairBundle() {
         val text = bundle().toString()
         val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(

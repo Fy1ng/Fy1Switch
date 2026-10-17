@@ -31,7 +31,7 @@ class TileClickCoordinator(private val timeoutMillis: Long = 30_000) {
 
     fun queue(state: AppState, now: Long): Click? {
         val device = state.selected ?: return null
-        if (!listening || !StatePolicy.refreshing(state) || StatePolicy.unresolved(device.operation)) return null
+        if (!listening || !StatePolicy.refreshing(state) || StatePolicy.tileRefreshOnly(state) || StatePolicy.unresolved(device.operation)) return null
         val request = requireNotNull(state.request)
         pending?.click?.takeIf { it.requestId == request.id && it.deviceId == device.profile.deviceId }?.let { return it }
         val click = Click(generation, request.id, device.profile.deviceId, device.status?.targetId, now)

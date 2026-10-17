@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import com.fy1ng.remotedisplayswitch.core.DeviceRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,21 +94,21 @@ class LanPairing(private val context: Context, private val repository: DeviceRep
             }
         }
     }
-    fun connect(computer: NearbyComputer, code: String) {
+    fun connect(computer: NearbyComputer, code: String, clientName: String = defaultClientName()) {
         val ownedSession = session ?: return
         val ownedScope = scope ?: return
-        if (mutable.value.busy || repository.state.value.busy || !ShortCodeProtocol.validCode(code)) return
+        if (mutable.value.busy || repository.state.value.busy || !ShortCodeProtocol.validCode(code) || clientName.isBlank() || clientName.length > 80) return
         if (!ownedSession.admit(PairingLimits.process)) {
             mutable.value = mutable.value.copy(message = "尝试次数过多或短码已到期，请稍后重试。")
             return
         }
         val outgoing = Socket()
         socket = outgoing
-        mutable.value = mutable.value.copy(busy = true, message = "正在验证短码与电脑证书…")
+        mutable.value = mutable.value.copy(busy = true, message = "正在连接电脑…")
         val current = generation
-        ownedScope.launch { exchange(outgoing, current, ownedSession, computer, code) }
+        ownedScope.launch { exchange(outgoing, current, ownedSession, computer, code, clientName) }
     }
-    private suspend fun exchange(connection: Socket, current: Long, ownedSession: CodeSession, computer: NearbyComputer?, code: String) {
+    private suspend fun exchange(connection: Socket, current: Long, ownedSession: CodeSession, computer: NearbyComputer?, code: String, clientName: String = defaultClientName()) {
         var authenticated = false
         val ownedListener = server
         val began = System.nanoTime()
@@ -143,7 +144,7 @@ class LanPairing(private val context: Context, private val repository: DeviceRep
                     val success = withContext(Dispatchers.Main.immediate) {
                         ensureActive()
                         require(current == generation && !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked)
-                        ShortCodePairing.acceptBundle(repository, bundle, "Android 手机")
+                        ShortCodePairing.acceptBundle(repository, bundle, clientName)
                     }
                     ensureActive()
                     wire.write(channel.encrypt("android-result", JSONObject().put("success", success).toString()))
@@ -187,6 +188,7 @@ class LanPairing(private val context: Context, private val repository: DeviceRep
         mutable.value = LanPairingState(message = message)
     }
     companion object {
+        private fun defaultClientName() = Build.MODEL.orEmpty().ifBlank { "Android 手机" }.take(80)
         private val deadlines = Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "rds-pair-deadline").apply { isDaemon = true } }
     }
 }

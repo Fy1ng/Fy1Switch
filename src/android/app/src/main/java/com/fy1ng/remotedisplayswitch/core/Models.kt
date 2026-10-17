@@ -153,6 +153,11 @@ object StatePolicy {
         else -> TilePower.Unavailable
     }
 
+    // Unknown power is actionable only as a read. It must never queue a later toggle.
+    fun tileRefreshOnly(state: AppState): Boolean = state.loaded && !state.storageFailed &&
+        state.selected != null && (!state.busy || refreshing(state)) &&
+        confirmedPower(state.selected) == DisplayPower.Unknown
+
     fun canSet(state: AppState, intent: PowerIntent? = null): Boolean {
         val device = state.selected ?: return false
         return state.loaded && !state.busy && !state.storageFailed && device.connected &&
