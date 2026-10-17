@@ -16,7 +16,7 @@ class HomePolicyTest {
     @Test fun unknownPrioritizesRefreshButPreservesSafeExplicitActions() {
         val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(status = status(DisplayPower.Unknown)))) }
         assertNull(HomePolicy.action(state).intent)
-        assertEquals("刷新连接", HomePolicy.action(state).label)
+        assertEquals("刷新状态", HomePolicy.action(state).label)
         assertTrue(HomePolicy.action(state).enabled)
         assertTrue(StatePolicy.canSet(state))
         assertEquals("显示器状态未知", HomePolicy.status(state))
@@ -25,6 +25,7 @@ class HomePolicyTest {
     @Test fun offlineNeverLooksOffOrSendsPowerCommand() {
         val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(connected = false, status = status(DisplayPower.Off)))) }
         assertNull(HomePolicy.action(state).intent)
+        assertEquals("重新连接", HomePolicy.action(state).label)
         assertEquals("离线 · 状态未知", HomePolicy.status(state))
         assertFalse(StatePolicy.canSet(state))
     }
@@ -34,8 +35,34 @@ class HomePolicyTest {
             val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(operation = operation(outcome), requiresRefresh = true))) }
             assertEquals("结果待确认", HomePolicy.status(state))
             assertNull(HomePolicy.action(state).intent)
+            assertTrue(HomePolicy.action(state).queryOperation)
+            assertEquals("查询操作结果", HomePolicy.action(state).label)
+            assertTrue(HomePolicy.action(state).enabled)
             assertFalse(StatePolicy.canSet(state))
         }
+    }
+
+    @Test fun offlineUncertainOperationStillQueriesInsteadOfSendingAnotherPowerCommand() {
+        val state = activeState().let { it.copy(devices = listOf(it.selected!!.copy(
+            operation = operation(OperationOutcome.Unknown), requiresRefresh = true, connected = false,
+        ))) }
+        val action = HomePolicy.action(state)
+        assertTrue(action.queryOperation)
+        assertNull(action.intent)
+        assertTrue(action.enabled)
+        assertFalse(HomePolicy.action(state.copy(busy = true)).enabled)
+    }
+
+    @Test fun freshReadAllowsExplicitPowerWithoutRewritingPreviousUncertainOperation() {
+        val uncertain = activeState().let { it.copy(devices = listOf(it.selected!!.copy(
+            operation = operation(OperationOutcome.Unknown), requiresRefresh = true,
+        ))) }
+        assertTrue(HomePolicy.action(uncertain).queryOperation)
+        val refreshed = uncertain.copy(devices = listOf(uncertain.selected!!.copy(requiresRefresh = false)))
+        assertFalse(HomePolicy.action(refreshed).queryOperation)
+        assertEquals(PowerIntent.Off, HomePolicy.action(refreshed).intent)
+        assertTrue(HomePolicy.action(refreshed).enabled)
+        assertEquals(OperationOutcome.Unknown, refreshed.selected!!.operation!!.outcome)
     }
 
     @Test fun busyStorageFailureAndUnloadedDisablePrimaryAction() {

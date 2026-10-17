@@ -1,135 +1,205 @@
 package com.fy1ng.remotedisplayswitch.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.fy1ng.remotedisplayswitch.core.AppState
-import com.fy1ng.remotedisplayswitch.core.DeviceRepository
-import com.fy1ng.remotedisplayswitch.core.DeviceState
-import com.fy1ng.remotedisplayswitch.core.DisplayPower
-import com.fy1ng.remotedisplayswitch.core.Feedback
-import com.fy1ng.remotedisplayswitch.core.PowerIntent
-import com.fy1ng.remotedisplayswitch.core.StatePolicy
+import com.fy1ng.remotedisplayswitch.core.*
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+private const val HOME = "home"
+private const val SETTINGS = "settings"
+private const val PAIRING = "pairing"
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteDisplayScreen(
     repository: DeviceRepository, scope: CoroutineScope, onAddTile: () -> Unit,
     tileMessage: String?, showTileGuide: Boolean, onDismissTileGuide: () -> Unit, onPaired: () -> Unit,
 ) {
     val state by repository.state.collectAsState()
-    var pairing by rememberSaveable { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
+    var page by rememberSaveable { mutableStateOf(HOME) }
     var choosing by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        repository.initialize()
-        repository.state.first { !it.busy }.selected?.let { repository.refresh(it.profile.deviceId) }
+    var settingsDirty by remember { mutableStateOf(false) }
+    var discardDestination by remember { mutableStateOf<String?>(null) }
+    val leaveSettings: (String) -> Unit = { destination ->
+        if (settingsDirty) discardDestination = destination else page = destination
+    }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) { repository.initialize() }
+    LaunchedEffect(page, state.loaded, state.defaultDeviceId, state.storageFailed) {
+        val deviceId = state.defaultDeviceId
+        if (page == HOME && state.loaded && !state.storageFailed && deviceId != null) {
+            repository.state.first { !it.busy }
+            if (repository.state.value.defaultDeviceId == deviceId) {
+                if (HomePolicy.action(repository.state.value).queryOperation) repository.queryOperation(deviceId)
+                else repository.refresh(deviceId)
+            }
+        }
+        if (page == SETTINGS && state.loaded && state.selected == null) page = HOME
+    }
+    LaunchedEffect(state.notice, page) {
+        if (page == SETTINGS && state.notice == Feedback.Saved) snackbar.showSnackbar(Feedback.Saved.text)
+    }
+    BackHandler(choosing || page != HOME) {
+        if (choosing) choosing = false else if (page == SETTINGS) leaveSettings(HOME) else page = HOME
     }
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
     val context = androidx.compose.ui.platform.LocalContext.current
     val colors = if (android.os.Build.VERSION.SDK_INT >= 31) {
-        if (dark) androidx.compose.material3.dynamicDarkColorScheme(context)
-        else androidx.compose.material3.dynamicLightColorScheme(context)
-    } else if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
+        if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else if (dark) darkColorScheme(primary = Color(0xFFB2C5FF)) else lightColorScheme(primary = Color(0xFF365BC1))
     MaterialTheme(colorScheme = colors) {
-        Scaffold { padding ->
-            Column(
-                Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    TextButton(onClick = { choosing = !choosing }, enabled = !state.busy,
-                        modifier = Modifier.weight(1f)) { Text((state.selected?.profile?.name ?: "选择设备") + " ▾") }
-                    TextButton(onClick = { editing = !editing }, enabled = !state.busy) { Text("设置") }
-                }
-                if (choosing) {
-                    Text("当前设备也用于快捷开关", style = MaterialTheme.typography.bodySmall)
-                    state.devices.forEach { device ->
-                        OutlinedButton(onClick = {
-                            choosing = false
-                            editing = false
-                            if (device.profile.deviceId != state.defaultDeviceId) scope.launch {
-                                if (repository.select(device.profile.deviceId) == Feedback.Saved) repository.refresh(device.profile.deviceId)
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbar) },
+            topBar = {
+                Surface {
+                    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (page == HOME) {
+                            TextButton(onClick = { choosing = true }, enabled = state.loaded && !state.storageFailed,
+                                modifier = Modifier.weight(1f)) {
+                                AppIcon(AppIconType.Monitor)
+                                Spacer(Modifier.width(10.dp))
+                                Text(state.selected?.profile?.name ?: "远程显示器", Modifier.weight(1f),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                                AppIcon(AppIconType.Down)
                             }
-                        }, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                            Text((if (device.profile.deviceId == state.defaultDeviceId) "✓ " else "") + device.profile.name)
-                        }
-                    }
-                    TextButton(onClick = { pairing = true; choosing = false }, enabled = !state.busy) { Text("添加设备") }
-                }
-                if (!state.loaded || state.busy) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(if (!state.loaded) "正在读取设备…" else "正在处理请求，请稍候…")
-                }
-                state.notice?.let { Text(it.text, color = if (state.storageFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (state.loaded && !state.storageFailed) {
-                    state.selected?.let { device ->
-                        key(device.profile.deviceId) { DeviceCard(device, state, repository, scope) }
-                    }
-                    if (editing) {
-                        Text("设备设置", style = MaterialTheme.typography.titleLarge)
-                        state.selected?.let { device ->
-                            key(device.profile.deviceId) { DeviceEditor(device, state.busy, repository, scope) }
-                        }
-                        OutlinedButton(onClick = { pairing = !pairing }, enabled = !state.busy,
-                            modifier = Modifier.fillMaxWidth()) { Text("添加 / 重新配对设备") }
-                        OutlinedButton(onClick = onAddTile, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("添加快捷设置开关") }
-                        Text("快捷开关控制当前设备；长按可打开此页。", style = MaterialTheme.typography.bodySmall)
-                    }
-                    if (pairing || state.devices.isEmpty()) {
-                        PairEditor(repository, scope, state.busy) { pairing = false; onPaired() }
-                        if (state.devices.isNotEmpty()) TextButton(onClick = { pairing = false }, enabled = !state.busy) { Text("收起配对") }
-                    }
-                    if (showTileGuide) Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("配对已保存。添加快捷开关，下次无需打开应用。")
-                            Button(onClick = { onDismissTileGuide(); onAddTile() }, enabled = !state.busy) { Text("添加快捷开关") }
-                            TextButton(onClick = onDismissTileGuide) { Text("以后再说") }
+                            IconButton(onClick = { page = SETTINGS }, enabled = state.selected != null && !state.storageFailed) {
+                                AppIcon(AppIconType.Settings, description = "设备设置")
+                            }
+                        } else {
+                            IconButton(onClick = { if (page == SETTINGS) leaveSettings(HOME) else page = HOME }) {
+                                AppIcon(AppIconType.Back, description = "返回")
+                            }
+                            Text(if (page == SETTINGS) "设备设置" else "连接电脑",
+                                modifier = Modifier.padding(start = 4.dp),
+                                style = MaterialTheme.typography.titleLarge)
                         }
                     }
                 }
-                tileMessage?.let { Text(it) }
+            },
+        ) { padding ->
+            key(page) {
+                Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        when {
+                            !state.loaded -> {
+                                LinearProgressIndicator(Modifier.fillMaxWidth())
+                                Text("正在读取设备", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            state.storageFailed -> {
+                                Text("无法读取配对信息", style = MaterialTheme.typography.headlineSmall)
+                                Text(Feedback.Storage.text, color = MaterialTheme.colorScheme.error)
+                            }
+                            page == PAIRING -> {
+                                val initialRequest = remember { state.request?.id }
+                                if (!state.busy && state.request?.id != initialRequest) {
+                                    state.notice?.takeIf { it !in setOf(Feedback.Ready, Feedback.Updated, Feedback.Saved, Feedback.Busy) }?.let {
+                                        Text(it.text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                PairEditor(repository, scope, state.busy) {
+                                    if (page == PAIRING) page = HOME
+                                    onPaired()
+                                }
+                            }
+                            page == SETTINGS -> state.selected?.let { device ->
+                                key(device.profile.deviceId) {
+                                    DeviceSettingsScreen(device, state, repository, scope,
+                                        onBack = { if (page == SETTINGS) page = HOME },
+                                        onPair = { leaveSettings(PAIRING) }, onAddTile = onAddTile, tileMessage = tileMessage,
+                                        onDirtyChanged = { settingsDirty = it })
+                                }
+                            }
+                            state.selected == null -> EmptyHome { page = PAIRING }
+                            else -> {
+                                val device = requireNotNull(state.selected)
+                                key(device.profile.deviceId) { DeviceCard(device, state, repository, scope) }
+                                if (showTileGuide) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("添加快捷开关, 下次无需打开应用", style = MaterialTheme.typography.titleSmall)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            TextButton(onClick = { onDismissTileGuide(); onAddTile() }, enabled = !state.busy) { Text("添加") }
+                                            TextButton(onClick = onDismissTileGuide) { Text("以后再说") }
+                                        }
+                                    }
+                                }
+                                tileMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            }
+                        }
+                    }
+                }
             }
+        }
+        if (choosing) ModalBottomSheet(onDismissRequest = { choosing = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("选择电脑", style = MaterialTheme.typography.titleLarge)
+                Text("快捷开关也控制当前电脑", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    state.devices.forEach { device ->
+                        TextButton(onClick = {
+                            if (device.profile.deviceId == state.defaultDeviceId) choosing = false else scope.launch {
+                                if (repository.select(device.profile.deviceId) == Feedback.Saved) choosing = false
+                            }
+                        }, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                            Text(device.profile.name, Modifier.weight(1f), textAlign = TextAlign.Start,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (device.profile.deviceId == state.defaultDeviceId) AppIcon(AppIconType.Check, description = "当前电脑")
+                        }
+                    }
+                }
+                TextButton(onClick = { choosing = false; page = PAIRING }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                    AppIcon(AppIconType.Add); Spacer(Modifier.width(8.dp)); Text("添加电脑")
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+        if (discardDestination != null) AlertDialog(
+            onDismissRequest = { discardDestination = null },
+            title = { Text("放弃未保存的修改?") },
+            text = { Text("当前更改尚未保存。") },
+            confirmButton = { TextButton(onClick = {
+                discardDestination?.let { destination ->
+                    page = destination
+                    discardDestination = null
+                    settingsDirty = false
+                }
+            }) { Text("放弃修改") } },
+            dismissButton = { TextButton(onClick = { discardDestination = null }) { Text("继续编辑") } },
+        )
+    }
+}
+
+@Composable
+private fun EmptyHome(onPair: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        AppIcon(AppIconType.Monitor, modifier = Modifier.size(72.dp), tint = MaterialTheme.colorScheme.primary)
+        Text("连接你的电脑", style = MaterialTheme.typography.headlineMedium)
+        Text("配对后, 在手机上控制显示器开关", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Button(onClick = onPair, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(18.dp)) {
+            AppIcon(AppIconType.Add); Spacer(Modifier.width(8.dp)); Text("添加电脑")
         }
     }
 }
@@ -139,109 +209,82 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
     val deviceId = device.profile.deviceId
     val power = StatePolicy.confirmedPower(device)
     val action = HomePolicy.action(state)
-    var details by remember { mutableStateOf(false) }
-    val abnormal = device.operation?.outcome?.let { it != com.fy1ng.remotedisplayswitch.core.OperationOutcome.Confirmed } == true
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(device.status?.displayName?.filterNot(Char::isISOControl)?.take(80) ?: "显示器",
-                    style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                androidx.compose.material3.FilledTonalIconButton(
-                    onClick = { scope.launch { repository.refresh(deviceId) } }, enabled = !state.busy,
-                    modifier = Modifier.semantics { contentDescription = "刷新连接与显示器状态" },
-                ) { Text("↻") }
+    var details by rememberSaveable { mutableStateOf(false) }
+    val tint = when (power) {
+        DisplayPower.On -> MaterialTheme.colorScheme.primary
+        DisplayPower.Off -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(device.status?.displayName?.filterNot(Char::isISOControl)?.take(80) ?: "显示器",
+                style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.size(112.dp).background(tint.copy(alpha = 0.10f), CircleShape), contentAlignment = Alignment.Center) {
+                AppIcon(AppIconType.Power, modifier = Modifier.size(56.dp), tint = tint)
             }
-            Text(HomePolicy.status(state), style = MaterialTheme.typography.displaySmall)
-            if (power != DisplayPower.Unknown) Text("最近一次确认的状态", style = MaterialTheme.typography.bodySmall)
-            Text(device.feedback.text)
-            device.lastSuccessfulRoute?.let { Text("最近成功路径：" + it.label, style = MaterialTheme.typography.bodySmall) }
-            androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+            Text(HomePolicy.status(state), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+            val message = if (device.connected && device.status?.available == false) "请在电脑上确认显示器绑定" else when (device.feedback) {
+                Feedback.Ready, Feedback.Paired -> "配对已保存, 连接后读取状态"
+                Feedback.Updated, Feedback.Confirmed, Feedback.Saved, Feedback.Busy -> null
+                Feedback.Pending, Feedback.Unknown, Feedback.AcceptedUnconfirmed -> if (device.requiresRefresh) "先确认本次结果, 避免重复开关" else null
+                Feedback.NotFound -> "未查到记录, 可刷新当前状态"
+                Feedback.Offline -> "请检查电脑和网络连接"
+                else -> device.feedback.text
+            }
+            if (message != null) Text(message, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            else if (power != DisplayPower.Unknown) device.status?.observation?.let {
+                Text("上次确认 " + DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault()).format(it.observedAt),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Button(onClick = {
                 scope.launch {
-                    if (action.intent == null) repository.refresh(deviceId) else repository.set(deviceId, action.intent)
+                    when {
+                        action.queryOperation -> repository.queryOperation(deviceId)
+                        action.intent != null -> repository.set(deviceId, action.intent)
+                        else -> repository.refresh(deviceId)
+                    }
                 }
-            }, enabled = action.enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
-                Text(action.label, style = MaterialTheme.typography.titleLarge)
+            }, enabled = action.enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp), shape = RoundedCornerShape(18.dp)) {
+                if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                else AppIcon(if (action.intent != null) AppIconType.Power else AppIconType.Refresh)
+                Spacer(Modifier.width(10.dp))
+                Text(action.label, style = MaterialTheme.typography.titleMedium)
             }
-            TextButton(onClick = { details = !details }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (details) "收起详情" else "状态与操作详情")
-            }
-            if (details) {
-                device.status?.observation?.let {
-                    Text("观测时间：" + DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(it.observedAt))
-                }
-                if (power == DisplayPower.Unknown) {
-                    Text("不自动切换未知状态；仅在连接与安全条件允许时指定开启或关闭。")
+            if (power == DisplayPower.Unknown && StatePolicy.canSet(state)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = { scope.launch { repository.set(deviceId, PowerIntent.On) } },
-                        enabled = StatePolicy.canSet(state), modifier = Modifier.fillMaxWidth()) { Text("明确开启（ON）") }
+                        enabled = StatePolicy.canSet(state, PowerIntent.On), modifier = Modifier.weight(1f)) { Text("明确开启") }
                     OutlinedButton(onClick = { scope.launch { repository.set(deviceId, PowerIntent.Off) } },
-                        enabled = StatePolicy.canSet(state), modifier = Modifier.fillMaxWidth()) { Text("明确关闭（OFF）") }
+                        enabled = StatePolicy.canSet(state, PowerIntent.Off), modifier = Modifier.weight(1f)) { Text("明确关闭") }
                 }
             }
-            if (details || abnormal) device.operation?.let { operation ->
+            if (action.intent != null || action.queryOperation) TextButton(
+                onClick = { scope.launch { repository.refresh(deviceId) } }, enabled = !state.busy,
+            ) { Text("刷新当前状态") }
+            TextButton(onClick = { details = !details }) { Text(if (details) "收起详情" else "查看详情") }
+            if (details) {
                 HorizontalDivider()
-                Text("最近操作：" + when (operation.outcome) {
-                    com.fy1ng.remotedisplayswitch.core.OperationOutcome.Confirmed -> "已确认"
-                    com.fy1ng.remotedisplayswitch.core.OperationOutcome.AcceptedUnconfirmed -> "已接受，未确认"
-                    com.fy1ng.remotedisplayswitch.core.OperationOutcome.Pending -> "处理中"
-                    com.fy1ng.remotedisplayswitch.core.OperationOutcome.Unknown -> "结果未知"
-                    com.fy1ng.remotedisplayswitch.core.OperationOutcome.Failed -> "失败"
-                }, color = if (abnormal) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("操作编号：" + operation.operationId.toString().take(8), style = MaterialTheme.typography.bodySmall)
-                if (abnormal) {
-                    Text("查询只读取这次操作，不会重新发送电源命令。")
-                    OutlinedButton(onClick = { scope.launch { repository.queryOperation(deviceId) } },
-                        enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("查询这次操作") }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    device.lastSuccessfulRoute?.let { Text("最近成功路径: " + it.label, style = MaterialTheme.typography.bodySmall) }
+                    device.status?.observation?.let {
+                        Text("读回时间: " + DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(it.observedAt),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    device.operation?.let { operation ->
+                        Text("最近操作: " + when (operation.outcome) {
+                            OperationOutcome.Confirmed -> "已确认"
+                            OperationOutcome.AcceptedUnconfirmed -> "已接受, 未确认"
+                            OperationOutcome.Pending -> "处理中"
+                            OperationOutcome.Unknown -> "结果未知"
+                            OperationOutcome.Failed -> "未成功"
+                        }, style = MaterialTheme.typography.bodySmall)
+                        Text("操作编号: " + operation.operationId.toString().take(8), style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
     }
-}
-
-@Composable
-private fun DeviceEditor(device: DeviceState, busy: Boolean, repository: DeviceRepository, scope: CoroutineScope) {
-    var name by remember(device.profile.name) { mutableStateOf(device.profile.name) }
-    var endpoint by remember(device.profile.relay?.endpoint) { mutableStateOf(device.profile.relay?.endpoint.orEmpty()) }
-    var token by remember { mutableStateOf("") }
-    var tailscale by remember(device.profile.tailscaleEndpoint) { mutableStateOf(device.profile.tailscaleEndpoint.orEmpty()) }
-    var autoLearn by remember(device.profile.autoLearnTailscale) { mutableStateOf(device.profile.autoLearnTailscale) }
-    var confirmRemoval by remember { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("直连地址：" + device.profile.endpoint, style = MaterialTheme.typography.bodySmall)
-        Text("局域网地址或证书改变时请重新配对。Tailscale 地址可在此配置，也会从已认证的设备状态自动更新。")
-        OutlinedTextField(value = tailscale, onValueChange = {
-            if (it.length <= 2048) {
-                tailscale = it
-                if (it.isBlank()) autoLearn = false
-            }
-        }, label = { Text("Tailscale HTTPS 地址（可选，不带路径）") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Checkbox(checked = autoLearn, onCheckedChange = { autoLearn = it }, enabled = !busy,
-                modifier = Modifier.semantics { contentDescription = "从已认证设备自动更新 Tailscale 地址" })
-            Text("从已认证设备自动更新 Tailscale 地址")
-        }
-        Text("按局域网 → Tailscale → Relay 自动连接；Tailscale 使用原配对凭据与证书。清空地址并保存会停用自动更新，可勾选重新启用。")
-        OutlinedTextField(value = name, onValueChange = { if (it.length <= 80) name = it }, label = { Text("设备名称") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = endpoint, onValueChange = { if (it.length <= 2048) endpoint = it }, label = { Text("Relay HTTPS 地址（可选，不带路径）") }, enabled = !busy, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        OutlinedTextField(value = token, onValueChange = { if (it.length <= 4096) token = it }, label = { Text("Relay 控制端凭据") }, placeholder = { Text(if (device.profile.relay != null) "留空保留已存凭据" else "与设备配对 token 不同") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), enabled = !busy, modifier = Modifier.fillMaxWidth())
-        Text("Relay 使用系统信任的 TLS 证书，不使用 Windows pin。服务端能接触转发所需设备凭据，请只配置可信 Relay。")
-        Button(onClick = {
-            val submitted = token
-            token = ""
-            scope.launch { repository.configure(device.profile.deviceId, name, endpoint, submitted,
-                clearRelay = false, tailscaleEndpoint = tailscale, autoLearnTailscale = autoLearn) }
-        }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("保存配置") }
-        if (device.profile.relay != null) TextButton(onClick = {
-            token = ""
-            endpoint = ""
-            scope.launch { repository.configure(device.profile.deviceId, name, "", "", clearRelay = true) }
-        }, enabled = !busy) { Text("停用并删除 Relay 凭据") }
-        TextButton(onClick = { confirmRemoval = true }, enabled = !busy) { Text("移除此设备") }
-    }
-    if (confirmRemoval) AlertDialog(
-        onDismissRequest = { confirmRemoval = false }, title = { Text("移除本机配对？") },
-        text = { Text("删除本手机保存的设备凭据和最近操作记录。不会撤销 Windows 端授权；如需撤销，请在 Windows 端处理。") },
-        confirmButton = { TextButton(onClick = { confirmRemoval = false; scope.launch { repository.remove(device.profile.deviceId) } }, enabled = !busy) { Text("移除") } },
-        dismissButton = { TextButton(onClick = { confirmRemoval = false }) { Text("取消") } },
-    )
 }
