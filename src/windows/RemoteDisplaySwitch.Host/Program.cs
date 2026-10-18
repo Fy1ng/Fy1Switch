@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -70,7 +72,7 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
     private readonly CancellationTokenSource _stop = new();
     private DesktopController? _controller;
     private RemoteManager? _remote;
-    private RemoteWindow? _remoteWindow;
+    private RemoteConnectionView? _remoteView;
     private MainWindow? _window;
     private Forms.NotifyIcon? _tray;
     private FileStream? _instance;
@@ -103,7 +105,6 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             var startup = new StartupRegistration(Environment.ProcessPath!, options.Simulation);
             _controller = new DesktopController(worker, startup, options.DataDirectory, options.Simulation);
             _window = new MainWindow(_controller, () => ReplaceStartupRegistration(startup));
-            _window.RemoteSettingsRequested += ShowRemoteSettings;
             _window.PresentationChanged += UpdateTray;
             _window.FirstHiddenToTray += () => _tray?.ShowBalloonTip(5000, "已最小化到托盘", "程序仍在运行。双击托盘图标可打开窗口；如需退出，请使用托盘菜单。", Forms.ToolTipIcon.Info);
             MainWindow = _window;
@@ -112,7 +113,16 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
                 if (options.RemotePreview)
                 {
                     _remote = new RemoteManager(_controller, (await _controller.GetSnapshotAsync()).DeviceId, Path.Combine(options.DataDirectory, "remote"));
-                    _remoteWindow = new RemoteWindow(_remote);
+                    // Preview is restricted to simulation and an ephemeral loopback listener.
+                    // Never apply saved LAN, Tailscale, or relay settings while rendering.
+                    var reservation = new TcpListener(IPAddress.Loopback, 0);
+                    reservation.Start();
+                    var port = ((IPEndPoint)reservation.LocalEndpoint).Port;
+                    reservation.Stop();
+                    await _remote.ApplyAsync(new RemoteSettings(true, "127.0.0.1", port, $"https://127.0.0.1:{port}"), persist: false);
+                    AttachRemoteView();
+                    await _window.RefreshViewAsync();
+                    await _window.ShowPairingPreviewAsync();
                     await Dispatcher.InvokeAsync(() => RenderPreview(options.PreviewPath), DispatcherPriority.ApplicationIdle);
                     await ExitAsync();
                     return;
@@ -132,15 +142,17 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
                 if (_remote.Settings.Enabled) await _remote.ApplyAsync(_remote.Settings, persist: false);
             }
             catch (Exception exception) { SaveHostError(exception); }
+            try { AttachRemoteView(); }
+            catch (Exception exception) { SaveHostError(exception); }
             _serverTask = new LocalPipeServer(options.PipeName, _controller, command => Dispatcher.BeginInvoke(new Action(async () =>
             {
                 if (command == "shutdown") await ExitAsync();
-                else ShowSettings();
+                else ShowMainWindow();
             }))).RunAsync(_stop.Token);
             _ = WatchServerAsync(_serverTask);
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("打开设置", null, (_, _) => ShowSettings());
-            menu.Items.Add("连接手机", null, (_, _) => ShowRemoteSettings());
+            menu.Items.Add("连接手机", null, async (_, _) => await ShowPairingAsync());
             _trayRefresh = menu.Items.Add("刷新状态", null, async (_, _) => await TrayRefreshAsync());
             _trayOn = menu.Items.Add("开启显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.On));
             _trayOff = menu.Items.Add("关闭显示器", null, async (_, _) => await TrayPowerAsync(PowerIntent.Off));
@@ -148,7 +160,7 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             menu.Items.Add("退出", null, async (_, _) => await ExitAsync());
             _trayIcons = new TrayIcons();
             _tray = new Forms.NotifyIcon { Text = "RemoteDisplaySwitch", Icon = _trayIcons.For(DisplayPower.Unknown), ContextMenuStrip = menu, Visible = true };
-            _tray.DoubleClick += (_, _) => ShowSettings();
+            _tray.DoubleClick += (_, _) => ShowMainWindow();
             _tray.BalloonTipClicked += (_, _) => ShowSettings();
             menu.Opening += (_, _) => UpdateTray();
             SystemEvents.UserPreferenceChanged += ThemeChanged;
@@ -191,22 +203,30 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
         startup.ReplaceAfterConfirmation(previous);
         return true;
     }
-    private void ShowSettings() { if (_window is null || _exiting) return; BringToFront(_window); }
+    private void ShowMainWindow() { if (_window is null || _exiting) return; BringToFront(_window); }
+    private void ShowSettings()
+    {
+        if (_window is null || _exiting) return;
+        BringToFront(_window);
+        _ = _window.ShowSettingsPageAsync();
+    }
     private static void BringToFront(Window window)
     {
         window.Show();
         if (window.WindowState == WindowState.Minimized) SystemCommands.RestoreWindow(window);
         window.Activate();
     }
-    private void ShowRemoteSettings()
+    private void AttachRemoteView()
     {
-        if (_remote is null) { MessageBox.Show("远程身份存储未能初始化，请检查本程序诊断。", "RemoteDisplaySwitch"); return; }
-        if (_remoteWindow is null)
-        {
-            _remoteWindow = new RemoteWindow(_remote);
-            _remoteWindow.Closed += (_, _) => _remoteWindow = null;
-        }
-        BringToFront(_remoteWindow);
+        if (_remote is null || _window is null || _remoteView is not null) return;
+        _remoteView = new RemoteConnectionView(_remote, _window);
+        _window.AttachRemote(_remoteView);
+    }
+    private async Task ShowPairingAsync()
+    {
+        if (_window is null || _exiting) return;
+        BringToFront(_window);
+        await _window.ShowPairingAsync();
     }
     private async Task TrayRefreshAsync()
     {
@@ -293,7 +313,7 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
     }
     private void RenderPreview(string target)
     {
-        var root = (FrameworkElement)(options.RemotePreview ? _remoteWindow!.Content : _window!.Content);
+        var root = (FrameworkElement)_window!.Content;
         root.Measure(new Size(780, 840)); root.Arrange(new Rect(0, 0, 780, 840)); root.UpdateLayout();
         var bitmap = new RenderTargetBitmap(780, 840, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(root);
@@ -310,7 +330,12 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
         SystemEvents.PowerModeChanged -= PowerChanged;
         SystemEvents.UserPreferenceChanged -= ThemeChanged;
         _stop.Cancel();
-        _remoteWindow?.Close();
+        if (_remoteView is not null)
+        {
+            _window?.DetachRemote(_remoteView);
+            try { await _remoteView.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); }
+            _remoteView = null;
+        }
         if (_remote is not null) { try { await _remote.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); } }
         if (_serverTask is not null) { try { await _serverTask; } catch { } }
         if (_controller is not null) { try { await _controller.DisposeAsync(); } catch (Exception exception) { SaveHostError(exception); } }

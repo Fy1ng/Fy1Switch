@@ -61,7 +61,6 @@ public sealed partial class MainWindow : Window
         Render();
     }
 
-    public event Action? RemoteSettingsRequested;
     internal event Action? PresentationChanged;
     internal event Action? FirstHiddenToTray;
     internal DisplayPower ConfirmedPower => PrimaryPower;
@@ -111,6 +110,7 @@ public sealed partial class MainWindow : Window
         if (!_allowClose)
         {
             eventArgs.Cancel = true;
+            _ = ClosePairingCoreAsync(restoreFocus: false);
             Hide();
             if (!_hasHiddenToTray)
             {
@@ -123,6 +123,7 @@ public sealed partial class MainWindow : Window
     protected override void OnClosed(EventArgs eventArgs)
     {
         _closed = true;
+        _ = ClosePairingCoreAsync(restoreFocus: false);
         _feedbackTimer.Stop();
         _relativeTimeTimer.Stop();
         _controller.Changed -= ControllerChanged;
