@@ -17,6 +17,10 @@ internal static class UiText
         "busy" or "controller_busy" or "operation_in_progress" => "已有操作进行中，请稍候。",
         "state_unknown" or "read_failed" or "readback_failed" => "状态尚不能确认，请先刷新。",
         "not_bound" or "binding_required" or "no_binding" => "请先在设置中绑定显示器。",
+        "startup_owned_by_another_install" => "自动启动已指向另一份程序，请确认要使用的版本。",
+        "startup_requires_executable" => "请使用完整程序目录中的 EXE 设置自动启动。",
+        "startup_registration_changed" => "自动启动设置已被更改，请重新操作并确认。",
+        "startup_failed" or "startup_registration_failed" => "无法保存自动启动设置，请检查系统权限或安全软件。",
         _ => "操作未完成，请查看诊断记录。"
     };
 
@@ -41,6 +45,9 @@ internal static class UiText
         "read_failed" or "readback_failed" => "未能读回显示器状态。当前结果未知，请检查连接后手动刷新。",
         "write_failed" => "控制请求未成功完成，不能确认显示器状态。请先刷新状态后再决定是否重试。",
         "startup_failed" or "startup_registration_failed" => "无法保存登录自动启动设置。请检查系统权限或安全软件，当前设置保持为实际保存的值。",
+        "startup_owned_by_another_install" => "登录自动启动当前指向另一份 RemoteDisplaySwitch。开启时可确认改用当前版本；取消会保留原设置，关闭也不会删除其他版本的启动项。",
+        "startup_requires_executable" => "当前程序通过 dotnet 启动。请使用自包含发布目录中的 RemoteDisplaySwitch.Host.exe 设置登录自动启动。",
+        "startup_registration_changed" => "确认期间自动启动项发生变化，本次未替换。请重新查看当前设置后再操作。",
         "operation_cancelled" or "request_cancelled" => "操作已取消，显示器状态尚不能确认。请先刷新状态再重试。",
         _ => "操作未能完成，当前结果尚不能确认。请检查设备连接后重试；若持续失败，请查看详细信息。"
     };

@@ -100,8 +100,9 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
                 Shutdown(2); return;
             }
             var worker = new WorkerSupervisor(options.WorkerPath, Path.Combine(options.DataDirectory, "worker"), options.Simulation);
-            _controller = new DesktopController(worker, new StartupRegistration(Environment.ProcessPath!, options.Simulation), options.DataDirectory, options.Simulation);
-            _window = new MainWindow(_controller);
+            var startup = new StartupRegistration(Environment.ProcessPath!, options.Simulation);
+            _controller = new DesktopController(worker, startup, options.DataDirectory, options.Simulation);
+            _window = new MainWindow(_controller, () => ReplaceStartupRegistration(startup));
             _window.RemoteSettingsRequested += ShowRemoteSettings;
             _window.PresentationChanged += UpdateTray;
             _window.FirstHiddenToTray += () => _tray?.ShowBalloonTip(5000, "已最小化到托盘", "程序仍在运行。双击托盘图标可打开窗口；如需退出，请使用托盘菜单。", Forms.ToolTipIcon.Info);
@@ -178,6 +179,17 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
     private void SaveHostError(Exception exception)
     {
         try { File.AppendAllText(Path.Combine(options.DataDirectory, "host.log"), $"{DateTimeOffset.UtcNow:O} {exception.GetType().Name}{Environment.NewLine}"); } catch { }
+    }
+    private bool ReplaceStartupRegistration(StartupRegistration startup)
+    {
+        var previous = startup.ConflictingCommand;
+        if (previous is null || _window is null || _exiting) return false;
+        if (MessageBox.Show(_window,
+            $"登录自动启动当前指向另一份 RemoteDisplaySwitch：\n\n{previous}\n\n是否改为以下版本？\n\n{startup.Command}\n\n取消将保留原设置。",
+            "更换自动启动版本", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return false;
+        startup.ReplaceAfterConfirmation(previous);
+        return true;
     }
     private void ShowSettings() { if (_window is null || _exiting) return; BringToFront(_window); }
     private static void BringToFront(Window window)

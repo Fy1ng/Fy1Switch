@@ -12,6 +12,7 @@ namespace RemoteDisplaySwitch.Host.UI;
 public sealed partial class MainWindow : Window
 {
     private readonly IDesktopController _controller;
+    private readonly Func<bool>? _requestStartupReplacement;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
     private HostSnapshot? _snapshot;
@@ -36,9 +37,12 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _feedbackTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _relativeTimeTimer = new() { Interval = TimeSpan.FromMinutes(1) };
 
-    public MainWindow(IDesktopController controller)
+    public MainWindow(IDesktopController controller) : this(controller, null) { }
+
+    internal MainWindow(IDesktopController controller, Func<bool>? requestStartupReplacement)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
+        _requestStartupReplacement = requestStartupReplacement;
         _lifetimeToken = _lifetime.Token;
         InitializeView();
         _feedbackTimer.Tick += (_, _) =>
@@ -452,7 +456,20 @@ public sealed partial class MainWindow : Window
         {
             await RunActionAsync("正在保存自动启动设置…", async cancellationToken =>
             {
-                var snapshot = await _controller.SetStartupAsync(enabled, cancellationToken);
+                HostSnapshot snapshot;
+                try
+                {
+                    snapshot = await _controller.SetStartupAsync(enabled, cancellationToken);
+                }
+                catch (ControlException exception) when (enabled && exception.Code == "startup_owned_by_another_install" && _requestStartupReplacement is not null)
+                {
+                    if (!_requestStartupReplacement())
+                    {
+                        SetMessage("已保留原有自动启动设置。", warning: true);
+                        return;
+                    }
+                    snapshot = await _controller.SetStartupAsync(true, cancellationToken);
+                }
                 ApplySnapshot(snapshot);
                 if (!_closed)
                     SetMessage(snapshot.StartupEnabled == enabled
