@@ -6,6 +6,43 @@ namespace RemoteDisplaySwitch.Remote.Tests;
 [TestClass]
 public sealed class RemoteSettingsTests
 {
+    [TestMethod]
+    public void LegacyOptionalPathsRemainEnabledAndNewSwitchesCanDisableWithoutErasingConfiguration()
+    {
+        var legacy = RemoteDisplaySwitch.Contracts.WireJson.Parse<RemoteSettings>("""{"relayUrl":"https://relay.example","tailscaleEndpoint":"https://100.70.1.2:48152","tailscaleListenAddress":"100.70.1.2"}""");
+        Assert.IsTrue(legacy.UseTailscale);
+        Assert.IsTrue(legacy.UseRelay);
+        Assert.IsNull(legacy.AutomaticNetwork);
+        legacy.Validate();
+        using var directory = new TestDirectory();
+        var store = new RemoteSettingsStore(directory.Path, new TestOnlyEncodingProtector(directory));
+        var disabled = legacy with
+        {
+            AutomaticNetwork = true, TailscaleEnabled = false, RelayEnabled = false,
+            ProtectedRelayToken = store.ProtectToken("fixture-retained-relay-token-" + Guid.NewGuid().ToString("N"))
+        };
+        store.Save(disabled);
+        var loaded = store.Load();
+        Assert.AreEqual(disabled, loaded);
+        Assert.IsFalse(loaded.UseTailscale);
+        Assert.IsFalse(loaded.UseRelay);
+        Assert.AreEqual(legacy.TailscaleEndpoint, loaded.TailscaleEndpoint);
+        Assert.AreEqual(legacy.RelayUrl, loaded.RelayUrl);
+        Assert.IsNotNull(store.RelayToken(loaded));
+        (loaded with { TailscaleEnabled = true, RelayEnabled = true }).Validate();
+    }
+
+    [TestMethod]
+    public void DisabledDraftsAreNotValidatedAsActivePathsButReenablingRequiresValidConfiguration()
+    {
+        var disabled = new RemoteSettings(TailscaleListenAddress: "not-an-address", TailscaleEndpoint: "unfinished", RelayUrl: "unfinished", TailscaleEnabled: false, RelayEnabled: false);
+        disabled.Validate();
+        Assert.ThrowsException<ArgumentException>(() => (disabled with { TailscaleEnabled = true }).Validate());
+        Assert.ThrowsException<ArgumentException>(() => (disabled with { RelayEnabled = true }).Validate());
+        Assert.ThrowsException<ArgumentException>(() => new RemoteSettings(TailscaleEnabled: true).Validate());
+        Assert.ThrowsException<ArgumentException>(() => new RemoteSettings(RelayEnabled: true).Validate());
+    }
+
     [DataTestMethod]
     [DataRow("http://127.0.0.1:48152")]
     [DataRow("https://user:password@localhost:48152")]

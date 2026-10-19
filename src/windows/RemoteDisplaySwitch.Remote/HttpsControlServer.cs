@@ -23,7 +23,7 @@ public sealed class HttpsControlServer(RemoteGateway gateway, DeviceSecurity sec
         gateway.TailscaleEndpoint = null;
         TailscaleStatus = "disabled";
         _application = await StartListenerAsync(settings.ListenAddress, settings.Port, cancellationToken);
-        if (settings.TailscaleListenAddress is not { } address) return;
+        if (!settings.UseTailscale || settings.TailscaleListenAddress is not { } address) return;
         try
         {
             var primary = IPAddress.Parse(settings.ListenAddress);

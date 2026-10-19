@@ -22,23 +22,35 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private readonly RemoteManager _manager;
     private readonly Window _owner;
     private readonly Action<string> _copyToClipboard;
+    private readonly Func<IReadOnlyList<LocalNetworkChoice>> _getNetworks;
     private bool _pairingVisible, _settingsVisible;
     private Task _closeTask = Task.CompletedTask;
     private Task _activeAction = Task.CompletedTask;
     private long _visibilityGeneration;
     private readonly LanPairingCoordinator _lan;
     private readonly CheckBox _enabled = new() { Content = "启用手机控制", Margin = new Thickness(0, 8, 0, 8) };
+    private readonly CheckBox _automaticNetwork = new() { Content = "自动选择局域网", Margin = new Thickness(0, 8, 0, 8) };
+    private readonly CheckBox _tailscaleEnabled = new() { Content = "启用 Tailscale", Margin = new Thickness(0, 8, 0, 8) };
+    private readonly CheckBox _relayEnabled = new() { Content = "启用中继", Margin = new Thickness(0, 8, 0, 8) };
     private readonly ComboBox _networks = new() { DisplayMemberPath = "Label", MinHeight = 34 };
     private readonly TextBox _listen = new(), _port = new(), _endpoint = new(), _tailscaleListen = new(), _tailscaleEndpoint = new(), _relay = new();
     private readonly PasswordBox _relayToken = new();
     private readonly TextBlock _status = Text("");
+    private readonly TextBlock _networkSummary = Text("");
+    private readonly TextBlock _tailscaleStatus = Text("", 12);
     private readonly TextBlock _pairStatus = Text("");
     private readonly TextBlock _codeLabel = Text("配对码", 12);
     private readonly TextBlock _code = new() { FontSize = 30, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
     private readonly ListBox _clients = new() { DisplayMemberPath = "Label", MinHeight = 60, MaxHeight = 160, ToolTip = "显示授权时间，不表示手机当前在线。" };
     private readonly StackPanel _configuration = new();
+    private readonly StackPanel _tailscaleFields = new() { Margin = new Thickness(16, 0, 0, 8) };
+    private readonly StackPanel _relayFields = new() { Margin = new Thickness(16, 0, 0, 8) };
+    private readonly Expander _advanced = new() { Header = "高级设置", Margin = new Thickness(0, 12, 0, 8) };
     private readonly List<Button> _actionButtons = new();
-    private readonly Button _primary, _useNetwork, _copy, _revoke;
+    private readonly Button _primary, _copy, _revoke;
+    private IReadOnlyList<LocalNetworkChoice> _networkChoices = Array.Empty<LocalNetworkChoice>();
+    private LocalNetworkChoice? _detectedLan;
+    private bool _updatingNetwork, _endpointGenerated;
     private readonly Image _qr = new() { Width = 220, Height = 220, Visibility = Visibility.Collapsed };
     private readonly Border _qrFrame;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -49,9 +61,10 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private string? _notice;
     private DateTimeOffset? _noticeUntil;
 
-    public RemoteConnectionView(RemoteManager manager, Window owner, Action<string>? copyToClipboard = null)
+    public RemoteConnectionView(RemoteManager manager, Window owner, Action<string>? copyToClipboard = null, Func<IReadOnlyList<LocalNetworkChoice>>? getNetworks = null)
     {
         _manager = manager; _owner = owner; _copyToClipboard = copyToClipboard ?? Clipboard.SetText;
+        _getNetworks = getNetworks ?? LocalNetworkChoices.Get;
         _lan = new LanPairingCoordinator(manager);
         _lan.Changed += LanChanged;
 
@@ -71,29 +84,42 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         var page = new StackPanel();
         page.Children.Add(Text("手机控制", 18, true)); page.Children.Add(_status);
         _configuration.Children.Add(_enabled);
-        _configuration.Children.Add(Text("请选择手机能够访问的电脑网络。"));
-        Field(_configuration, "电脑当前网络", _networks);
+        _configuration.Children.Add(_networkSummary);
+        _configuration.Children.Add(_tailscaleEnabled);
+        _tailscaleFields.Children.Add(_tailscaleStatus);
+        Field(_tailscaleFields, "Tailscale IP 地址", _tailscaleListen);
+        Field(_tailscaleFields, "Tailscale HTTPS 地址", _tailscaleEndpoint);
+        _tailscaleEndpoint.IsReadOnly = true;
+        _tailscaleFields.Children.Add(Text("自动检测本机 Tailscale 地址, 也可手动修改 IP. 需要电脑和手机均已连接 Tailscale.", 12));
+        AddButton(_tailscaleFields, "重新检测 Tailscale", () => { LoadNetworks(); FillTailscale(force: true); return Task.CompletedTask; });
+        _configuration.Children.Add(_tailscaleFields);
+        _configuration.Children.Add(_relayEnabled);
+        Field(_relayFields, "中继 HTTPS 地址", _relay);
+        Field(_relayFields, "电脑端中继凭据 (留空保留)", _relayToken);
+        _relayFields.Children.Add(Text("中继服务可以读取转发内容, 请只使用你信任的服务.", 12));
+        _configuration.Children.Add(_relayFields);
+
+        var advanced = new StackPanel { Margin = new Thickness(12, 4, 0, 0) };
+        advanced.Children.Add(_automaticNetwork);
+        Field(advanced, "自定义局域网", _networks);
         var networkButtons = new WrapPanel();
-        _useNetwork = AddButton(networkButtons, "使用此网络并保存", UseNetworkAsync);
         AddButton(networkButtons, "刷新网络列表", () => { LoadNetworks(); return Task.CompletedTask; });
-        _configuration.Children.Add(networkButtons);
-        Field(_configuration, "局域网 IP 地址", _listen); Field(_configuration, "HTTPS 端口", _port);
-        Field(_configuration, "手机访问电脑的 HTTPS 地址", _endpoint);
-        Field(_configuration, "Tailscale IP 地址（可选）", _tailscaleListen);
-        Field(_configuration, "Tailscale HTTPS 地址（可选）", _tailscaleEndpoint);
-        _configuration.Children.Add(Text("Tailscale 用于备用连接，两项留空可关闭。", 12));
-        Field(_configuration, "中继 HTTPS 地址（可选）", _relay);
-        Field(_configuration, "电脑端中继凭据（留空保留）", _relayToken);
-        _configuration.Children.Add(Text("中继服务可以读取转发内容。请只使用你信任的服务。不会自动修改防火墙或路由器。", 12));
+        advanced.Children.Add(networkButtons);
+        Field(advanced, "局域网 IP 地址", _listen); Field(advanced, "HTTPS 端口", _port);
+        Field(advanced, "手机访问电脑的 HTTPS 地址", _endpoint);
+        advanced.Children.Add(Text("自动选择时填写 IP 和访问地址, 端口默认 48152. 多网卡或连接失败时可关闭自动选择并手动调整.", 12));
+        _copy = AddButton(advanced, "复制备用配对信息", CopyPairingAsync);
+        _copy.ToolTip = "用于手机添加电脑时粘贴. 配对信息包含一次性凭据, 请勿公开分享.";
+        _advanced.Content = advanced;
+        _configuration.Children.Add(_advanced);
+        _configuration.Children.Add(Text("点击保存后应用连接设置. 不会自动修改防火墙或路由器.", 12));
         var actions = new WrapPanel();
         AddButton(actions, "保存连接设置", SaveAsync);
-        _primary = AddButton(actions, "显示配对码", () =>
+        _primary = AddButton(actions, "连接手机", () =>
         {
             _owner.Dispatcher.BeginInvoke(new Action(() => { if (!_closed) PairingRequested?.Invoke(); }));
             return Task.CompletedTask;
         });
-        _copy = AddButton(actions, "复制备用配对信息", CopyPairingAsync);
-        _copy.ToolTip = "用于手机“添加电脑”中的粘贴方式。配对信息包含一次性凭据，请勿公开分享。";
         _configuration.Children.Add(actions); page.Children.Add(_configuration);
 
         page.Children.Add(Text("已授权手机", 18, true)); page.Children.Add(_clients);
@@ -110,7 +136,25 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         });
         page.Children.Add(clientActions); SettingsContent = page;
         LoadSavedSettings(); LoadNetworks(); RefreshClients(); _knownClients = _manager.Security.Clients.Count;
-        _networks.SelectionChanged += (_, _) => RefreshActions();
+        _automaticNetwork.Checked += (_, _) => { if (!_updatingNetwork) LoadNetworks(preferCurrent: false); UpdateNetworkSummary(); };
+        _automaticNetwork.Unchecked += (_, _) => UpdateNetworkSummary();
+        _networks.SelectionChanged += (_, _) =>
+        {
+            if (!_updatingNetwork && _networks.SelectedItem is LocalNetworkChoice choice)
+            {
+                _endpointGenerated = true;
+                SetLanAddress(choice.Address);
+            }
+        };
+        _listen.TextChanged += (_, _) => { if (!_updatingNetwork) { UpdateGeneratedEndpoints(); UpdateNetworkSummary(); } };
+        _endpoint.TextChanged += (_, _) => { if (!_updatingNetwork) { _endpointGenerated = false; UpdateNetworkSummary(); } };
+        _port.TextChanged += (_, _) => { if (!_updatingNetwork) { UpdateGeneratedEndpoints(); UpdateNetworkSummary(); } };
+        _tailscaleListen.TextChanged += (_, _) => { if (!_updatingNetwork) UpdateGeneratedEndpoints(); };
+        _tailscaleEnabled.Checked += (_, _) => { FillTailscale(); UpdateOptionalForms(); };
+        _tailscaleEnabled.Unchecked += (_, _) => UpdateOptionalForms();
+        _relayEnabled.Checked += (_, _) => UpdateOptionalForms();
+        _relayEnabled.Unchecked += (_, _) => UpdateOptionalForms();
+        UpdateOptionalForms();
         _clients.SelectionChanged += (_, _) => RefreshActions();
         RenderPairing();
         _timer.Tick += async (_, _) => { RenderPairing(); if (CanRenew()) await RunAsync(StartPairingAsync); };
@@ -152,7 +196,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     {
         if (_closed) return;
         _settingsVisible = visible;
-        if (visible) { RefreshClients(); _timer.Start(); }
+        if (visible) { LoadNetworks(); RefreshClients(); _timer.Start(); }
         else
         {
             _relayToken.Clear();
@@ -170,6 +214,10 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _enabled.IsChecked = saved.Enabled; _listen.Text = saved.ListenAddress; _port.Text = saved.Port.ToString();
         _endpoint.Text = saved.PublicEndpoint; _relay.Text = saved.RelayUrl ?? "";
         _tailscaleListen.Text = saved.TailscaleListenAddress ?? ""; _tailscaleEndpoint.Text = saved.TailscaleEndpoint ?? "";
+        _automaticNetwork.IsChecked = saved.AutomaticNetwork ??
+            (saved.ListenAddress == "127.0.0.1" && saved.PublicEndpoint == Endpoint(saved.ListenAddress, saved.Port));
+        _endpointGenerated = saved.PublicEndpoint == Endpoint(saved.ListenAddress, saved.Port);
+        _tailscaleEnabled.IsChecked = saved.UseTailscale; _relayEnabled.IsChecked = saved.UseRelay;
     }
 
     public async ValueTask DisposeAsync()
@@ -211,44 +259,101 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         {
             if (!_closed) Notice(exception.Message switch
             {
-                "select_lan_address" => "请在设置中选择电脑当前网络，然后点击“使用此网络并保存”。",
+                "select_lan_address" or "no_lan_network" => "未识别到可用的局域网, 请连接 Wi-Fi 或以太网后刷新, 或在高级设置中手动配置.",
                 "remote_disabled" => "请先启用手机控制。",
                 "invalid_port" or "invalid_listener" => "请检查连接设置中的 IP 地址和端口（1024—65535）。",
                 "invalid_endpoint" => "请填写有效的 HTTPS 连接地址。",
-                "invalid_tailscale_listener" or "invalid_tailscale_endpoint" => "请同时填写 Tailscale IP 和 HTTPS 地址，或同时留空。",
-                "relay_token_missing" => "请填写有效的电脑端中继凭据，或清空中继地址后保存。",
+                "invalid_tailscale_listener" or "invalid_tailscale_endpoint" => "请检查 Tailscale IP 地址, 或关闭 Tailscale 后保存.",
+                "relay_token_missing" => "请填写有效的电脑端中继凭据, 或关闭中继后保存.",
                 _ when exception is OperationCanceledException => "配对已停止，可重新开始连接。",
                 _ => "操作未完成，请检查网络和连接设置后重试。"
             });
         }
         finally { _busy = false; if (!_closed) RenderPairing(); }
     }
-    private void LoadNetworks()
+    private void LoadNetworks(bool preferCurrent = true)
     {
-        var selected = (_networks.SelectedItem as LocalNetworkChoice)?.Address;
-        var choices = LocalNetworkChoices.Get(); _networks.ItemsSource = choices;
-        var lanChoices = choices.Where(choice => !choice.Tailscale).ToArray();
-        _networks.SelectedItem = choices.FirstOrDefault(choice => choice.Address == selected)
-            ?? choices.FirstOrDefault(choice => choice.Address == _manager.Settings.ListenAddress)
-            ?? (lanChoices.Length == 1 ? lanChoices[0] : null);
+        try { _networkChoices = _getNetworks(); }
+        catch (System.Net.NetworkInformation.NetworkInformationException) { _networkChoices = Array.Empty<LocalNetworkChoice>(); }
+        _detectedLan = LocalNetworkChoices.SelectLan(_networkChoices, preferCurrent ? _listen.Text.Trim() : null);
+        _updatingNetwork = true;
+        try
+        {
+            _networks.ItemsSource = _networkChoices.Where(choice => !choice.Tailscale).ToArray();
+            _networks.SelectedItem = _networkChoices.FirstOrDefault(choice => !choice.Tailscale && choice.Address == _listen.Text.Trim());
+        }
+        finally { _updatingNetwork = false; }
+        if (_automaticNetwork.IsChecked == true && _detectedLan is { } lan)
+        {
+            _endpointGenerated = true;
+            SetLanAddress(lan.Address);
+        }
+        FillTailscale();
+        UpdateNetworkSummary();
     }
-    private async Task UseNetworkAsync()
+    private static string Endpoint(string address, int port) => new UriBuilder("https", address, port).Uri.GetLeftPart(UriPartial.Authority);
+    private void SetLanAddress(string address)
     {
-        if (_networks.SelectedItem is not LocalNetworkChoice choice) throw new InvalidOperationException("select_lan_address");
-        if (!int.TryParse(_port.Text, out var port) || port is < 1024 or > 65535) throw new ArgumentException("invalid_port");
-        var endpoint = new UriBuilder("https", choice.Address, port).Uri.GetLeftPart(UriPartial.Authority);
-        if (choice.Tailscale) { _tailscaleListen.Text = choice.Address; _tailscaleEndpoint.Text = endpoint; }
-        else { _listen.Text = choice.Address; _endpoint.Text = endpoint; }
-        _enabled.IsChecked = true; await SaveAsync();
+        _updatingNetwork = true;
+        try
+        {
+            _listen.Text = address;
+            _networks.SelectedItem = _networkChoices.FirstOrDefault(choice => !choice.Tailscale && choice.Address == address);
+        }
+        finally { _updatingNetwork = false; }
+        UpdateGeneratedEndpoints(); UpdateNetworkSummary();
+    }
+    private void UpdateGeneratedEndpoints()
+    {
+        if (!int.TryParse(_port.Text, out var port) || port is < 1024 or > 65535) return;
+        _updatingNetwork = true;
+        try
+        {
+            if ((_automaticNetwork.IsChecked == true || _endpointGenerated) && IPAddress.TryParse(_listen.Text.Trim(), out var lan))
+                _endpoint.Text = Endpoint(lan.ToString(), port);
+            _tailscaleEndpoint.Text = IPAddress.TryParse(_tailscaleListen.Text.Trim(), out var tailscale) ? Endpoint(tailscale.ToString(), port) : "";
+        }
+        finally { _updatingNetwork = false; }
+    }
+    private void FillTailscale(bool force = false)
+    {
+        if (_tailscaleEnabled.IsChecked != true) return;
+        var choice = LocalNetworkChoices.SelectTailscale(_networkChoices, force ? null : _tailscaleListen.Text.Trim());
+        if (choice is not null && (force || string.IsNullOrWhiteSpace(_tailscaleListen.Text))) _tailscaleListen.Text = choice.Address;
+        UpdateGeneratedEndpoints();
+        _tailscaleStatus.Text = choice is null
+            ? "未检测到 Tailscale 网络. 请连接 Tailscale 后重新检测, 或手动填写 IP."
+            : $"已检测到: {choice.Name} / {choice.Address}. 保存后应用.";
+    }
+    private void UpdateOptionalForms()
+    {
+        _tailscaleFields.Visibility = _tailscaleEnabled.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        _relayFields.Visibility = _relayEnabled.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void UpdateNetworkSummary()
+    {
+        var automatic = _automaticNetwork.IsChecked == true;
+        _listen.IsReadOnly = automatic; _endpoint.IsReadOnly = automatic; _networks.IsEnabled = !automatic;
+        var choice = _networkChoices.FirstOrDefault(candidate => !candidate.Tailscale && candidate.Address == _listen.Text.Trim());
+        _networkSummary.Text = automatic && _detectedLan is null
+            ? "未识别到可用局域网. 请连接 Wi-Fi 或以太网后刷新, 或在高级设置中手动配置."
+            : $"{(automatic ? "自动选择" : "自定义网络")}: {choice?.Name ?? _listen.Text.Trim()}\n访问地址: {_endpoint.Text.Trim()}";
     }
     private async Task SaveAsync()
     {
+        if (_enabled.IsChecked == true && _automaticNetwork.IsChecked == true)
+        {
+            LoadNetworks();
+            if (_detectedLan is null) throw new InvalidOperationException("no_lan_network");
+        }
         if (!int.TryParse(_port.Text, out var port)) throw new ArgumentException("invalid_port");
         var secret = string.IsNullOrWhiteSpace(_relayToken.Password) ? _manager.Settings.ProtectedRelayToken : _manager.ProtectedRelayToken(_relayToken.Password);
         var settings = new RemoteSettings(_enabled.IsChecked == true, _listen.Text.Trim(), port, _endpoint.Text.Trim(),
             string.IsNullOrWhiteSpace(_relay.Text) ? null : _relay.Text.Trim(), secret,
             string.IsNullOrWhiteSpace(_tailscaleEndpoint.Text) ? null : _tailscaleEndpoint.Text.Trim(),
-            string.IsNullOrWhiteSpace(_tailscaleListen.Text) ? null : _tailscaleListen.Text.Trim());
+            string.IsNullOrWhiteSpace(_tailscaleListen.Text) ? null : _tailscaleListen.Text.Trim(),
+            AutomaticNetwork: _automaticNetwork.IsChecked == true,
+            TailscaleEnabled: _tailscaleEnabled.IsChecked == true, RelayEnabled: _relayEnabled.IsChecked == true);
         settings.Validate(); _sessionOpen = false;
         var generation = Interlocked.Increment(ref _pairGeneration);
         await _lan.StopAsync(); ClearPairing();
@@ -344,7 +449,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
                 : _manager.Running ? "关闭后可重新点击“连接手机”配对。"
                 : "请先在设置中启用手机控制。"
         });
-        _status.Text = _busy ? "正在处理，请稍候……" : _notice ?? (_manager.Running ? "手机控制已启用。" : "手机控制未启用。请选择电脑网络并保存设置。");
+        _status.Text = _busy ? "正在处理，请稍候……" : _notice ?? (_manager.Running ? "手机控制已启用。" : "手机控制未启用. 启用并保存后即可连接手机.");
         var tailscale = _manager.TailscaleStatus switch { "listening" => "已启用", "unavailable" => "暂不可用", _ => "未启用" };
         SettingsContent.ToolTip = $"当前地址：{_manager.Settings.PublicEndpoint}\nTailscale：{tailscale}";
         RefreshActions();
@@ -356,7 +461,6 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         foreach (var button in _actionButtons) button.IsEnabled = ready;
         _configuration.IsEnabled = ready;
         _primary.IsEnabled = ready && _manager.Running;
-        _useNetwork.IsEnabled = ready && _networks.SelectedItem is LocalNetworkChoice;
         _copy.IsEnabled = ready && _manager.Running;
         _revoke.IsEnabled = ready && _clients.SelectedItem is ClientItem;
     }

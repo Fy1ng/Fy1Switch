@@ -94,6 +94,25 @@ public sealed class MultipathTests
     }
 
     [TestMethod]
+    public async Task DisabledOptionalPathsKeepConfigurationWithoutOpeningListenersOrConnectingRelay()
+    {
+        using var fixture = new RemoteFixture();
+        await using var manager = new RemoteManager(fixture.Controller, fixture.DeviceId, fixture.Directory.Path, fixture.Protector);
+        var settings = Settings(HttpsFixture.GetLoopbackPort()) with
+        {
+            TailscaleEnabled = false, RelayEnabled = false, RelayUrl = "https://relay.invalid"
+        };
+        await manager.ApplyAsync(settings);
+        Assert.IsTrue(manager.Running);
+        Assert.AreEqual("disabled", manager.TailscaleStatus);
+        Assert.AreEqual("disabled", manager.RelayStatus);
+        Assert.IsNull(manager.BeginPairing().TailscaleEndpoint);
+        using var released = new TcpListener(IPAddress.Parse("127.0.0.2"), settings.Port);
+        released.Start();
+        Assert.AreEqual(settings, new RemoteSettingsStore(fixture.Directory.Path, fixture.Protector).Load());
+    }
+
+    [TestMethod]
     public async Task DuplicateAddressUsesOneListenerAndDisableReleasesIt()
     {
         using var fixture = new RemoteFixture();

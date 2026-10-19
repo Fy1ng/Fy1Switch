@@ -48,11 +48,11 @@ public sealed class RemoteManager : IAsyncDisposable
                     var server = new HttpsControlServer(_gateway, Security);
                     await server.StartAsync(settings);
                     _server = server;
-                    if (!string.IsNullOrEmpty(settings.RelayUrl))
+                    if (settings.UseRelay)
                     {
                         var token = _store.RelayToken(settings);
                         if (string.IsNullOrWhiteSpace(token) || token.Length < 32) throw new ArgumentException("relay_token_missing");
-                        _relay = new(_gateway, settings.RelayUrl, token); _relay.Start();
+                        _relay = new(_gateway, settings.RelayUrl!, token); _relay.Start();
                     }
                 }
                 if (persist) _store.Save(settings);

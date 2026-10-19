@@ -158,6 +158,7 @@ internal static class DesktopTheme
                     <ContentPresenter Margin="{TemplateBinding Padding}" IsHitTestVisible="False"
                                       HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                       Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                      ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                       ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
                     <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
                            IsOpen="{TemplateBinding IsDropDownOpen}">
