@@ -1,5 +1,11 @@
 RemoteDisplaySwitch Android third-party components
 
+Fluent System Icons - Microsoft Corporation, MIT
+https://github.com/microsoft/fluentui-system-icons
+Pinned source commit: 83b26348c811f072429427ff48362238656524fe
+See Fluent-System-Icons.LICENSE. Vector paths are unchanged; the upstream default
+color reference is replaced with white for local Compose/Quick Settings tinting.
+
 AndroidX / Jetpack Compose - Android Open Source Project / Google
 https://android.googlesource.com/platform/frameworks/support/
 Kotlin and kotlinx.coroutines - JetBrains

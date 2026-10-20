@@ -17,8 +17,8 @@ public sealed partial class MainWindow
     private readonly Border _pairingBackdrop = new() { Background = new SolidColorBrush(Color.FromArgb(128, 0, 0, 0)) };
     private readonly ContentControl _pairingHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
     private readonly ContentControl _remoteSettingsHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
-    private readonly Button _pairingClose = Button("\uE8BB");
-    private readonly Button _settingsBack = Button("返回");
+    private readonly Button _pairingClose = Button("关闭配对");
+    private readonly Button _settingsBack = Button("返回", AppIconKind.Back);
     private ScrollViewer _homePage = null!;
     private ScrollViewer _settingsPage = null!;
     private RemoteConnectionView? _remoteView;
@@ -58,8 +58,7 @@ public sealed partial class MainWindow
         _pairingClose.Height = 36;
         _pairingClose.Padding = new Thickness(0);
         _pairingClose.Margin = new Thickness(12, 0, 0, 0);
-        _pairingClose.FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
-        _pairingClose.FontSize = 12;
+        _pairingClose.Content = new VectorIcon { Kind = AppIconKind.Close, Width = 16, Height = 16 };
         _pairingClose.ToolTip = "关闭配对";
         AutomationProperties.SetName(_pairingClose, "关闭配对");
         _pairingClose.Click += async (_, _) => await ClosePairingAsync();

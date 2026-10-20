@@ -57,6 +57,8 @@ internal fun DeviceSettingsScreen(
                     Spacer(Modifier.width(10.dp))
                     Text("连接设置", Modifier.weight(1f))
                     Text(if (advanced) "收起" else "展开", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.width(8.dp))
+                    AppIcon(if (advanced) AppIconType.Up else AppIconType.Down)
                 }
                 if (advanced) {
                     Text("自动按直连，Tailscale，Relay 顺序连接", style = MaterialTheme.typography.bodySmall,
@@ -107,13 +109,19 @@ internal fun DeviceSettingsScreen(
             }
         }, enabled = !state.busy && dirty && name.isNotBlank(),
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+            AppIcon(if (dirty) AppIconType.Save else AppIconType.Check)
+            Spacer(Modifier.width(8.dp))
             Text(if (state.busy) "正在处理" else if (dirty) "保存更改" else "已保存")
         }
-        TextButton(onClick = onPair, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("重新配对电脑") }
+        TextButton(onClick = onPair, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+            AppIcon(AppIconType.Phone); Spacer(Modifier.width(8.dp)); Text("重新配对电脑")
+        }
         HorizontalDivider()
         TextButton(onClick = { confirmRemoval = true }, enabled = !state.busy,
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            modifier = Modifier.fillMaxWidth()) { Text("移除此电脑") }
+            modifier = Modifier.fillMaxWidth()) {
+            AppIcon(AppIconType.Delete); Spacer(Modifier.width(8.dp)); Text("移除此电脑")
+        }
     }
     if (confirmRemoval) AlertDialog(
         onDismissRequest = { confirmRemoval = false }, title = { Text("移除此电脑？") },

@@ -7,9 +7,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -188,6 +190,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                         }
                     }
                 }, enabled = !blocked, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                    AppIcon(AppIconType.Scan)
+                    Spacer(Modifier.width(8.dp))
                     Text(if (bundle.isNotBlank() && !advanced) "重新扫描电脑二维码" else "扫描电脑二维码")
                 }
                 if (!advanced) {
@@ -218,6 +222,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                     if (!nearby) lan.stop()
                 }, enabled = !scanning && !qrPairing && (!busy || lanState.busy),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    AppIcon(AppIconType.Monitor)
+                    Spacer(Modifier.width(8.dp))
                     Text(if (nearby) "收起附近电脑与短码配对" else "其他方式：附近电脑与短码配对")
                 }
                 if (nearby) {
@@ -233,6 +239,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                         lanState.computers.forEach { computer ->
                             OutlinedButton(onClick = { selected = computer; shortCode = ""; submissions.edit() }, enabled = !blocked,
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                AppIcon(if (selected?.let(::targetKey) == targetKey(computer)) AppIconType.Check else AppIconType.Monitor)
+                                Spacer(Modifier.width(8.dp))
                                 Text(computer.name.filterNot(Char::isISOControl) + if (selected?.let(::targetKey) == targetKey(computer)) "（已选择）" else "")
                             }
                         }
@@ -259,6 +267,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                         Button(onClick = { submitCode(computer, retry = true) }, enabled = !blocked && clientName.isNotBlank() && ShortCodeProtocol.validCode(shortCode) &&
                             lanState.computers.any { it.sessionId == computer.sessionId && it.host == computer.host && it.port == computer.port },
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                            AppIcon(AppIconType.Refresh)
+                            Spacer(Modifier.width(8.dp))
                             Text("重新尝试连接")
                         }
                     }
@@ -269,6 +279,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                         lan.stop()
                         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) lan.start()
                     }, enabled = !blocked, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        AppIcon(AppIconType.Refresh)
+                        Spacer(Modifier.width(8.dp))
                         Text("重新查找电脑")
                     }
                 }
@@ -286,6 +298,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                     selected = null
                     lan.stop()
                 }, enabled = !blocked, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    AppIcon(AppIconType.Paste)
+                    Spacer(Modifier.width(8.dp))
                     Text(if (advanced) "收起高级备用方式" else "高级备用方式")
                 }
                 if (advanced) {
@@ -324,9 +338,13 @@ private fun PairConfirmation(
         enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth())
     Button(onClick = onConfirm, enabled = enabled && clientName.isNotBlank(),
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        AppIcon(AppIconType.Phone)
+        Spacer(Modifier.width(8.dp))
         Text("确认连接")
     }
     TextButton(onClick = onCancel, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        AppIcon(AppIconType.Delete)
+        Spacer(Modifier.width(8.dp))
         Text("清除配对信息")
     }
 }

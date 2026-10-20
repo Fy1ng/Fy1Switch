@@ -7,6 +7,7 @@ using System.Windows.Data;
 using System.Windows.Interop;
 using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shell;
 
 namespace RemoteDisplaySwitch.Host.UI;
@@ -15,6 +16,7 @@ internal static class WindowFrame
 {
     internal static FrameworkElement Wrap(Window window, UIElement content, string? closeHint = null)
     {
+        window.Icon = new BitmapImage(new Uri("pack://application:,,,/RemoteDisplaySwitch.Host;component/Assets/App.png"));
         window.WindowStyle = WindowStyle.None;
         window.ResizeMode = ResizeMode.CanResize;
         WindowChrome.SetWindowChrome(window, new WindowChrome
@@ -38,7 +40,7 @@ internal static class WindowFrame
         caption.Children.Add(controls);
         var title = new TextBlock
         {
-            Margin = new Thickness(20, 0, 12, 0),
+            Margin = new Thickness(8, 0, 12, 0),
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
@@ -46,7 +48,10 @@ internal static class WindowFrame
         };
         title.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.ForegroundBrush);
         title.SetBinding(TextBlock.TextProperty, new Binding(nameof(Window.Title)) { Source = window });
-        caption.Children.Add(title);
+        var titleContent = new DockPanel { Margin = new Thickness(16, 0, 0, 0) };
+        titleContent.Children.Add(new Image { Source = window.Icon, Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center });
+        titleContent.Children.Add(title);
+        caption.Children.Add(titleContent);
         root.Children.Add(caption);
         Grid.SetRow(content, 1);
         root.Children.Add(content);
@@ -91,12 +96,11 @@ internal static class WindowFrame
             </Style>
             """);
 
-        Button CaptionButton(string glyph, string name, Action action)
+        Button CaptionButton(AppIconKind kind, string name, Action action)
         {
             var button = new Button
             {
-                Content = glyph, Width = 46, Height = 44, Padding = new Thickness(0),
-                FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 10,
+                Content = new VectorIcon { Kind = kind, Width = 16, Height = 16 }, Width = 46, Height = 44, Padding = new Thickness(0),
                 Style = style, ToolTip = name,
             };
             AutomationProperties.SetName(button, name);
@@ -106,18 +110,18 @@ internal static class WindowFrame
             return button;
         }
 
-        CaptionButton("\uE921", "最小化", () => SystemCommands.MinimizeWindow(window));
-        var maximize = CaptionButton("\uE922", "最大化", () =>
+        CaptionButton(AppIconKind.Minimize, "最小化", () => SystemCommands.MinimizeWindow(window));
+        var maximize = CaptionButton(AppIconKind.Maximize, "最大化", () =>
         {
             window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
         });
-        var close = CaptionButton("\uE8BB", "关闭", () => SystemCommands.CloseWindow(window));
+        var close = CaptionButton(AppIconKind.Close, "关闭", () => SystemCommands.CloseWindow(window));
         close.Tag = "close";
         close.ToolTip = closeHint ?? "关闭窗口";
         window.StateChanged += (_, _) =>
         {
             var maximized = window.WindowState == WindowState.Maximized;
-            maximize.Content = maximized ? "\uE923" : "\uE922";
+            ((VectorIcon)maximize.Content).Kind = maximized ? AppIconKind.Restore : AppIconKind.Maximize;
             maximize.ToolTip = maximized ? "还原" : "最大化";
             AutomationProperties.SetName(maximize, maximized ? "还原" : "最大化");
         };

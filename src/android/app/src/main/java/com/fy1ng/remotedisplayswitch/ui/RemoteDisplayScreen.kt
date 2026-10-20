@@ -166,7 +166,11 @@ fun RemoteDisplayScreen(
                                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text("添加快捷开关，下次无需打开应用", style = MaterialTheme.typography.titleSmall)
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            TextButton(onClick = { onDismissTileGuide(); onAddTile() }, enabled = !state.busy) { Text("添加") }
+                                            TextButton(onClick = { onDismissTileGuide(); onAddTile() }, enabled = !state.busy) {
+                                                AppIcon(AppIconType.Add)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("添加")
+                                            }
                                             TextButton(onClick = onDismissTileGuide) { Text("以后再说") }
                                         }
                                     }
@@ -273,7 +277,16 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
                 else AppIcon(if (action.intent != null) AppIconType.Power else AppIconType.Refresh,
                     modifier = Modifier.size(56.dp), description = action.label, tint = tint)
             }
-            Text(HomePolicy.status(state), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center) {
+                AppIcon(when (power) {
+                    DisplayPower.On -> AppIconType.Monitor
+                    DisplayPower.Off -> AppIconType.MonitorOff
+                    DisplayPower.Unknown -> AppIconType.Question
+                }, tint = tint)
+                Spacer(Modifier.width(10.dp))
+                Text(HomePolicy.status(state), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+            }
             val message = if (device.connected && device.status?.available == false) "请在电脑上确认显示器绑定" else when (device.feedback) {
                 Feedback.Ready, Feedback.Paired -> "配对已保存，连接后读取状态"
                 Feedback.Updated, Feedback.Confirmed, Feedback.Saved, Feedback.Busy -> null
@@ -299,17 +312,29 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
                     OutlinedButton(onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         scope.launch { repository.set(deviceId, PowerIntent.On) }
-                    }, enabled = StatePolicy.canSet(state, PowerIntent.On), modifier = Modifier.weight(1f)) { Text("开启") }
+                    }, enabled = StatePolicy.canSet(state, PowerIntent.On), modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                        AppIcon(AppIconType.Monitor); Spacer(Modifier.width(8.dp)); Text("开启")
+                    }
                     OutlinedButton(onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         scope.launch { repository.set(deviceId, PowerIntent.Off) }
-                    }, enabled = StatePolicy.canSet(state, PowerIntent.Off), modifier = Modifier.weight(1f)) { Text("关闭") }
+                    }, enabled = StatePolicy.canSet(state, PowerIntent.Off), modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                        AppIcon(AppIconType.MonitorOff); Spacer(Modifier.width(8.dp)); Text("关闭")
+                    }
                 }
             }
             if (action.intent != null || action.queryOperation) TextButton(
                 onClick = { scope.launch { repository.refresh(deviceId) } }, enabled = !state.busy,
-            ) { Text("刷新当前状态") }
-            TextButton(onClick = { details = !details }) { Text(if (details) "收起详情" else "查看详情") }
+            ) {
+                AppIcon(AppIconType.Refresh); Spacer(Modifier.width(8.dp)); Text("刷新当前状态")
+            }
+            TextButton(onClick = { details = !details }) {
+                AppIcon(if (details) AppIconType.Up else AppIconType.Down)
+                Spacer(Modifier.width(8.dp))
+                Text(if (details) "收起详情" else "查看详情")
+            }
             if (details) {
                 HorizontalDivider()
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -1,5 +1,7 @@
 # Third-party components
 
+- Fluent System Icons: Microsoft Corporation, MIT; pinned source commit 83b26348c811f072429427ff48362238656524fe. Windows SVG and Android VectorDrawable paths are included locally. License: licenses/Fluent-System-Icons.LICENSE (also included in Android assets). Import details: assets/README.md.
+
 - PowerToys Power Display: Microsoft, MIT. Pinned source commit and per-file hashes: vendor/powertoys/upstream.json. License: vendor/powertoys/LICENSE.
 - WmiLight 6.14.0: Martin Kuschnik, MIT. NuGet repository commit 1499672fdb2ef6ee8f83a041b05a56003df0f3ba. License: licenses/WmiLight.LICENSE.
 - Microsoft.Windows.CsWin32 0.3.269 and Windows metadata packages: build-time generation of LUID and EnumDisplayDevices declarations for read-only topology diagnostics; they are not required as installed applications. Full resolved dependencies are recorded in packages.lock.json.

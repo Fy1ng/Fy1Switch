@@ -19,7 +19,7 @@ public sealed partial class MainWindow
     private readonly TextBlock _device = Text();
     private readonly TextBlock _binding = Text();
     private readonly TextBlock _power = Text(size: 28);
-    private readonly TextBlock _powerIcon = new() { FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 30, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly VectorIcon _powerIcon = new() { Width = 32, Height = 32, Margin = new Thickness(0, 0, 12, 0) };
     private readonly TextBlock _source = Text();
     private readonly TextBlock _updated = Text();
     private readonly TextBlock _worker = Text();
@@ -34,17 +34,17 @@ public sealed partial class MainWindow
     private readonly Expander _bindingSection = new() { Header = "显示器绑定" };
     private readonly ListBox _candidates = new() { MinHeight = 72, MaxHeight = 174 };
     private readonly CheckBox _startup = new() { Content = "登录 Windows 时自动启动", MinHeight = 32, VerticalContentAlignment = VerticalAlignment.Center };
-    private readonly Button _on = Button("开启");
-    private readonly Button _off = Button("关闭");
-    private readonly Button _toggle = Button("刷新状态");
-    private readonly Button _remote = Button("连接手机");
-    private readonly Button _settingsButton = Button("设置");
-    private readonly Button _bindingGuide = Button("选择显示器");
+    private readonly Button _on = Button("开启", AppIconKind.Monitor);
+    private readonly Button _off = Button("关闭", AppIconKind.MonitorOff);
+    private readonly Button _toggle = Button("刷新状态", AppIconKind.Refresh);
+    private readonly Button _remote = Button("连接手机", AppIconKind.Phone);
+    private readonly Button _settingsButton = Button("设置", AppIconKind.Settings);
+    private readonly Button _bindingGuide = Button("选择显示器", AppIconKind.Monitor);
     private Border _bindingGuideCard = null!;
-    private readonly Button _refresh = Button("刷新");
-    private readonly Button _scan = Button("发现显示器");
-    private readonly Button _bind = Button("绑定所选");
-    private readonly Button _unbind = Button("取消绑定");
+    private readonly Button _refresh = Button("刷新", AppIconKind.Refresh);
+    private readonly Button _scan = Button("发现显示器", AppIconKind.Scan);
+    private readonly Button _bind = Button("绑定所选", AppIconKind.Link);
+    private readonly Button _unbind = Button("取消绑定", AppIconKind.Unlink);
 
     private MonitorCandidate? SelectedCandidate => (_candidates.SelectedItem as ListBoxItem)?.Tag as MonitorCandidate;
 
@@ -211,7 +211,7 @@ public sealed partial class MainWindow
             var canControl = _snapshotAvailable && binding is not null && !needsConfirmation && !busy;
             _powerCard.Visibility = binding is null && _snapshotAvailable ? Visibility.Collapsed : Visibility.Visible;
             _bindingGuideCard.Visibility = _snapshotAvailable && (binding is null || needsConfirmation) ? Visibility.Visible : Visibility.Collapsed;
-            _bindingGuide.Content = needsConfirmation ? "重新确认显示器" : "选择显示器";
+            AppIcons.SetButton(_bindingGuide, needsConfirmation ? "重新确认显示器" : "选择显示器", AppIconKind.Monitor);
             _bindingGuide.IsEnabled = !busy;
             _simulationBanner.Visibility = simulation ? Visibility.Visible : Visibility.Collapsed;
             _device.Text = simulation ? "当前设备：模拟 Windows 设备" : $"当前设备：{Environment.MachineName}";
@@ -222,7 +222,7 @@ public sealed partial class MainWindow
             _refresh.Visibility = power == DisplayPower.Unknown ? Visibility.Collapsed : Visibility.Visible;
             _power.Text = (power switch { DisplayPower.On => "显示器已开启", DisplayPower.Off => "显示器已关闭", _ => "显示器状态待确认" }) +
                 (simulation ? "（模拟）" : string.Empty);
-            _powerIcon.Text = power switch { DisplayPower.On => "\uE7F4", DisplayPower.Off => "\uE7E8", _ => "\uE9CE" };
+            _powerIcon.Kind = power switch { DisplayPower.On => AppIconKind.Monitor, DisplayPower.Off => AppIconKind.MonitorOff, _ => AppIconKind.Question };
             var stateBrush = power switch
             {
                 DisplayPower.On => DesktopTheme.SuccessBrush,
@@ -230,13 +230,13 @@ public sealed partial class MainWindow
                 _ => DesktopTheme.WarningForegroundBrush
             };
             _power.SetResourceReference(TextBlock.ForegroundProperty, stateBrush);
-            _powerIcon.SetResourceReference(TextBlock.ForegroundProperty, stateBrush);
-            _toggle.Content = busy ? "正在处理…" : power switch
+            _powerIcon.SetResourceReference(VectorIcon.ForegroundProperty, stateBrush);
+            AppIcons.SetButton(_toggle, busy ? "正在处理…" : power switch
             {
                 DisplayPower.On => "关闭显示器",
                 DisplayPower.Off => "开启显示器",
                 _ => "刷新状态"
-            };
+            }, power == DisplayPower.Unknown ? AppIconKind.Refresh : AppIconKind.Power);
             _source.Text = "状态来源：" + (snapshot is null || binding is null ? (simulation ? "模拟（非实体硬件）" : "未知")
                 : UiText.Source(snapshot.Observation, simulation));
             _updated.Text = "状态更新时间：" + (snapshot is null || binding is null ? "尚无记录" : UiText.Time(snapshot.Observation.ObservedAt));
@@ -258,8 +258,8 @@ public sealed partial class MainWindow
             _startup.IsEnabled = _snapshotAvailable && !busy;
             _startup.Content = _startupSaving ? "正在保存自动启动设置…" : "登录 Windows 时自动启动";
             _startup.IsChecked = _startupSaving ? null : snapshot?.StartupEnabled == true;
-            _scan.Content = _discovery is null ? "发现显示器" : "重新扫描";
-            _bind.Content = needsConfirmation ? "重新确认并绑定" : "绑定所选";
+            AppIcons.SetButton(_scan, _discovery is null ? "发现显示器" : "重新扫描", AppIconKind.Scan);
+            AppIcons.SetButton(_bind, needsConfirmation ? "重新确认并绑定" : "绑定所选", AppIconKind.Link);
             _bindingSection.Header = binding is null ? "绑定显示器" : needsConfirmation ? "重新确认显示器绑定" : "更换或取消绑定";
             _discoveryStatus.Text = _discovery is null ? "点击“发现显示器”查找可用设备。"
                 : $"发现 {_discovery.Candidates.Count} 台显示器 · {UiText.Time(_discovery.CapturedAt)} · " +
@@ -332,14 +332,19 @@ public sealed partial class MainWindow
         return block;
     }
 
-    private static Button Button(string text) => new()
+    private static Button Button(string text, AppIconKind? icon = null)
     {
-        Content = text,
-        MinWidth = 88,
-        MinHeight = 36,
-        Padding = new Thickness(14, 6, 14, 6),
-        Margin = new Thickness(0, 0, 8, 6)
-    };
+        var button = new Button
+        {
+            Content = text,
+            MinWidth = 88,
+            MinHeight = 36,
+            Padding = new Thickness(14, 6, 14, 6),
+            Margin = new Thickness(0, 0, 8, 6)
+        };
+        if (icon is { } kind) AppIcons.SetButton(button, text, kind);
+        return button;
+    }
 
     private static Border Card(UIElement content)
     {

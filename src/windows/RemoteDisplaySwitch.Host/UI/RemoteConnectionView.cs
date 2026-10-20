@@ -91,7 +91,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         Field(_tailscaleFields, "Tailscale HTTPS 地址", _tailscaleEndpoint);
         _tailscaleEndpoint.IsReadOnly = true;
         _tailscaleFields.Children.Add(Text("自动检测本机 Tailscale 地址, 也可手动修改 IP. 需要电脑和手机均已连接 Tailscale.", 12));
-        AddButton(_tailscaleFields, "重新检测 Tailscale", () => { LoadNetworks(); FillTailscale(force: true); return Task.CompletedTask; });
+        AddButton(_tailscaleFields, "重新检测 Tailscale", () => { LoadNetworks(); FillTailscale(force: true); return Task.CompletedTask; }, AppIconKind.Refresh);
         _configuration.Children.Add(_tailscaleFields);
         _configuration.Children.Add(_relayEnabled);
         Field(_relayFields, "中继 HTTPS 地址", _relay);
@@ -103,28 +103,28 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         advanced.Children.Add(_automaticNetwork);
         Field(advanced, "自定义局域网", _networks);
         var networkButtons = new WrapPanel();
-        AddButton(networkButtons, "刷新网络列表", () => { LoadNetworks(); return Task.CompletedTask; });
+        AddButton(networkButtons, "刷新网络列表", () => { LoadNetworks(); return Task.CompletedTask; }, AppIconKind.Refresh);
         advanced.Children.Add(networkButtons);
         Field(advanced, "局域网 IP 地址", _listen); Field(advanced, "HTTPS 端口", _port);
         Field(advanced, "手机访问电脑的 HTTPS 地址", _endpoint);
         advanced.Children.Add(Text("自动选择时填写 IP 和访问地址, 端口默认 48152. 多网卡或连接失败时可关闭自动选择并手动调整.", 12));
-        _copy = AddButton(advanced, "复制备用配对信息", CopyPairingAsync);
+        _copy = AddButton(advanced, "复制备用配对信息", CopyPairingAsync, AppIconKind.Copy);
         _copy.ToolTip = "用于手机添加电脑时粘贴. 配对信息包含一次性凭据, 请勿公开分享.";
         _advanced.Content = advanced;
         _configuration.Children.Add(_advanced);
         _configuration.Children.Add(Text("点击保存后应用连接设置. 不会自动修改防火墙或路由器.", 12));
         var actions = new WrapPanel();
-        AddButton(actions, "保存连接设置", SaveAsync);
+        AddButton(actions, "保存连接设置", SaveAsync, AppIconKind.Save);
         _primary = AddButton(actions, "连接手机", () =>
         {
             _owner.Dispatcher.BeginInvoke(new Action(() => { if (!_closed) PairingRequested?.Invoke(); }));
             return Task.CompletedTask;
-        });
+        }, AppIconKind.Phone);
         _configuration.Children.Add(actions); page.Children.Add(_configuration);
 
         page.Children.Add(Text("已授权手机", 18, true)); page.Children.Add(_clients);
         var clientActions = new WrapPanel();
-        AddButton(clientActions, "刷新手机列表", () => { RefreshClients(); return Task.CompletedTask; });
+        AddButton(clientActions, "刷新手机列表", () => { RefreshClients(); return Task.CompletedTask; }, AppIconKind.Refresh);
         _revoke = AddButton(clientActions, "撤销手机授权", () =>
         {
             if (_clients.SelectedItem is ClientItem item && MessageBox.Show(_owner,
@@ -133,7 +133,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
                 _manager.Security.Revoke(item.Client.ClientId); Notice("已撤销该手机的授权。", transient: true);
             }
             RefreshClients(); return Task.CompletedTask;
-        });
+        }, AppIconKind.Revoke);
         page.Children.Add(clientActions); SettingsContent = page;
         LoadSavedSettings(); LoadNetworks(); RefreshClients(); _knownClients = _manager.Security.Clients.Count;
         _automaticNetwork.Checked += (_, _) => { if (!_updatingNetwork) LoadNetworks(preferCurrent: false); UpdateNetworkSummary(); };
@@ -236,9 +236,10 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 6)
     };
     private static void Field(Panel panel, string label, Control input) { panel.Children.Add(Text(label)); input.MinHeight = 32; panel.Children.Add(input); }
-    private Button AddButton(Panel panel, string label, Func<Task> action)
+    private Button AddButton(Panel panel, string label, Func<Task> action, AppIconKind icon)
     {
         var button = new Button { Content = label, Padding = new Thickness(13, 8, 13, 8), Margin = new Thickness(0, 8, 8, 8) };
+        AppIcons.SetButton(button, label, icon);
         button.Click += async (_, _) => await RunAsync(action); panel.Children.Add(button); _actionButtons.Add(button); return button;
     }
     private void Notice(string text, bool transient = false)
