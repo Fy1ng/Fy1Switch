@@ -271,12 +271,71 @@ class DeviceRepositoryTest {
 
     @Test fun relayTokenIsSeparateAndNotReusedForChangedEndpoint() = runBlocking {
         val repository = DeviceRepository(MemoryStore(), FakeTransport(), MutableClock())
-        assertEquals(Feedback.InvalidInput, repository.configure(DEVICE, "Display", "https://relay.example", "fixture-device-token", false))
+        assertEquals(Feedback.RelayDeviceTokenConflict, repository.configure(DEVICE, "Display", "https://relay.example", "fixture-device-token", false))
         assertEquals(Feedback.Saved, repository.configure(DEVICE, "Display", "https://relay.example", "controller-only", false))
-        assertEquals(Feedback.InvalidInput, repository.configure(DEVICE, "Display", "https://other.example", "", false))
+        assertEquals(Feedback.RelayTokenRequired, repository.configure(DEVICE, "Display", "https://other.example", "", false))
         assertEquals("https://relay.example", repository.state.value.selected?.profile?.relay?.endpoint)
         assertEquals(Feedback.Saved, repository.configure(DEVICE, "Display", "https://relay.example", "", false))
         assertEquals("controller-only", repository.state.value.selected?.profile?.relay?.controllerToken)
+    }
+
+    @Test fun relayConfigurationSavesWithoutLanOrNetworkAndPreservesPairing() = runBlocking {
+        val initial = StateCodec.decode(StateCodec.encode(activeState()))
+        val store = MemoryStore(initial)
+        val transport = FakeTransport().apply { handler = { throw AssertionError("Saving settings must not access the network") } }
+        val repository = DeviceRepository(store, transport, MutableClock())
+        val controllerToken = java.util.Base64.getEncoder().encodeToString(ByteArray(32) { (it + 1).toByte() })
+
+        assertFalse(initial.selected!!.connected)
+        assertEquals(Feedback.Saved, repository.configure(DEVICE, initial.selected!!.profile.name,
+            "https://screlay.fy1ng.cn/", controllerToken, false, tailscaleEndpoint = "", autoLearnTailscale = true))
+
+        val restored = StateCodec.decode(StateCodec.encode(store.value)).selected!!.profile
+        assertEquals(initial.selected!!.profile.copy(relay = RelayConfig("https://screlay.fy1ng.cn", controllerToken)), restored)
+        assertTrue(transport.attempts.isEmpty())
+        assertEquals(0, transport.pairCalls)
+    }
+
+    @Test fun relayConfigurationReusesCredentialForEquivalentHttpsOrigin() = runBlocking {
+        val repository = DeviceRepository(MemoryStore(), FakeTransport(), MutableClock())
+        assertEquals(Feedback.Saved, repository.configure(DEVICE, "Display", "https://screlay.fy1ng.cn", "controller-only", false))
+        assertEquals(Feedback.Saved, repository.configure(DEVICE, "Display", "HTTPS://SCRELAY.FY1NG.CN:443/", "", false))
+        assertEquals("controller-only", repository.state.value.selected!!.profile.relay!!.controllerToken)
+        assertEquals(Feedback.RelayTokenRequired, repository.configure(DEVICE, "Display", "https://screlay.fy1ng.cn:8443", "", false))
+        assertEquals(Feedback.RelayTokenRequired, repository.configure(DEVICE, "Display", "https://other.example", "", false))
+        assertEquals("controller-only", repository.state.value.selected!!.profile.relay!!.controllerToken)
+    }
+
+    @Test fun configurationErrorsIdentifyTheFieldWithoutChangingSavedDataOrUsingNetwork() = runBlocking {
+        data class Case(
+            val name: String = "Display", val endpoint: String = "https://relay.example", val token: String = "controller-only",
+            val tailscale: String? = null, val deviceId: java.util.UUID = DEVICE, val expected: Feedback,
+        )
+        val cases = listOf(
+            Case(name = "bad\nname", expected = Feedback.InvalidName),
+            Case(endpoint = "https://relay.example/path", expected = Feedback.InvalidRelayEndpoint),
+            Case(endpoint = "https://relay .example", expected = Feedback.InvalidRelayEndpoint),
+            Case(token = "", expected = Feedback.RelayTokenRequired),
+            Case(token = "controller\nvalue", expected = Feedback.InvalidRelayToken),
+            Case(token = "fixture-device-token", expected = Feedback.RelayDeviceTokenConflict),
+            Case(tailscale = "http://100.64.0.1:51000", expected = Feedback.InvalidTailscaleEndpoint),
+            Case(deviceId = OTHER, expected = Feedback.DeviceMissing),
+        )
+        for (case in cases) {
+            val initial = activeState()
+            val store = MemoryStore(initial)
+            val transport = FakeTransport()
+            val repository = DeviceRepository(store, transport, MutableClock())
+            assertEquals(case.expected, repository.configure(case.deviceId, case.name, case.endpoint, case.token,
+                clearRelay = false, tailscaleEndpoint = case.tailscale))
+            assertEquals(case.expected, repository.state.value.notice)
+            assertEquals(initial, store.value)
+            assertFalse(repository.state.value.storageFailed)
+            assertFalse(repository.state.value.busy)
+            assertTrue(transport.attempts.isEmpty())
+            assertEquals(0, transport.pairCalls)
+            assertFalse(case.expected.text.contains("配对码"))
+        }
     }
 
     @Test fun selectedDeviceIsStableAcrossStaleUiActions() = runBlocking {

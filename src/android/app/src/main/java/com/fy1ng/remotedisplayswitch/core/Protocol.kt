@@ -23,6 +23,14 @@ object Protocol {
         return uri.toASCIIString().trimEnd('/')
     }
 
+    fun sameEndpoint(first: String, second: String): Boolean {
+        val left = URI(endpoint(first))
+        val right = URI(endpoint(second))
+        // Both endpoints are HTTPS origins. Cosmetic spelling must not require new credentials.
+        return left.host.equals(right.host, ignoreCase = true) &&
+            (if (left.port == -1) 443 else left.port) == (if (right.port == -1) 443 else right.port)
+    }
+
     fun pin(value: String): String {
         require(value.startsWith("sha256/") && value.length == 51)
         val digest = Base64.getDecoder().decode(value.substring(7))

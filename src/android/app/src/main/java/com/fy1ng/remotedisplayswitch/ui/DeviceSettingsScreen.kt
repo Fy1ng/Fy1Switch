@@ -37,7 +37,8 @@ internal fun DeviceSettingsScreen(
     SideEffect { onDirtyChanged(dirty) }
     DisposableEffect(Unit) { onDispose { onDirtyChanged(false) } }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        OutlinedTextField(value = name, onValueChange = { if (it.length <= 80) name = it },
+        OutlinedTextField(value = name, onValueChange = { if (it.length <= 80) { name = it; message = null } },
+            isError = message == Feedback.InvalidName.text,
             label = { Text("电脑名称") }, singleLine = true, enabled = !state.busy, modifier = Modifier.fillMaxWidth())
         Card(shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -69,8 +70,9 @@ internal fun DeviceSettingsScreen(
                     HorizontalDivider()
                     Text("Tailscale 备用直连", style = MaterialTheme.typography.titleSmall)
                     OutlinedTextField(value = tailscale, onValueChange = {
-                        if (it.length <= 2048) { tailscale = it; if (it.isBlank()) autoLearn = false }
+                        if (it.length <= 2048) { tailscale = it; message = null; if (it.isBlank()) autoLearn = false }
                     }, label = { Text("HTTPS 地址（可选）") }, singleLine = true, enabled = !state.busy,
+                        isError = message == Feedback.InvalidTailscaleEndpoint.text,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("从电脑自动更新地址", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -79,10 +81,12 @@ internal fun DeviceSettingsScreen(
                     }
                     HorizontalDivider()
                     Text("Relay 中继", style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(value = endpoint, onValueChange = { if (it.length <= 2048) endpoint = it },
+                    OutlinedTextField(value = endpoint, onValueChange = { if (it.length <= 2048) { endpoint = it; message = null } },
+                        isError = message == Feedback.InvalidRelayEndpoint.text,
                         label = { Text("Relay HTTPS 地址（可选）") }, singleLine = true, enabled = !state.busy,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = token, onValueChange = { if (it.length <= 4096) token = it },
+                    OutlinedTextField(value = token, onValueChange = { if (it.length <= 4096) { token = it; message = null } },
+                        isError = message in setOf(Feedback.RelayTokenRequired.text, Feedback.InvalidRelayToken.text, Feedback.RelayDeviceTokenConflict.text),
                         label = { Text("控制端凭据") },
                         placeholder = { Text(if (profile.relay != null) "留空保留已存凭据" else "填写 Relay 的控制端凭据") },
                         visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !state.busy,

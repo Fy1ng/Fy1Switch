@@ -99,6 +99,15 @@ class ProtocolTest {
         assertThrows(IllegalArgumentException::class.java) { Protocol.token("abc\r\nX-Evil: yes") }
     }
 
+    @Test fun sameHttpsEndpointIgnoresCaseDefaultPortAndRootSlashButNotOriginChanges() {
+        assertTrue(Protocol.sameEndpoint("https://screlay.fy1ng.cn", "HTTPS://SCRELAY.FY1NG.CN:443/"))
+        assertFalse(Protocol.sameEndpoint("https://screlay.fy1ng.cn", "https://other.example"))
+        assertFalse(Protocol.sameEndpoint("https://screlay.fy1ng.cn", "https://screlay.fy1ng.cn:8443"))
+        for (unsafe in listOf("http://screlay.fy1ng.cn", "https://user@screlay.fy1ng.cn", "https://screlay.fy1ng.cn/path")) {
+            assertThrows(IllegalArgumentException::class.java) { Protocol.sameEndpoint("https://screlay.fy1ng.cn", unsafe) }
+        }
+    }
+
     @Test fun secretBearingModelsHaveRedactedStringRepresentations() {
         assertFalse(profile(true).toString().contains("fixture-device-token"))
         assertFalse(profile(true).relay.toString().contains("fixture-controller-token"))

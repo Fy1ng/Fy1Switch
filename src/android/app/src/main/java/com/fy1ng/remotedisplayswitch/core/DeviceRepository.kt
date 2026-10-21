@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.net.URISyntaxException
 import java.time.Clock
 import java.time.Duration
 import java.util.UUID
@@ -84,21 +85,23 @@ class DeviceRepository(
         Feedback.Saved
     }
 
-    suspend fun configure(deviceId: UUID, name: String, relayEndpoint: String, relayToken: String, clearRelay: Boolean, tailscaleEndpoint: String? = null, autoLearnTailscale: Boolean? = null): Feedback = guarded {
-        val device = find(deviceId)
+    suspend fun configure(deviceId: UUID, name: String, relayEndpoint: String, relayToken: String, clearRelay: Boolean, tailscaleEndpoint: String? = null, autoLearnTailscale: Boolean? = null): Feedback = guarded(invalidInputFeedback = Feedback.InvalidConfiguration) {
+        val device = configurationValue(Feedback.DeviceMissing) { find(deviceId) }
+        val savedName = configurationValue(Feedback.InvalidName) { Protocol.label(name) }
         val relay = if (clearRelay || relayEndpoint.isBlank()) null else {
-            val endpoint = Protocol.endpoint(relayEndpoint)
+            val endpoint = configurationValue(Feedback.InvalidRelayEndpoint) { Protocol.endpoint(relayEndpoint) }
             val token = if (relayToken.isBlank()) {
-                require(device.profile.relay?.endpoint == endpoint)
-                requireNotNull(device.profile.relay).controllerToken
-            } else Protocol.token(relayToken.trim())
-            require(token != device.profile.deviceToken)
+                val existing = device.profile.relay ?: throw ConfigurationInputException(Feedback.RelayTokenRequired)
+                if (!Protocol.sameEndpoint(existing.endpoint, endpoint)) throw ConfigurationInputException(Feedback.RelayTokenRequired)
+                existing.controllerToken
+            } else configurationValue(Feedback.InvalidRelayToken) { Protocol.token(relayToken.trim()) }
+            if (token == device.profile.deviceToken) throw ConfigurationInputException(Feedback.RelayDeviceTokenConflict)
             RelayConfig(endpoint, token)
         }
         val tailscale = if (tailscaleEndpoint == null) device.profile.tailscaleEndpoint
-            else if (tailscaleEndpoint.isBlank()) null else Protocol.endpoint(tailscaleEndpoint)
+            else if (tailscaleEndpoint.isBlank()) null else configurationValue(Feedback.InvalidTailscaleEndpoint) { Protocol.endpoint(tailscaleEndpoint) }
         val learn = autoLearnTailscale ?: if (tailscaleEndpoint == null) device.profile.autoLearnTailscale else tailscaleEndpoint.isNotBlank()
-        replace(device.copy(profile = device.profile.copy(name = Protocol.label(name), relay = relay,
+        replace(device.copy(profile = device.profile.copy(name = savedName, relay = relay,
             tailscaleEndpoint = tailscale, autoLearnTailscale = learn)))
         Feedback.Saved
     }
@@ -232,6 +235,7 @@ class DeviceRepository(
     private suspend fun guarded(
         kind: RepositoryAction = RepositoryAction.Other,
         deviceId: UUID? = null,
+        invalidInputFeedback: Feedback = Feedback.InvalidInput,
         action: suspend () -> Feedback,
     ): Feedback {
         initialize()
@@ -257,14 +261,18 @@ class DeviceRepository(
                 } catch (_: StorageFailure) { storageFailure() }
             }
             throw exception
+        } catch (exception: ConfigurationInputException) {
+            mutableState.value = state.value.copy(notice = exception.feedback)
+            result = exception.feedback
+            return exception.feedback
         } catch (_: StorageFailure) {
             storageFailure()
             result = Feedback.Storage
             return Feedback.Storage
         } catch (_: Exception) {
-            mutableState.value = state.value.copy(notice = Feedback.InvalidInput)
-            result = Feedback.InvalidInput
-            return Feedback.InvalidInput
+            mutableState.value = state.value.copy(notice = invalidInputFeedback)
+            result = invalidInputFeedback
+            return invalidInputFeedback
         } finally {
             mutableState.value = state.value.copy(busy = false, request = request.copy(result = result))
             mutex.unlock()
@@ -275,5 +283,12 @@ class DeviceRepository(
         mutableState.value = state.value.copy(storageFailed = true, notice = Feedback.Storage)
     }
 
+    private fun <T> configurationValue(feedback: Feedback, read: () -> T): T = try { read() }
+    catch (exception: Exception) {
+        if (exception is IllegalArgumentException || exception is URISyntaxException) throw ConfigurationInputException(feedback)
+        throw exception
+    }
+
+    private class ConfigurationInputException(val feedback: Feedback) : RuntimeException(feedback.name)
     private class StorageFailure : RuntimeException()
 }

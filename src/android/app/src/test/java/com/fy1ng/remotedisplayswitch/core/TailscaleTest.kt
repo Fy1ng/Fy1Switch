@@ -167,7 +167,7 @@ class TailscaleTest {
         assertEquals(endpoint, store.value.selected!!.profile.tailscaleEndpoint)
         repository.configure(DEVICE, "Phone", "", "", false, "")
         assertNull(store.value.selected!!.profile.tailscaleEndpoint)
-        assertEquals(Feedback.InvalidInput, repository.configure(DEVICE, "Phone", "", "", false, "http://host"))
+        assertEquals(Feedback.InvalidTailscaleEndpoint, repository.configure(DEVICE, "Phone", "", "", false, "http://host"))
         assertNull(store.value.selected!!.profile.tailscaleEndpoint)
     }
 
