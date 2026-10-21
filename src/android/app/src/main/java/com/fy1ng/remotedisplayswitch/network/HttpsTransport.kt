@@ -29,13 +29,26 @@ class HttpsTransport : Transport {
     private val systemClient = OkHttpClient.Builder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
         .connectTimeout(5, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+    private data class TlsOrigin(val endpoint: String, val pin: String)
+    private val directClients = LinkedHashMap<TlsOrigin, OkHttpClient>(16, 0.75f, true)
 
-    private fun directClient(endpoint: String, pin: String): OkHttpClient {
+    private fun directClient(endpoint: String, pin: String): OkHttpClient = synchronized(directClients) {
+        val url = endpoint.toHttpUrl()
+        val key = TlsOrigin(url.toString(), pin)
+        directClients[key]?.let { return@synchronized it }
         val trust = PinnedTrustManager(pin)
         val context = SSLContext.getInstance("TLS")
         context.init(null, arrayOf(trust), null)
-        return systemClient.newBuilder().sslSocketFactory(context.socketFactory, trust)
-            .hostnameVerifier(trust.hostnameVerifier(endpoint.toHttpUrl().host)).build()
+        // Stable TLS objects let OkHttp reuse authenticated connections for this origin and pin.
+        val client = systemClient.newBuilder().sslSocketFactory(context.socketFactory, trust)
+            .hostnameVerifier(trust.hostnameVerifier(url.host)).build()
+        directClients[key] = client
+        if (directClients.size > MAX_DIRECT_CLIENTS) {
+            val oldest = directClients.entries.iterator()
+            oldest.next()
+            oldest.remove()
+        }
+        client
     }
 
     override suspend fun pair(bundle: PairBundle, clientName: String, timeoutMillis: Long): HttpResult {
@@ -108,6 +121,7 @@ class HttpsTransport : Transport {
         }
 
     private companion object {
+        const val MAX_DIRECT_CLIENTS = 64
         val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }

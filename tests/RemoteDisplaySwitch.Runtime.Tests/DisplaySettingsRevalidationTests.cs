@@ -7,8 +7,10 @@ namespace RemoteDisplaySwitch.Runtime.Tests;
 [TestClass]
 public sealed class DisplaySettingsRevalidationTests
 {
-    [TestMethod]
-    public async Task UnchangedTopologyRestartsWorkerAndPreservesBindingWithoutWriting()
+    [DataTestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task UnchangedTopologyPreservesBindingAndOnlyResumeRestartsWorker(bool restartWorker)
     {
         await using var fixture = new ControllerFixture();
         var binding = await fixture.BindAsync();
@@ -18,7 +20,7 @@ public sealed class DisplaySettingsRevalidationTests
         var requests = fixture.Worker.Requests.Length;
         var stops = fixture.Worker.StopCount;
 
-        await fixture.Controller.RevalidateTopologyAsync();
+        await fixture.Controller.RevalidateTopologyAsync(restartWorker: restartWorker);
 
         var snapshot = await fixture.Controller.GetSnapshotAsync();
         Assert.AreEqual(binding, snapshot.Binding);
@@ -26,7 +28,7 @@ public sealed class DisplaySettingsRevalidationTests
         Assert.IsFalse(snapshot.Busy);
         Assert.IsNull(snapshot.ErrorCode);
         Assert.AreEqual(DisplayPower.Unknown, snapshot.Observation.State);
-        Assert.AreEqual(stops + 1, fixture.Worker.StopCount);
+        Assert.AreEqual(stops + (restartWorker ? 1 : 0), fixture.Worker.StopCount);
         CollectionAssert.AreEqual(new[] { "discover" }, fixture.Worker.Requests.Skip(requests).Select(request => request.Command).ToArray());
         Assert.AreEqual(0, fixture.Worker.Writes.Length);
         await fixture.RestartAsync();
@@ -135,9 +137,38 @@ public sealed class DisplaySettingsRevalidationTests
         Assert.IsNull(snapshot.ErrorCode);
         Assert.IsFalse(snapshot.Busy);
         Assert.AreEqual(requests + 2, fixture.Worker.Requests.Length);
-        Assert.AreEqual(stops + 2, fixture.Worker.StopCount);
+        Assert.AreEqual(stops, fixture.Worker.StopCount);
         Assert.AreEqual(0, fixture.Worker.Writes.Length);
         Assert.AreEqual(1, fixture.Worker.MaximumConcurrentRequests);
+    }
+
+    [TestMethod]
+    public async Task ResumeRestartIsRetainedWhenLaterDisplayNotificationsCoalesce()
+    {
+        await using var fixture = new ControllerFixture();
+        var binding = await fixture.BindAsync();
+        var stops = fixture.Worker.StopCount;
+        var gate = new RequestGate();
+        fixture.Worker.Handler = async (request, token) =>
+        {
+            await gate.WaitAsync(request, token);
+            return fixture.Worker.Reply(request);
+        };
+        var refresh = fixture.Controller.RefreshAsync();
+        var pending = new List<Task> { refresh };
+        try
+        {
+            await gate.Entered;
+            pending.Add(fixture.Controller.RevalidateTopologyAsync(restartWorker: true));
+            for (var notification = 0; notification < 6; notification++)
+                pending.Add(fixture.Controller.RevalidateTopologyAsync());
+        }
+        finally { gate.Release(); }
+
+        await Task.WhenAll(pending).WaitAsync(RequestGate.Deadline);
+        Assert.AreEqual(stops + 1, fixture.Worker.StopCount);
+        Assert.AreEqual(binding, (await fixture.Controller.GetSnapshotAsync()).Binding);
+        Assert.AreEqual(0, fixture.Worker.Writes.Length);
     }
 
     [TestMethod]

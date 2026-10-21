@@ -95,19 +95,102 @@ class RecoveryProbeTest {
                 HttpResult(200, replyJson(attempt.body, status = status()))
             }
             assertEquals(Route.Direct, (router.send(directOnly, original) as Delivery.Reply).route)
-            assertEquals(startedAt.plusSeconds(3), clock.now)
-            assertEquals(listOf("status", commandName), transport.attempts.map(::command))
+            assertEquals(startedAt.plusMillis(if (commandName == "status") 1_500 else 3_000), clock.now)
+            assertEquals(if (commandName == "status") listOf("status") else listOf("status", commandName), transport.attempts.map(::command))
             assertEquals(Protocol.command(original), transport.attempts.last().body)
             val probe = JSONObject(transport.attempts.first().body)
             assertFalse(probe.has("operationId"))
             assertFalse(probe.has("intent"))
-            assertFalse(probe.has("targetId"))
-            assertNotEquals(original.requestId.toString(), probe.getString("requestId"))
+            if (commandName == "status") assertEquals(original.targetId.toString(), probe.getString("targetId"))
+            else assertFalse(probe.has("targetId"))
+            if (commandName == "status") assertEquals(original.requestId.toString(), probe.getString("requestId"))
+            else assertNotEquals(original.requestId.toString(), probe.getString("requestId"))
             assertEquals(original.expiresAt.toString(), probe.getString("expiresAt"))
             transport.attempts.clear()
             transport.handler = { HttpResult(200, replyJson(it.body, status = status())) }
             router.send(directOnly, request(expires = clock.now.plusSeconds(30)))
             assertEquals(listOf("set"), transport.attempts.map(::command))
+        }
+    }
+
+    @Test fun recoveringStatusUsesOriginalRequestOnceAndRestoresRoutePriority() = runBlocking {
+        val clock = MutableClock()
+        val transport = FakeTransport().apply { handler = {
+            if (it.route == Route.Direct) throw SocketTimeoutException()
+            HttpResult(200, replyJson(it.body, status = status()))
+        } }
+        val router = Router(transport, clock)
+        router.send(device, request(command = "status"))
+        clock.now = NOW.plusSeconds(5)
+        transport.attempts.clear()
+        transport.handler = { HttpResult(200, replyJson(it.body, status = status())) }
+        val original = request(command = "status", expires = clock.now.plusSeconds(30))
+        assertEquals(Route.Direct, (router.send(device, original) as Delivery.Reply).route)
+        assertEquals(Protocol.command(original), transport.attempts.single().body)
+        assertEquals(1000L, transport.attempts.single().timeout)
+        transport.attempts.clear()
+        router.send(device, request(expires = clock.now.plusSeconds(30)))
+        assertEquals(listOf("set"), transport.attempts.map(::command))
+    }
+
+    @Test fun liveRefreshRecoveryStillRequiresHardwareReadAfterStatusProbe() = runBlocking {
+        val clock = MutableClock()
+        val transport = FakeTransport().apply { handler = {
+            if (it.route == Route.Direct) throw SocketTimeoutException()
+            HttpResult(200, replyJson(it.body, status = status()))
+        } }
+        val router = Router(transport, clock)
+        router.send(device, request(command = "refresh"))
+        clock.now = NOW.plusSeconds(5)
+        transport.attempts.clear()
+        transport.handler = { HttpResult(200, replyJson(it.body, status = status())) }
+        val original = request(command = "refresh", expires = clock.now.plusSeconds(30))
+        assertEquals(Route.Direct, (router.send(device, original) as Delivery.Reply).route)
+        assertEquals(listOf("status", "refresh"), transport.attempts.map(::command))
+        assertEquals(Protocol.command(original), transport.attempts.last().body)
+        assertEquals(listOf(1000L, 6000L), transport.attempts.map { it.timeout })
+    }
+
+    @Test fun recoveringStatusCanUseWholeShortDeadlineWithoutReservingAnotherRequest() = runBlocking {
+        val clock = MutableClock()
+        val transport = FakeTransport().apply { handler = { throw SocketTimeoutException() } }
+        val router = Router(transport, clock)
+        router.send(profile(), request(command = "status"))
+        clock.now = NOW.plusSeconds(5)
+        transport.attempts.clear()
+        transport.handler = { HttpResult(200, replyJson(it.body, status = status())) }
+        val original = request(command = "status", expires = clock.now.plusMillis(500))
+        assertEquals(Route.Direct, (router.send(profile(), original) as Delivery.Reply).route)
+        assertEquals(500L, transport.attempts.single().timeout)
+        assertEquals(Protocol.command(original), transport.attempts.single().body)
+    }
+
+    @Test fun recoveringStatusValidationFailuresDoNotFallBack() = runBlocking {
+        for (failure in listOf("tls", "identity", "missing-status", "unsuccessful")) {
+            val clock = MutableClock()
+            val transport = FakeTransport().apply { handler = {
+                if (it.route == Route.Direct) throw SocketTimeoutException()
+                HttpResult(200, replyJson(it.body, status = status()))
+            } }
+            val router = Router(transport, clock)
+            router.send(device, request(command = "status"))
+            clock.now = NOW.plusSeconds(5)
+            transport.attempts.clear()
+            transport.handler = {
+                when (failure) {
+                    "tls" -> throw SSLHandshakeException("fixture")
+                    "identity" -> HttpResult(200, replyJson(it.body, status = status(deviceId = OTHER)))
+                    "missing-status" -> HttpResult(200, replyJson(it.body))
+                    else -> HttpResult(200, replyJson(it.body, status = status(), success = false))
+                }
+            }
+            val result = router.send(device, request(command = "status", expires = clock.now.plusSeconds(30))) as Delivery.Failure
+            assertEquals(when (failure) {
+                "tls" -> Feedback.Security
+                "unsuccessful" -> Feedback.Failed
+                else -> Feedback.Protocol
+            }, result.feedback)
+            assertEquals(listOf(Route.Direct), transport.attempts.map { it.route })
         }
     }
 

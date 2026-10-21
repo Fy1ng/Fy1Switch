@@ -70,10 +70,13 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
                     if (retryAt > clock.instant()) continue
                     val fallback = configured.drop(index + 1).firstOrNull { keys.getValue(it) !in cooldowns }
                     fallbackReserve = fallback?.let { limit(device, it) } ?: 0L
-                    val reserve = if (fallback == null) 1_000L else fallbackReserve
+                    val recoveringStatus = request.command == "status"
+                    val reserve = if (fallback == null && !recoveringStatus) 1_000L else fallbackReserve
                     if (remaining <= reserve) continue
                     val probeLimit = if (fallback == null) limit(device, route) else 1_000L
-                    val probe = RemoteCommand(UUID.randomUUID(), device.deviceId, "status", request.expiresAt)
+                    // A status request already performs the read-only recovery check.
+                    val probe = if (recoveringStatus) request else RemoteCommand(UUID.randomUUID(), device.deviceId, "status", request.expiresAt)
+                    if (recoveringStatus) attempted = true
                     when (val result = exchange(device, route, probe, Protocol.command(probe), minOf(probeLimit, remaining - reserve))) {
                         is Delivery.Failure -> {
                             if (result.feedback != Feedback.Offline) return result.copy(mayHaveExecuted = attempted)
@@ -84,6 +87,7 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
                             if (!result.value.success) return Delivery.Failure(Feedback.Failed, attempted)
                             if (result.value.status == null) return Delivery.Failure(Feedback.Protocol, attempted)
                             cooldowns.remove(key)
+                            if (recoveringStatus) return result
                         }
                     }
                     remaining = Duration.between(clock.instant(), request.expiresAt).toMillis()

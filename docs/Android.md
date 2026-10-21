@@ -121,6 +121,8 @@ Tile: 已确认 On 映射 STATE_ACTIVE, 已确认 Off 映射 STATE_INACTIVE. 当
 
 直连总请求预算为 15 秒，Relay 为 12 秒，均受原请求 30 秒截止时间约束；TCP 连接上限仍为 5 秒。原因是已测 Windows 冷启动发现约 5 秒，不能在刚开始能返回结果时主动超时并反复取消 Worker。
 
+Direct/Tailscale 的 pinned TLS 客户端按规范化 HTTPS 地址和 certificatePin 复用, 最多保留 64 个最近使用的客户端. 连续状态请求可复用已认证连接, 避免每次重建 TLS 配置及握手; token 仍从当前配置逐次写入请求头, pin 或地址变化使用独立客户端, Relay 保留系统 TLS. 路径冷却结束后的原始 status 请求直接承担只读恢复探测并返回结果, 避免 probe 成功后再发一次 status; 实时 refresh 和 set 仍保留独立只读探测及原请求预算, 不用缓存状态替代硬件读回.
+
 常规 54 项 JVM 测试采用 fixture JSON、内存 store、fake transport、JDK 公共证书/有效期失败替身，不访问真实 Windows、Relay 或手机。覆盖字段/枚举、响应身份、跨路由同 ID、过期、并发/取消、防误报、配置隔离、恢复、不重放、TLS pin/有效期、IP/DNS SAN 差异约束和通道鉴权分离。默认 `testDebugUnitTest` 排除下面的 live 类，不以 skipped/假通过充数，即使已设置 fixture 环境变量也不会运行 live 测试。
 
 ### 显式 JVM / Windows HTTPS 集成测试

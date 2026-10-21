@@ -11,6 +11,8 @@ public sealed class DesktopController : IDesktopController, IAsyncDisposable
     private HostSnapshot _snapshot;
     private long _topologyGeneration;
     private long _displaySettingsGeneration;
+    private long _workerRestartGeneration;
+    private long _completedWorkerRestartGeneration;
     private readonly object _topologyGate = new();
     private volatile bool _invalidated;
     private int _disposed;
@@ -181,13 +183,14 @@ public sealed class DesktopController : IDesktopController, IAsyncDisposable
         try { _startup.SetEnabled(enabled); Publish(_snapshot with { StartupEnabled = _startup.Enabled }); return _snapshot; }
         finally { _commands.Release(); }
     }
-    public async Task RevalidateTopologyAsync(CancellationToken cancellationToken = default)
+    public async Task RevalidateTopologyAsync(CancellationToken cancellationToken = default, bool restartWorker = false)
     {
         long generation;
         lock (_topologyGate)
         {
             if (Volatile.Read(ref _disposed) != 0) return;
             generation = Interlocked.Increment(ref _displaySettingsGeneration);
+            if (restartWorker) Interlocked.Increment(ref _workerRestartGeneration);
         }
         await _commands.WaitAsync(cancellationToken);
         var checking = false;
@@ -198,7 +201,14 @@ public sealed class DesktopController : IDesktopController, IAsyncDisposable
             var topologyGeneration = Interlocked.Read(ref _topologyGeneration);
             checking = true;
             Publish(_snapshot with { Busy = true, Observation = Unknown(), ErrorCode = null });
-            await _worker.StopAsync();
+            // Ordinary display notifications can validate the retained handles with a fresh
+            // full topology capture. Resume still releases handles before rediscovery.
+            var restartGeneration = Interlocked.Read(ref _workerRestartGeneration);
+            if (restartGeneration != _completedWorkerRestartGeneration)
+            {
+                await _worker.StopAsync();
+                _completedWorkerRestartGeneration = restartGeneration;
+            }
             var reply = await _worker.SendAsync(new(Guid.NewGuid(), "discover"), cancellationToken);
             lock (_topologyGate)
             {

@@ -1,6 +1,7 @@
 package com.fy1ng.remotedisplayswitch.network
 
 import com.fy1ng.remotedisplayswitch.core.DEVICE
+import com.fy1ng.remotedisplayswitch.core.PIN
 import com.fy1ng.remotedisplayswitch.core.Protocol
 import com.fy1ng.remotedisplayswitch.core.Route
 import com.fy1ng.remotedisplayswitch.core.profile
@@ -12,6 +13,42 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HttpsTransportTest {
+    @Test fun sameTlsOriginReusesClientAcrossRefreshesAndCredentialChanges() {
+        val transport = HttpsTransport()
+        val device = profile()
+        val first = transport.controlClient(device, Route.Direct)
+        assertSame(first, transport.controlClient(device, Route.Direct))
+        val changedToken = device.copy(deviceToken = "replacement-fixture-token", endpoint = device.endpoint + "/")
+        assertSame(first, transport.controlClient(changedToken, Route.Direct))
+        assertEquals("Bearer replacement-fixture-token", transport.controlRequest(changedToken, Route.Direct, "{}").header("Authorization"))
+        assertSame(first, transport.controlClient(device.copy(tailscaleEndpoint = device.endpoint), Route.Tailscale))
+    }
+
+    @Test fun originOrPinChangesRequireSeparateTlsClients() {
+        val transport = HttpsTransport()
+        val device = profile()
+        val first = transport.controlClient(device, Route.Direct)
+        val otherOrigin = transport.controlClient(device.copy(endpoint = "https://192.0.2.2:8443"), Route.Direct)
+        val otherPin = transport.controlClient(device.copy(certificatePin = "sha256/AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="), Route.Direct)
+        assertNotSame(first, otherOrigin)
+        assertNotSame(first.sslSocketFactory, otherOrigin.sslSocketFactory)
+        assertNotSame(first.sslSocketFactory, otherPin.sslSocketFactory)
+        assertSame(first, transport.controlClient(device.copy(certificatePin = PIN), Route.Direct))
+    }
+
+    @Test fun tlsClientCacheIsBoundedAndKeepsRecentlyUsedOrigins() {
+        val transport = HttpsTransport()
+        val device = profile()
+        val first = transport.controlClient(device, Route.Direct)
+        val oldest = device.copy(endpoint = "https://192.0.2.2:8443")
+        val evicted = transport.controlClient(oldest, Route.Direct)
+        for (index in 3..64) transport.controlClient(device.copy(endpoint = "https://192.0.2.$index:8443"), Route.Direct)
+        assertSame(first, transport.controlClient(device, Route.Direct))
+        transport.controlClient(device.copy(endpoint = "https://192.0.2.65:8443"), Route.Direct)
+        assertSame(first, transport.controlClient(device, Route.Direct))
+        assertNotSame(evicted, transport.controlClient(oldest, Route.Direct))
+    }
+
     @Test fun errorHeadersArePreservedEvenWithOversizedBody() {
         val transport = HttpsTransport()
         val request = transport.controlRequest(profile(), Route.Direct, "{}")

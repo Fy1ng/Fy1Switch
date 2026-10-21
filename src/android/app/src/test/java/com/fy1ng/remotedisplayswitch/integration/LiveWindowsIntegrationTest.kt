@@ -13,11 +13,15 @@ import com.fy1ng.remotedisplayswitch.core.RemoteReply
 import com.fy1ng.remotedisplayswitch.core.Route
 import com.fy1ng.remotedisplayswitch.core.Router
 import com.fy1ng.remotedisplayswitch.network.HttpsTransport
+import com.fy1ng.remotedisplayswitch.network.PinnedTrustManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Call
+import okhttp3.EventListener
 import org.json.JSONObject
 import org.junit.Test
 import java.nio.file.Files
@@ -26,6 +30,8 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+import javax.net.ssl.SSLContext
 
 class LiveWindowsIntegrationTest {
     @Test(timeout = 90_000)
@@ -50,6 +56,8 @@ class LiveWindowsIntegrationTest {
                 ensure(pairResponse.status in 200..299, "Pairing was rejected")
                 val paired = Protocol.pairReply(pairResponse.body, bundle.deviceId)
                 val device = DeviceProfile(bundle.deviceId, paired.clientId, "Loopback fixture", bundle.endpoint, bundle.certificatePin, paired.token)
+                stage = "verify refresh TLS connection reuse"
+                verifyRefreshConnectionReuse(device, targetId)
                 var confirmedOn = false
                 try {
                     stage = "initial refresh On"
@@ -88,6 +96,44 @@ class LiveWindowsIntegrationTest {
         } catch (_: Exception) {
             throw AssertionError("Live Windows HTTPS fixture failed at " + stage + "; sensitive details suppressed.")
         }
+    }
+
+    private suspend fun verifyRefreshConnectionReuse(device: DeviceProfile, targetId: UUID) = withContext(Dispatchers.IO) {
+        val handshakeCounts = mutableListOf<Int>()
+        for (rebuildTls in listOf(true, false)) {
+            val transport = HttpsTransport()
+            val handshakes = AtomicInteger()
+            val listener = object : EventListener() {
+                override fun secureConnectStart(call: Call) { handshakes.incrementAndGet() }
+            }
+            val durations = mutableListOf<Long>()
+            repeat(3) {
+                val builder = transport.controlClient(device, Route.Direct).newBuilder().eventListener(listener)
+                if (rebuildTls) {
+                    // Reference the previous per-request TLS setup while retaining the shared pool.
+                    val trust = PinnedTrustManager(device.certificatePin)
+                    val context = SSLContext.getInstance("TLS")
+                    context.init(null, arrayOf(trust), null)
+                    builder.sslSocketFactory(context.socketFactory, trust)
+                        .hostnameVerifier(trust.hostnameVerifier(device.endpoint.toHttpUrl().host))
+                }
+                val client = builder.build()
+                val request = refreshCommand(device, targetId)
+                val call = client.newCall(transport.controlRequest(device, Route.Direct, Protocol.command(request)))
+                call.timeout().timeout(7, java.util.concurrent.TimeUnit.SECONDS)
+                val started = System.nanoTime()
+                val response = transport.readResponse(call.execute())
+                durations.add((System.nanoTime() - started) / 1_000_000)
+                ensure(response.status == 200, "TLS reuse refresh rejected")
+                val status = Protocol.reply(response.body, request).status
+                ensure(status?.targetId == targetId && status.available && !status.busy && status.observation.state == DisplayPower.On,
+                    "TLS reuse refresh did not confirm fixture state")
+            }
+            handshakeCounts.add(handshakes.get())
+            println("TLS_REUSE rebuildTls=$rebuildTls requests=3 handshakes=${handshakes.get()} elapsedMs=$durations")
+            transport.controlClient(device, Route.Direct).connectionPool.evictAll()
+        }
+        ensure(handshakeCounts == listOf(3, 1), "Repeated refresh must reduce three TLS handshakes to one")
     }
 
     private fun command(device: DeviceProfile, targetId: UUID, intent: PowerIntent) = RemoteCommand(

@@ -305,10 +305,10 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
         }));
     }
     private void DisplayChanged(object? sender, EventArgs args) { if (!options.Simulation) _ = RevalidateDisplaySettingsAsync(); }
-    private void PowerChanged(object sender, PowerModeChangedEventArgs args) { if (!options.Simulation && args.Mode == PowerModes.Resume) _ = RevalidateDisplaySettingsAsync(); }
-    private async Task RevalidateDisplaySettingsAsync()
+    private void PowerChanged(object sender, PowerModeChangedEventArgs args) { if (!options.Simulation && args.Mode == PowerModes.Resume) _ = RevalidateDisplaySettingsAsync(restartWorker: true); }
+    private async Task RevalidateDisplaySettingsAsync(bool restartWorker = false)
     {
-        try { if (_controller is not null) await _controller.RevalidateTopologyAsync(); }
+        try { if (_controller is not null) await _controller.RevalidateTopologyAsync(restartWorker: restartWorker); }
         catch (Exception exception) { SaveHostError(exception); }
     }
     private void RenderPreview(string target)
