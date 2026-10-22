@@ -19,13 +19,16 @@ internal static class WindowFrame
         window.Icon = new BitmapImage(new Uri("pack://application:,,,/RemoteDisplaySwitch.Host;component/Assets/App.png"));
         window.WindowStyle = WindowStyle.None;
         window.ResizeMode = ResizeMode.CanResize;
+        // Windows 10 keeps a rectangular HWND when DWM glass is enabled.
+        // Only round the WPF content after the native window accepts rounding.
+        var normalCornerRadius = new CornerRadius(0);
         WindowChrome.SetWindowChrome(window, new WindowChrome
         {
             CaptionHeight = 44,
             ResizeBorderThickness = new Thickness(6),
             // A nonzero DWM frame keeps the native window shadow with a custom caption.
             GlassFrameThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = normalCornerRadius,
             UseAeroCaptionButtons = false,
         });
 
@@ -131,7 +134,7 @@ internal static class WindowFrame
         };
         var frame = new Border
         {
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = normalCornerRadius,
             Child = root,
             SnapsToDevicePixels = true,
         };
@@ -151,7 +154,7 @@ internal static class WindowFrame
         {
             var dpi = VisualTreeHelper.GetDpi(window);
             frame.BorderThickness = new Thickness(1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY, 1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY);
-            frame.CornerRadius = window.WindowState == WindowState.Maximized ? new CornerRadius(0) : new CornerRadius(8);
+            frame.CornerRadius = window.WindowState == WindowState.Maximized ? new CornerRadius(0) : normalCornerRadius;
             WindowChrome.GetWindowChrome(window).CornerRadius = frame.CornerRadius;
             UpdateContentClip();
         }
@@ -161,15 +164,18 @@ internal static class WindowFrame
         window.StateChanged += (_, _) => UpdateFrame();
         window.SourceInitialized += (_, _) =>
         {
-            UpdateFrame();
-            // Windows 11 has its own 1px border; keep only the one drawn above.
             if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
             {
-                var noBorder = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE
                 var handle = new WindowInteropHelper(window).Handle;
+                var roundCorners = 2; // DWMWCP_ROUND
+                if (DwmSetWindowAttribute(handle, 33, ref roundCorners, sizeof(int)) == 0)
+                    normalCornerRadius = new CornerRadius(8); // DWMWA_WINDOW_CORNER_PREFERENCE
+                // Windows 11 has its own 1px border; keep only the one drawn above.
+                var noBorder = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE
                 _ = DwmSetWindowAttribute(handle, 34, ref noBorder, sizeof(int));
                 EnableSnapLayouts(window, maximize, handle);
             }
+            UpdateFrame();
         };
         return frame;
     }
