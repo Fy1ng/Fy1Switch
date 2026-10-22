@@ -85,9 +85,6 @@ internal static class WindowFrame
                         <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Rds.AccentBrush}"/>
                         <Setter TargetName="Surface" Property="BorderThickness" Value="2"/>
                       </Trigger>
-                      <Trigger Property="Tag" Value="close">
-                        <Setter TargetName="Surface" Property="CornerRadius" Value="0,8,0,0"/>
-                      </Trigger>
                       <MultiTrigger>
                         <MultiTrigger.Conditions>
                           <Condition Property="Tag" Value="close"/>
@@ -140,16 +137,31 @@ internal static class WindowFrame
         };
         frame.SetResourceReference(Border.BackgroundProperty, DesktopTheme.WindowBrush);
         frame.SetResourceReference(Border.BorderBrushProperty, DesktopTheme.BorderBrush);
-        void UpdateBorder()
+        void UpdateContentClip()
+        {
+            // Clip the caption and content together so the close hover fills the
+            // same inner corner as the frame, without a second rounded cutout.
+            var clip = new RectangleGeometry(new Rect(root.RenderSize),
+                Math.Max(0, frame.CornerRadius.TopLeft - frame.BorderThickness.Left),
+                Math.Max(0, frame.CornerRadius.TopLeft - frame.BorderThickness.Top));
+            clip.Freeze();
+            root.Clip = clip;
+        }
+        void UpdateFrame()
         {
             var dpi = VisualTreeHelper.GetDpi(window);
             frame.BorderThickness = new Thickness(1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY, 1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY);
+            frame.CornerRadius = window.WindowState == WindowState.Maximized ? new CornerRadius(0) : new CornerRadius(8);
+            WindowChrome.GetWindowChrome(window).CornerRadius = frame.CornerRadius;
+            UpdateContentClip();
         }
-        UpdateBorder();
-        window.DpiChanged += (_, _) => UpdateBorder();
+        UpdateFrame();
+        root.SizeChanged += (_, _) => UpdateContentClip();
+        window.DpiChanged += (_, _) => UpdateFrame();
+        window.StateChanged += (_, _) => UpdateFrame();
         window.SourceInitialized += (_, _) =>
         {
-            UpdateBorder();
+            UpdateFrame();
             // Windows 11 has its own 1px border; keep only the one drawn above.
             if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
             {
