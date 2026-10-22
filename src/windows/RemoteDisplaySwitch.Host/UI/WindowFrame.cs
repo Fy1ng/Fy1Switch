@@ -49,7 +49,14 @@ internal static class WindowFrame
         title.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.ForegroundBrush);
         title.SetBinding(TextBlock.TextProperty, new Binding(nameof(Window.Title)) { Source = window });
         var titleContent = new DockPanel { Margin = new Thickness(16, 0, 0, 0) };
-        titleContent.Children.Add(new Image { Source = window.Icon, Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center });
+        var logo = new Image
+        {
+            Source = window.Icon, Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center,
+            SnapsToDevicePixels = true, UseLayoutRounding = true,
+        };
+        // WPF's default bilinear sampling aliases the 256px artwork at caption size.
+        RenderOptions.SetBitmapScalingMode(logo, BitmapScalingMode.HighQuality);
+        titleContent.Children.Add(logo);
         titleContent.Children.Add(title);
         caption.Children.Add(titleContent);
         root.Children.Add(caption);
