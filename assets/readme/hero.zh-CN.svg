@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="410" viewBox="0 0 1200 410" role="img" aria-labelledby="title desc">
+  <title id="title">Fy1Switch - 显示器开关就在手边</title>
+  <desc id="desc">图示: 手机经 Windows 控制连接的实体显示器. 局域网直连, 可选 Tailscale 与自建 Relay.</desc>
+  <defs>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#17263c"/><stop offset="1" stop-color="#101720"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#203d52"/><stop offset="1" stop-color="#142438"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#91b4d4" stroke-opacity=".07"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="410" rx="26" fill="url(#canvas)"/>
+  <rect x="610" y="24" width="566" height="362" rx="20" fill="url(#grid)"/>
+  <g id="headline" font-family="Segoe UI, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+    <text x="58" y="64" fill="#9ec3ff" font-size="18" font-weight="600" letter-spacing="2">WINDOWS + ANDROID</text>
+    <text x="56" y="150" fill="#f1f4f8" font-size="54" font-weight="700">显示器开关,</text>
+    <text x="56" y="219" fill="#79d5b9" font-size="54" font-weight="700">就在手边.</text>
+    <text x="58" y="274" fill="#b7c2d2" font-size="21">电脑绑定目标, 手机轻点操作.</text>
+    <g id="routes" font-size="17" font-weight="600" text-anchor="middle">
+      <rect x="58" y="320" width="78" height="36" rx="18" fill="#24344a"/>
+      <text x="97" y="344" fill="#cbdaf2">LAN</text>
+      <rect x="148" y="320" width="134" height="36" rx="18" fill="#24344a"/>
+      <text x="215" y="344" fill="#cbdaf2">Tailscale</text>
+      <rect x="294" y="320" width="100" height="36" rx="18" fill="#24344a"/>
+      <text x="344" y="344" fill="#cbdaf2">Relay</text>
+    </g>
+  </g>
+  <g id="display-illustration">
+    <rect x="648" y="91" width="382" height="229" rx="14" fill="#101922" stroke="#5b718b" stroke-width="3"/>
+    <rect x="660" y="103" width="358" height="196" rx="6" fill="url(#screen)"/>
+    <path d="M800 321v24h76v-24M777 346h123" fill="none" stroke="#718399" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M813 175a38 38 0 1 0 52 0M839 158v38" fill="none" stroke="#79d5b9" stroke-width="8" stroke-linecap="round"/>
+    <text x="839" y="273" text-anchor="middle" fill="#b7c2d2" font-family="Segoe UI, sans-serif" font-size="20">Windows</text>
+    <circle cx="1013" cy="309" r="2.5" fill="#79d5b9"/>
+  </g>
+  <g id="phone-illustration">
+    <rect x="999" y="165" width="124" height="207" rx="24" fill="#101922" stroke="#9caec3" stroke-width="3"/>
+    <rect x="1008" y="175" width="106" height="187" rx="17" fill="#203447"/>
+    <rect x="1041" y="181" width="40" height="5" rx="2.5" fill="#9caec3"/>
+    <circle cx="1061" cy="260" r="29" fill="#315db3"/>
+    <path d="M1052 250a15 15 0 1 0 18 0M1061 243v15" fill="none" stroke="#f1f4f8" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M1042 335h38" stroke="#9caec3" stroke-width="4" stroke-linecap="round"/>
+    <text x="1061" y="311" text-anchor="middle" fill="#cbdaf2" font-family="Segoe UI, sans-serif" font-size="17">Android</text>
+  </g>
+</svg>

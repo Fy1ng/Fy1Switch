@@ -30,7 +30,14 @@ foreach ($entry in @(@{Name='Host';Sub=''}, @{Name='Worker';Sub='worker'}, @{Nam
 Copy-Item -LiteralPath (Join-Path $root 'vendor/powertoys/LICENSE') -Destination (Join-Path $output 'PowerToys.LICENSE')
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination $output
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $output
+Copy-Item -LiteralPath (Join-Path $root 'README.en.md') -Destination $output
+New-Item -ItemType Directory -Path (Join-Path $output 'assets/readme') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'assets/README.md') -Destination (Join-Path $output 'assets')
+Get-ChildItem -LiteralPath (Join-Path $root 'assets/readme') -File | Copy-Item -Destination (Join-Path $output 'assets/readme')
+New-Item -ItemType Directory -Path (Join-Path $output 'vendor/powertoys') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'vendor/powertoys/LICENSE') -Destination (Join-Path $output 'vendor/powertoys')
 New-Item -ItemType Directory -Path (Join-Path $output 'docs') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'docs/Development-History.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/Windows-P1.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/P0-findings.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/Remote-Control.md') -Destination (Join-Path $output 'docs')
