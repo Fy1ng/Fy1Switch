@@ -8,8 +8,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($LiveWindowsTest -and [string]::IsNullOrWhiteSpace($env:RDS_ANDROID_FIXTURE)) {
-    throw 'RDS_ANDROID_FIXTURE must point to a temporary Windows HTTPS fixture JSON.'
+if ($LiveWindowsTest -and [string]::IsNullOrWhiteSpace($env:FY1SWITCH_ANDROID_FIXTURE)) {
+    throw 'FY1SWITCH_ANDROID_FIXTURE must point to a temporary Windows HTTPS fixture JSON.'
 }
 $project = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\android'))
 if (-not (Test-Path -LiteralPath (Join-Path $SdkPath 'platforms\android-36\android.jar'))) {

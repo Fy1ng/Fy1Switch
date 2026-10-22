@@ -1,4 +1,4 @@
-RemoteDisplaySwitch Android third-party components
+Fy1Switch Android third-party components
 
 Fluent System Icons - Microsoft Corporation, MIT
 https://github.com/microsoft/fluentui-system-icons

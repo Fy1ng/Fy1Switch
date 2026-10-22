@@ -1,4 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup>
-  <ItemGroup><InternalsVisibleTo Include="RemoteDisplaySwitch.Discovery.Tests" /></ItemGroup>
-</Project>

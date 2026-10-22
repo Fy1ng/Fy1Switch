@@ -70,7 +70,7 @@ Fy1Switch 将电脑端的显示器控制接入手机. Windows 负责发现, 确�
 
 ### 1. 在电脑上确认目标显示器
 
-从完整 Windows 构建目录运行 `RemoteDisplaySwitch.Host.exe`, 在界面中发现并确认目标. 首次使用应在显示器旁核对实际开关与恢复, 再从手机操作. 使用时避免其他 DDC 控制程序同时访问同一显示器.
+从完整 Windows 构建目录运行 `Fy1Switch.Host.exe`, 在界面中发现并确认目标. 首次使用应在显示器旁核对实际开关与恢复, 再从手机操作. 使用时避免其他 DDC 控制程序同时访问同一显示器.
 
 保留整个目录, 包括 `worker/`, `cli/` 和依赖文件. 自包含包不需要另外安装 .NET 或 PowerToys. 可从发布目录运行 `Install.ps1` 进行每用户安装; 自动启动由用户在设置中选择.
 
@@ -139,7 +139,7 @@ cd Fy1Switch
 
 | 产物 | 默认位置 |
 | --- | --- |
-| Windows | `artifacts/windows/win-x64/RemoteDisplaySwitch.Host.exe` 及同目录依赖 |
+| Windows | `artifacts/windows/win-x64/Fy1Switch.Host.exe` 及同目录依赖 |
 | Android | `src/android/app/build/outputs/apk/debug/app-debug.apk` |
 
 Android 脚本默认使用 `C:\android-sdk`, 读取 `JAVA_HOME`, 并查找本机缓存的 Gradle 8.13. 其他安装位置请使用 `-SdkPath`, `-JavaHome`, `-GradlePath` 指定, 详见 [Android 构建说明](docs/Android.md). 脚本不自动安装 SDK 或 Gradle, 不安装 APK.
@@ -164,7 +164,7 @@ Android 脚本默认使用 `C:\android-sdk`, 读取 `JAVA_HOME`, 并查找本机
 | `tests/` | 模拟与回环自动化测试 |
 | `vendor/` | 固定提交的 PowerToys 源码子集 |
 
-仓库名称为 Fy1Switch; 当前程序文件名, Android 包名和运行数据目录沿用 `RemoteDisplaySwitch`, 此文档改版不改变现有配对和应用身份.
+项目现已完整更名为 Fy1Switch, 包括程序文件名, Android 包名 `com.fy1ng.fy1switch`, Windows 数据目录及配对身份. 新版与更名前的旧版使用独立身份, 需要重新绑定显示器和配对手机; 旧版数据保留, 不自动迁移. 请退出旧版后使用新版, 并重新添加新版的 Android 快捷设置开关.
 
 </details>
 

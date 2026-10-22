@@ -1,20 +1,20 @@
-name: remote-display-switch-relay
+name: fy1switch-relay
 services:
   relay:
-    image: remote-display-switch-relay:local
+    image: fy1switch-relay:local
     build:
       context: ../..
       dockerfile: src/relay/Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${RDS_RELAY_PORT:-5080}:8080"
+      - "127.0.0.1:${FY1SWITCH_RELAY_PORT:-5080}:8080"
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:8080
       ASPNETCORE_ENVIRONMENT: Production
-      RDS_RELAY_CONFIG: /run/relay/config.json
+      FY1SWITCH_RELAY_CONFIG: /run/relay/config.json
     volumes:
       - type: bind
-        source: ${RDS_RELAY_CONFIG:?Set an absolute host config file path}
+        source: ${FY1SWITCH_RELAY_CONFIG:?Set an absolute host config file path}
         target: /run/relay/config.json
         read_only: true
         bind:

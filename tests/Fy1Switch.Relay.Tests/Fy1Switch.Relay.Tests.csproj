@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifiers></RuntimeIdentifiers>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="3.8.3" />
+    <ProjectReference Include="../../src/relay/Fy1Switch.Relay/Fy1Switch.Relay.csproj" />
+  </ItemGroup>
+</Project>

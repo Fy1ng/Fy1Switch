@@ -1,5 +1,7 @@
 # Windows P1 使用与验证
 
+Fy1Switch 使用独立的安装目录, 数据目录, 自启项和管道名. 使用新版前先退出旧版, 重新绑定显示器并配对手机; 旧版数据不会自动迁移或删除.
+
 ## 当前交付
 
 P1 是独立 Windows 本地控制版本，不是完整远程产品。包含 WPF 托盘宿主、唯一硬件工作进程、本地 CLI、SQLite 绑定/操作日志、每用户自启设置，以及自包含 x64 目录与安装/卸载脚本。
@@ -8,7 +10,7 @@ P1 是独立 Windows 本地控制版本，不是完整远程产品。包含 WPF 
 
 ## 启动
 
-运行 artifacts/windows/win-x64/RemoteDisplaySwitch.Host.exe。设置窗口关闭后保留托盘；托盘“退出”结束宿主和其控制进程。再次启动同一用户会话的宿主会请求已有实例显示设置。
+运行 artifacts/windows/win-x64/Fy1Switch.Host.exe。设置窗口关闭后保留托盘；托盘“退出”结束宿主和其控制进程。再次启动同一用户会话的宿主会请求已有实例显示设置。
 
 主窗口使用自绘标题栏，保留拖动、缩放、最大化、最小化及托盘关闭行为。从托盘重新打开时恢复最小化的窗口。主窗口突出当前状态和开关操作；“连接手机”在当前窗口上显示二维码与配对码悬浮层，不创建新窗口。“设置”按钮进入同一窗口内的设置页，集中显示显示器绑定、自启动、手机控制、网络参数、已授权手机和诊断。关闭浮层、按 Esc、点遮罩、最小化或隐藏主窗口时立即结束本次配对；自然过期仅在浮层可见时续期。首次使用先在设置中启用手机控制并保存地址。
 
@@ -35,18 +37,18 @@ P1 是独立 Windows 本地控制版本，不是完整远程产品。包含 WPF 
 
 ## 本地 CLI 与 IPC
 
-cli/RemoteDisplaySwitch.Cli.exe 与 Host 必须来自同一完整目录。CLI 检查命名管道服务端进程完整路径；Host/Worker 使用随机私有管道、当前用户限制和双方 PID 核验。此边界信任同一登录用户，不是抵御已经控制该用户账户的恶意软件的沙箱。
+cli/Fy1Switch.Cli.exe 与 Host 必须来自同一完整目录。CLI 检查命名管道服务端进程完整路径；Host/Worker 使用随机私有管道、当前用户限制和双方 PID 核验。此边界信任同一登录用户，不是抵御已经控制该用户账户的恶意软件的沙箱。
 
 ~~~powershell
-./cli/RemoteDisplaySwitch.Cli.exe status
-./cli/RemoteDisplaySwitch.Cli.exe discover
-./cli/RemoteDisplaySwitch.Cli.exe bind <targetKey> <topologyFingerprint> "桌面显示器"
-./cli/RemoteDisplaySwitch.Cli.exe refresh
-./cli/RemoteDisplaySwitch.Cli.exe off <targetId> <新operationId>
-./cli/RemoteDisplaySwitch.Cli.exe on <targetId> <新operationId>
-./cli/RemoteDisplaySwitch.Cli.exe operation <operationId>
-./cli/RemoteDisplaySwitch.Cli.exe startup on
-./cli/RemoteDisplaySwitch.Cli.exe shutdown
+./cli/Fy1Switch.Cli.exe status
+./cli/Fy1Switch.Cli.exe discover
+./cli/Fy1Switch.Cli.exe bind <targetKey> <topologyFingerprint> "桌面显示器"
+./cli/Fy1Switch.Cli.exe refresh
+./cli/Fy1Switch.Cli.exe off <targetId> <新operationId>
+./cli/Fy1Switch.Cli.exe on <targetId> <新operationId>
+./cli/Fy1Switch.Cli.exe operation <operationId>
+./cli/Fy1Switch.Cli.exe startup on
+./cli/Fy1Switch.Cli.exe shutdown
 ~~~
 
 自启仅写当前用户 Run 项，默认不开启；不会修改系统服务或要求管理员权限。软件实现和模拟开关已验证，实际注销再登录触发尚未验收。
@@ -55,9 +57,9 @@ cli/RemoteDisplaySwitch.Cli.exe 与 Host 必须来自同一完整目录。CLI �
 
 ## 安装与卸载
 
-在完整发布目录执行 Install.ps1，默认复制到当前用户 LocalAppData/Programs/RemoteDisplaySwitch，并建立开始菜单快捷方式。不会自动启动程序或打开登录自启。更新前先从托盘退出；安装器不覆盖无标记目录或经过重解析点的路径。
+在完整发布目录执行 Install.ps1，默认复制到当前用户 LocalAppData/Programs/Fy1Switch，并建立开始菜单快捷方式。不会自动启动程序或打开登录自启。更新前先从托盘退出；安装器不覆盖无标记目录或经过重解析点的路径。
 
-在安装目录运行 Uninstall.ps1，检查安装标记、完整绝对路径和文件归属后删除程序文件及其自有快捷方式/自启项。保留 LocalAppData/RemoteDisplaySwitch/Host 中的用户数据。当前是可审查的 PowerShell 安装流程，不是签名 MSI/商店包；SmartScreen、代码签名和干净系统首次安装仍未验收。
+在安装目录运行 Uninstall.ps1，检查安装标记、完整绝对路径和文件归属后删除程序文件及其自有快捷方式/自启项。保留 LocalAppData/Fy1Switch/Host 中的用户数据。当前是可审查的 PowerShell 安装流程，不是签名 MSI/商店包；SmartScreen、代码签名和干净系统首次安装仍未验收。
 
 ## 构建及测试
 
@@ -77,4 +79,4 @@ UI 使用真实 WPF 窗口内容离屏渲染检查。用户随后反馈本地测
 
 ## 数据与诊断
 
-默认数据目录 LocalAppData/RemoteDisplaySwitch/Host。state.db 是未加密的本地绑定与操作记录，没有远程凭据；后续网络凭据必须独立用安全存储，不能直接放入此表。控制进程诊断分卷到 worker/worker.log，限制大小并保留一份 previous，不打印原始设备路径或令牌。导出或分享前仍应检查显示型号、时间和本机信息。
+默认数据目录 LocalAppData/Fy1Switch/Host。state.db 是未加密的本地绑定与操作记录，没有远程凭据；后续网络凭据必须独立用安全存储，不能直接放入此表。控制进程诊断分卷到 worker/worker.log，限制大小并保留一份 previous，不打印原始设备路径或令牌。导出或分享前仍应检查显示型号、时间和本机信息。

@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path -Parent $PSScriptRoot
-$testProject = Join-Path $repository 'tests/RemoteDisplaySwitch.Relay.Tests/RemoteDisplaySwitch.Relay.Tests.csproj'
+$testProject = Join-Path $repository 'tests/Fy1Switch.Relay.Tests/Fy1Switch.Relay.Tests.csproj'
 
 if ($CreateLocalConfig) {
     if ($DeviceId -eq [Guid]::Empty) { throw 'Specify the Windows device UUID with -DeviceId.' }
@@ -51,7 +51,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Relay fixture tests failed.' }
     if ($DockerBuild) {
         if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker is not installed. No container validation was performed.' }
-        & docker build --file src/relay/Dockerfile --tag remote-display-switch-relay:local .
+        & docker build --file src/relay/Dockerfile --tag fy1switch-relay:local .
         if ($LASTEXITCODE -ne 0) { throw 'Relay Docker build failed.' }
     }
 }

@@ -64,7 +64,7 @@ requestId 用于一次通信关联，operationId 用于跨通信通道的业务�
 
 ## 本轮验证与交付
 
-2026-10-07 自动多路径：Remote 116、Pairing 50、Relay 53、HTTPS/WSS 端到端 1 项通过；Android 96 项单元测试、lint（零错误、五项警告）和 APK 构建通过，Android HttpsTransport 到本机 Windows HTTPS 模拟 Worker 联调通过。测试覆盖双入口共享身份、备用入口不可用、串行回退、去重标识、冷却恢复只读探测、认证失败拒绝回退、旧配置迁移和手动停用。Windows 自包含产物位于 `artifacts/windows-multipath/win-x64`，APK 位于 `artifacts/android/RemoteDisplaySwitch-multipath-debug.apk`。未替换运行中的程序、安装手机应用或验证真实跨网络。
+2026-10-07 自动多路径：Remote 116、Pairing 50、Relay 53、HTTPS/WSS 端到端 1 项通过；Android 96 项单元测试、lint（零错误、五项警告）和 APK 构建通过，Android HttpsTransport 到本机 Windows HTTPS 模拟 Worker 联调通过。测试覆盖双入口共享身份、备用入口不可用、串行回退、去重标识、冷却恢复只读探测、认证失败拒绝回退、旧配置迁移和手动停用。Windows 自包含产物位于 `artifacts/windows-multipath/win-x64`，APK 位于 `artifacts/android/Fy1Switch-multipath-debug.apk`。未替换运行中的程序、安装手机应用或验证真实跨网络。
 
 2026-10-05：Windows 原回归 248/248、Remote HTTPS/配对 92/92、Relay 53/53、真实 HTTPS/WSS 跨服务 1/1 通过。Android 单元测试 54/54，实际 HttpsTransport→Windows loopback HTTPS→模拟 Worker 联调 1/1 通过，包含错误 pin 拒绝和重复操作去重。Android lint 0 错误、6 警告；debug APK 签名验证通过。
 

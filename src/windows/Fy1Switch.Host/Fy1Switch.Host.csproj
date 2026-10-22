@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><StartupObject>Fy1Switch.Host.Program</StartupObject><ImplicitUsings>disable</ImplicitUsings><ApplicationIcon>Assets/App.ico</ApplicationIcon></PropertyGroup>
+  <ItemGroup><Resource Include="Assets/App.ico" /><Resource Include="Assets/App.png" /><Resource Include="Assets/Fluent/*.svg" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../Fy1Switch.Runtime/Fy1Switch.Runtime.csproj" /><ProjectReference Include="../Fy1Switch.Remote/Fy1Switch.Remote.csproj" /></ItemGroup>
+  <ItemGroup><PackageReference Include="QRCoder" Version="1.8.0" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fy1Switch.Pairing/Fy1Switch.Pairing.csproj" />
+    <ProjectReference Include="../Fy1Switch.Discovery/Fy1Switch.Discovery.csproj" />
+  </ItemGroup>
+</Project>

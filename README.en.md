@@ -70,7 +70,7 @@ You need a powered-on Windows x64 computer with a signed-in user, a phone runnin
 
 ### 1. Confirm the target monitor on your computer
 
-Run `RemoteDisplaySwitch.Host.exe` from the complete Windows build directory, then discover and confirm your target in the interface. On first use, stay beside the monitor to verify that it turns off and back on before controlling it from your phone. Avoid running another DDC control program against the same monitor at the same time.
+Run `Fy1Switch.Host.exe` from the complete Windows build directory, then discover and confirm your target in the interface. On first use, stay beside the monitor to verify that it turns off and back on before controlling it from your phone. Avoid running another DDC control program against the same monitor at the same time.
 
 Keep the entire directory, including `worker/`, `cli/`, and dependency files. The self-contained package does not require a separate .NET or PowerToys installation. Run `Install.ps1` from the publish directory for a per-user installation; startup behavior is an opt-in setting.
 
@@ -139,7 +139,7 @@ cd Fy1Switch
 
 | Output | Default location |
 | --- | --- |
-| Windows | `artifacts/windows/win-x64/RemoteDisplaySwitch.Host.exe` and dependencies in the same directory |
+| Windows | `artifacts/windows/win-x64/Fy1Switch.Host.exe` and dependencies in the same directory |
 | Android | `src/android/app/build/outputs/apk/debug/app-debug.apk` |
 
 The Android script defaults to `C:\android-sdk`, reads `JAVA_HOME`, and looks for a locally cached Gradle 8.13 installation. Use `-SdkPath`, `-JavaHome`, and `-GradlePath` for other locations. See the [Android build guide](docs/Android.md). The script does not automatically install the SDK or Gradle, or install the APK.
@@ -164,7 +164,7 @@ Default tests use simulated monitors or local loopback services. Real-hardware d
 | `tests/` | Simulated and loopback automated tests |
 | `vendor/` | PowerToys source subset pinned to a specific commit |
 
-The repository is named Fy1Switch. Executable filenames, the Android package name, and runtime data directories retain `RemoteDisplaySwitch`. This README update does not change existing pairings or app identities.
+The full project is now named Fy1Switch, including executables, the Android package `com.fy1ng.fy1switch`, Windows data directories, and pairing identity. This version uses a separate identity from builds released before the rename. Exit the old application, bind your display and pair your phone again, and add the new Android Quick Settings tile. Old data is preserved and is not migrated automatically.
 
 </details>
 

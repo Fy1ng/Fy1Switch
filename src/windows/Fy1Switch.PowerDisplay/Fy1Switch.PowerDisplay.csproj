@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UpstreamRoot>$(MSBuildThisFileDirectory)../../../vendor/powertoys/src/modules/powerdisplay</UpstreamRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WmiLight" Version="6.14.0" />
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.269" PrivateAssets="all" />
+    <InternalsVisibleTo Include="Fy1Switch.PowerDisplay.Tests" />
+    <InternalsVisibleTo Include="Fy1Switch.Probe.Tests" />
+    <InternalsVisibleTo Include="Fy1Switch.Probe" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Drivers/**/*.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Interfaces/*.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Models/*.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Services/MonitorManager.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Services/DisplayRotationService.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Services/MonitorBlacklistService.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Services/CrashDetectionScope.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Services/IProcessExitHook.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Utils/MccsCapabilitiesParser.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Lib/Utils/VcpNames.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Models/MonitorIdComparer.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Models/CustomVcpValueMapping.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Models/IRetainableMonitor.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Models/MonitorBlacklistEntry.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Models/BuiltInMonitorBlacklist.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Models/BuiltInMonitorBlacklistFile.cs" />
+    <Compile Include="$(UpstreamRoot)/PowerDisplay.Models/MonitorBlacklistSerializationContext.cs" />
+    <EmbeddedResource Include="$(UpstreamRoot)/PowerDisplay.Models/BuiltInMonitorBlacklist.json" LogicalName="PowerDisplay.Models.BuiltInMonitorBlacklist.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <AdditionalFiles Include="NativeMethods.txt" />
+  </ItemGroup>
+</Project>

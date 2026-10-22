@@ -10,7 +10,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "assets/branding/app-icon-source.png"
-WINDOWS = ROOT / "src/windows/RemoteDisplaySwitch.Host/Assets"
+WINDOWS = ROOT / "src/windows/Fy1Switch.Host/Assets"
 ANDROID = ROOT / "src/android/app/src/main/res"
 
 

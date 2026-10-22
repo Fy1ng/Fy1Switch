@@ -2,15 +2,15 @@ param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $root 'artifacts/windows/win-x64' }
-$busy = @(Get-Process -Name 'RemoteDisplaySwitch.Host','RemoteDisplaySwitch.Worker','RemoteDisplaySwitch.Cli' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($output.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) })
+$busy = @(Get-Process -Name 'Fy1Switch.Host','Fy1Switch.Worker','Fy1Switch.Cli' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($output.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) })
 if ($busy.Count) { throw 'The output directory contains a running application. Exit it manually or choose -OutputDirectory; no process was stopped.' }
 & (Join-Path $PSScriptRoot 'Verify-Upstream.ps1')
 foreach ($entry in @(@{Name='Host';Sub=''}, @{Name='Worker';Sub='worker'}, @{Name='Cli';Sub='cli'})) {
     $destination = if ($entry.Sub) { Join-Path $output $entry.Sub } else { $output }
-    $project = Join-Path $root "src/windows/RemoteDisplaySwitch.$($entry.Name)/RemoteDisplaySwitch.$($entry.Name).csproj"
+    $project = Join-Path $root "src/windows/Fy1Switch.$($entry.Name)/Fy1Switch.$($entry.Name).csproj"
     & dotnet publish $project -c Release -r win-x64 --self-contained true -o $destination --nologo -p:RestoreLockedMode=true
     if ($LASTEXITCODE -ne 0) { throw "Publish failed: $($entry.Name)" }
-    $runtime = Get-Content -LiteralPath (Join-Path $destination "RemoteDisplaySwitch.$($entry.Name).runtimeconfig.json") -Raw | ConvertFrom-Json
+    $runtime = Get-Content -LiteralPath (Join-Path $destination "Fy1Switch.$($entry.Name).runtimeconfig.json") -Raw | ConvertFrom-Json
     $assets = Get-Content -LiteralPath (Join-Path (Split-Path $project) 'obj/project.assets.json') -Raw | ConvertFrom-Json
     foreach ($framework in $runtime.runtimeOptions.includedFrameworks) {
         $packageName = $framework.name.ToLowerInvariant() + '.runtime.win-x64'

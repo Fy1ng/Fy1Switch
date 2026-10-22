@@ -1,8 +1,10 @@
 # Android App 与快捷设置开关
 
+完整更名后的包名为 `com.fy1ng.fy1switch`, 与更名前的旧版独立安装. 旧版数据和 Keystore 不迁移或删除, 新版需要重新配对并添加新的快捷设置开关. 以下稳定组件和协议标识指 Fy1Switch 新版, 不表示可以覆盖安装旧包.
+
 ## LAN 六位短码（2026-10-18 更新）
 
-Android“添加电脑”支持原生 `NsdManager` 发现/广播 `_rds-pair._tcp.`，TXT 仅 `v=1`、`role=android`、`sid=<小写 UUID>`。电脑列表自动随发现/丢失更新，只有一台时自动选中；名称不是可信身份。界面统一输入电脑屏幕上的六位短码（Android SRP client），明文保留前导零，输入六位后仅自动提交一次，失败后需要修改或手动重试。底层 Android SRP server 保留协议兼容，手机不再显示反向配对短码。保留离线扫码和高级 JSON 粘贴；未提供手填 IP/session 的假入口。本手机名称默认采用设备型号，可手动修改。
+Android“添加电脑”支持原生 `NsdManager` 发现/广播 `_fy1switch-pair._tcp.`，TXT 仅 `v=1`、`role=android`、`sid=<小写 UUID>`。电脑列表自动随发现/丢失更新，只有一台时自动选中；名称不是可信身份。界面统一输入电脑屏幕上的六位短码（Android SRP client），明文保留前导零，输入六位后仅自动提交一次，失败后需要修改或手动重试。底层 Android SRP server 保留协议兼容，手机不再显示反向配对短码。保留离线扫码和高级 JSON 粘贴；未提供手填 IP/session 的假入口。本手机名称默认采用设备型号，可手动修改。
 
 Wire 严格依据 [Pairing-v1.md](Pairing-v1.md)：BC `bcprov-jdk18on:1.83`、RFC5054 3072/SHA256、BC evidence/session key、384 字节 A/B、32 字节 M1/M2/key、transcript HKDF-SHA256、AES256GCM。Client hello 在 salt 到达前发送 A，因此 SRP6Client 子类仅在收到 challenge 后设置 BC calculateX，保留同一随机 a/A；不重新生成 A、不另造 proof。TCP JSON 行最大 16KiB；短码不明文上 wire、不写磁盘、不输出日志。
 
@@ -14,7 +16,7 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 
 ### JVM/跨语言联调 API
 
-包 `com.fy1ng.remotedisplayswitch.pairing`，不依赖 Android UI 的入口：
+包 `com.fy1ng.fy1switch.pairing`，不依赖 Android UI 的入口：
 
 - `PairWire.read(): JSONObject` / `write(JSONObject)`，TCP 实现 `SocketPairWire(Socket)`。
 - `ShortCodeProtocol.client(wire, serverSession, code, clientRole="android", clientSession=<UUID>, onProof={})`。
@@ -22,7 +24,7 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 - 两者返回 `SecureChannel`：`encrypt(purpose, plaintext)` / `decrypt(purpose, frame)`；`transcriptHash` 可供 fixture 断言。每方向每 purpose 一次。测试可传 `windows` 角色；生产入口固定 Android。调用者负责 socket 关闭、截止时间及 admission，生产由 `LanPairing` 负责。
 - `ShortCodePairing.acceptBundle(repository, text, clientName): Boolean` 是 suspend 函数；测试用内存 StateStore，生产仍使用原 repository/store。不返回或回传 bearer。
 
-显式任务 `:app:liveShortCodeTest` 读取 `RDS_SHORT_CODE_FIXTURE` 指向的临时 UTF-8 JSON **文件路径**（可带 BOM），不进入常规 unit test。缺 env、失效 fixture、握手/身份/pin/target 断言失败均失败，不 skip、不复用缓存。测试只允许 loopback，不安装 APK、不调用电源 set。
+显式任务 `:app:liveShortCodeTest` 读取 `FY1SWITCH_SHORT_CODE_FIXTURE` 指向的临时 UTF-8 JSON **文件路径**（可带 BOM），不进入常规 unit test。缺 env、失效 fixture、握手/身份/pin/target 断言失败均失败，不 skip、不复用缓存。测试只允许 loopback，不安装 APK、不调用电源 set。
 
 正向 fixture schema（Windows 显示码，Android JVM 连接）：
 
@@ -34,12 +36,12 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 
 `expectedDeviceId` 仅来自测试操作者可信 fixture，在 PAKE 解密 bundle 后、HTTPS pair 前断言；生产不从发现记录读取它。测试还检查 bundle HTTPS loopback 和 repository 状态中的模拟 targetId。该 schema 是此入口的集成契约，Windows CLI fixture 需按此提供；未提供真实 fixture 时不得声称 Java/C# 双向互通通过。
 
-运行：设置 `JAVA_HOME`、`ANDROID_HOME` 和 `RDS_SHORT_CODE_FIXTURE` 后执行 Gradle 8.13 `-p src/android --no-daemon --console=plain :app:liveShortCodeTest`。报告位于 `src/android/app/build/reports/tests/liveShortCodeTest/`。常规检查仍为 `testDebugUnitTest lintDebug assembleDebug`，覆盖旧测试及新增双角色、错误输入/proof/public value、transcript、GCM 篡改/重放、framing、限流/到期/消费和 repository 配对测试。
+运行：设置 `JAVA_HOME`、`ANDROID_HOME` 和 `FY1SWITCH_SHORT_CODE_FIXTURE` 后执行 Gradle 8.13 `-p src/android --no-daemon --console=plain :app:liveShortCodeTest`。报告位于 `src/android/app/build/reports/tests/liveShortCodeTest/`。常规检查仍为 `testDebugUnitTest lintDebug assembleDebug`，覆盖旧测试及新增双角色、错误输入/proof/public value、transcript、GCM 篡改/重放、framing、限流/到期/消费和 repository 配对测试。
 
 ## 构建与产物
 
-- 包名：`com.fy1ng.remotedisplayswitch`。
-- 稳定 Tile 组件：`com.fy1ng.remotedisplayswitch/.DisplayTileService`。升级时不要重命名或替换组件。
+- 包名：`com.fy1ng.fy1switch`。
+- 稳定 Tile 组件：`com.fy1ng.fy1switch/.DisplayTileService`。升级时不要重命名或替换组件。
 - Android 10 / API 29 起；compileSdk / targetSdk 36。
 - Kotlin 2.3.10、Compose BOM 2025.08.01、AGP 8.13.2、Gradle 8.13；Java 字节码目标 17。本机使用 JDK 21.0.11，为已有缓存的稳定兼容组合。
 - 无常驻前台服务、WebSocket、开机广播接收器或后台轮询。仅需要网络权限，不申请通知权限。
@@ -72,7 +74,7 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 
 ## 协议和通道边界
 
-源契约：`src/shared/RemoteDisplaySwitch.Contracts/RemoteMessages.cs`、`Messages.cs`。JSON 使用 camelCase；intent、观测状态、operation outcome 保持 C# 枚举大小写字符串，包括 `On`、`Off`、`Toggle`、`Unknown`、`Pending`、`Confirmed`、`AcceptedUnconfirmed`、`Failed`。
+源契约：`src/shared/Fy1Switch.Contracts/RemoteMessages.cs`、`Messages.cs`。JSON 使用 camelCase；intent、观测状态、operation outcome 保持 C# 枚举大小写字符串，包括 `On`、`Off`、`Toggle`、`Unknown`、`Pending`、`Confirmed`、`AcceptedUnconfirmed`、`Failed`。
 
 | 调用 | 地址 | 鉴权 |
 | --- | --- | --- |
@@ -143,20 +145,20 @@ Direct/Tailscale 的 pinned TLS 客户端按规范化 HTTPS 地址和 certificat
 
 ### 显式 JVM / Windows HTTPS 集成测试
 
-独立任务 `:app:liveWindowsTest` 只运行 `com.fy1ng.remotedisplayswitch.integration.LiveWindowsIntegrationTest`，复用 debug JVM 测试编译产物及依赖，但不执行常规测试。它调用实际 HttpsTransport、Protocol、Router，不 mock 网络；Windows 端必须使用**独立 loopback HTTPS 服务和模拟显示器**，初始状态 On，不应连接真实硬件。
+独立任务 `:app:liveWindowsTest` 只运行 `com.fy1ng.fy1switch.integration.LiveWindowsIntegrationTest`，复用 debug JVM 测试编译产物及依赖，但不执行常规测试。它调用实际 HttpsTransport、Protocol、Router，不 mock 网络；Windows 端必须使用**独立 loopback HTTPS 服务和模拟显示器**，初始状态 On，不应连接真实硬件。
 
 由 Windows fixture 提供者创建一个临时 UTF-8 JSON 文件（允许 BOM）：`{"bundle":{...完整 PairBundle...},"targetId":"...UUID..."}`。bundle 必须含 version 1、deviceId、endpoint、certificatePin、一次性 code、有效 expiresAt。endpoint 仅接受 HTTPS 的 localhost、127.0.0.1 或 ::1 根地址及端口；不得提供正式设备配置。代码不打印 token、code、响应 body 或底层异常原文。
 
 仓库根目录下显式运行：
 
-    $env:RDS_ANDROID_FIXTURE = Join-Path $env:TEMP 'rds-android-fixture.json'
+    $env:FY1SWITCH_ANDROID_FIXTURE = Join-Path $env:TEMP 'fy1switch-android-fixture.json'
     .\tools\Build-Android.ps1 -LiveWindowsTest -Offline
 
 也可设置好 JAVA_HOME / ANDROID_HOME 后，直接用 Gradle 8.13：
 
     & '<Gradle 8.13 路径>\bin\gradle.bat' -p src/android --no-daemon --console=plain :app:liveWindowsTest --offline
 
-显式任务缺少 RDS_ANDROID_FIXTURE 会失败；文件不存在、bundle 过期、非 loopback、配对失败或任一断言失败同样失败。任务禁止 up-to-date/build-cache 复用；**每次运行需重新导出有效一次性 code**，不能复用已消费的 fixture。
+显式任务缺少 FY1SWITCH_ANDROID_FIXTURE 会失败；文件不存在、bundle 过期、非 loopback、配对失败或任一断言失败同样失败。任务禁止 up-to-date/build-cache 复用；**每次运行需重新导出有效一次性 code**，不能复用已消费的 fixture。
 
 测试顺序：实际 pair → refresh 确认指定 device/target 为 On → set Off 并确认 operation → 保持 operationId、另建 requestId 与有效 expiresAt 再发 Off → 断言 operation.updatedAt 与第一次完全相同 → set On 并 refresh 确认 → 改错 pin 后的请求必须返回 TLS Security 失败。若配对后的流程在确认恢复 On 前失败，finally 用有效 pin 尝试恢复 On 并实时确认；清理失败会明确报错，不能把“已尽力恢复”当成 On 已确认。正常结束保持 On。
 

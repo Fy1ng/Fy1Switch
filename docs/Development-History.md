@@ -4,9 +4,11 @@
 
 以下命令和代码路径默认相对于仓库根目录. `artifacts/` 和 `diagnostics/` 是本地忽略目录, 不随 Git 仓库分发.
 
+本页中的代码和路径标识已随项目更名统一为 Fy1Switch; 历史提交中的原始文件名, 以及忽略目录内的旧产物, 未被改写或迁移.
+
 ---
 
-# RemoteDisplaySwitch
+# Fy1Switch
 
 基于 Microsoft PowerToys Power Display 源码的独立 Windows 显示器远程控制项目。
 
@@ -29,9 +31,9 @@
 
 ## Windows 本地版本
 
-2026-10-22 自动状态刷新: Windows 拓扑复核成功后立即读回最新电源状态, 启动和短暂未知时最多自动补读 3 次. Android 首页进入或回到前台, 操作结果不确定及快捷开关打开时自动查询并实时读取, 临时未知最多读 2 次. 刷新期间显示进度, 尽量不要求用户手动刷新; 持续失败或真实绑定变化仍显示必要提示. 自动恢复仅查询和读取, 不重放开关命令或自动重新绑定. 独立 Windows 测试包位于 `artifacts/windows-auto-refresh-20261022/win-x64`, Android debug 包位于 `artifacts/android/RemoteDisplaySwitch-auto-refresh-20261022-debug.apk`.
+2026-10-22 自动状态刷新: Windows 拓扑复核成功后立即读回最新电源状态, 启动和短暂未知时最多自动补读 3 次. Android 首页进入或回到前台, 操作结果不确定及快捷开关打开时自动查询并实时读取, 临时未知最多读 2 次. 刷新期间显示进度, 尽量不要求用户手动刷新; 持续失败或真实绑定变化仍显示必要提示. 自动恢复仅查询和读取, 不重放开关命令或自动重新绑定. 独立 Windows 测试包位于 `artifacts/windows-auto-refresh-20261022/win-x64`, Android debug 包位于 `artifacts/android/Fy1Switch-auto-refresh-20261022-debug.apk`.
 
-Android 可选后台同步: 设置中开启"后台同步显示器状态"后显示常驻通知, 复用已有 HTTPS 和自动路由, 正常情况下每次读取完成后约 10 秒再同步一次. 下拉快捷开关直接使用 25 秒内的可信读回; 未知、过期或断线时仍重新读取. 用户操作可抢占后台读, 通知中可立即停止; 默认关闭, 不新增 Windows/Relay 接口或改变已有配对. APK 输出为 `artifacts/android/RemoteDisplaySwitch-background-sync-20261022-debug.apk`, 设备后台限制和耗电仍需实机验证.
+Android 可选后台同步: 设置中开启"后台同步显示器状态"后显示常驻通知, 复用已有 HTTPS 和自动路由, 正常情况下每次读取完成后约 10 秒再同步一次. 下拉快捷开关直接使用 25 秒内的可信读回; 未知、过期或断线时仍重新读取. 用户操作可抢占后台读, 通知中可立即停止; 默认关闭, 不新增 Windows/Relay 接口或改变已有配对. APK 输出为 `artifacts/android/Fy1Switch-background-sync-20261022-debug.apk`, 设备后台限制和耗电仍需实机验证.
 
 ~~~powershell
 ./tools/Test-Windows.ps1
@@ -39,7 +41,7 @@ Android 可选后台同步: 设置中开启"后台同步显示器状态"后显�
 ./tools/Test-Windows-Integration.ps1
 ~~~
 
-输出 artifacts/windows/win-x64。运行其中 RemoteDisplaySwitch.Host.exe，点击发现、选择、绑定，再刷新/控制；关闭设置窗口后保留托盘。Install.ps1 提供每用户安装，Uninstall.ps1 只删除已标记的程序目录并保留用户数据。自启默认关闭，可在界面选择；没有为开发测试启用用户的真实登录自启。默认集成测试为模拟，不访问硬件；显式 -Hardware 才会触发真实 5 秒开关及宿主重启恢复。
+输出 artifacts/windows/win-x64。运行其中 Fy1Switch.Host.exe，点击发现、选择、绑定，再刷新/控制；关闭设置窗口后保留托盘。Install.ps1 提供每用户安装，Uninstall.ps1 只删除已标记的程序目录并保留用户数据。自启默认关闭，可在界面选择；没有为开发测试启用用户的真实登录自启。默认集成测试为模拟，不访问硬件；显式 -Hardware 才会触发真实 5 秒开关及宿主重启恢复。
 
 宿主本地控制使用当前用户命名管道；远程 HTTPS 默认关闭，仅在“设置”的手机控制区域显式启用后监听。“连接手机”只打开主窗口内的配对悬浮层。不要直接暴露本地 IPC。P0 诊断工具与新 Worker 互相避让，不能同时操作硬件。
 
@@ -53,17 +55,17 @@ Worker 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并�
 
 2026-10-18 UI 更新：统一状态与配对术语，短码统一为电脑显示、手机明文输入，六位自动提交一次。Windows 增加动态托盘状态、短时成功反馈、系统深浅色及高对比度适配，连接窗口合并状态提示、隐藏备用配对 JSON，并在自然过期时续期。Android 大电源图标可操作、支持下拉刷新与触感反馈，短时提示使用 Snackbar；未知状态的快捷开关点按只刷新。术语与边界见 [docs/UI-Terminology.md](UI-Terminology.md)。以下日期条目保留各次历史产物与验证范围。
 
-本轮独立测试包位于 `artifacts/windows-ui-20261018/win-x64`，Android debug 包位于 `artifacts/android/RemoteDisplaySwitch-ui-20261018-debug.apk`。Windows 266 项自动化测试、Android 126 项单测及 lint/build 通过；WPF 隔离行为检查和自包含包模拟启动通过。未安装手机应用、未覆盖运行中的旧版、未操作实体显示器。Windows 11 原生布局弹层、系统高对比度切换及 Android 真机交互仍需设备验收。
+本轮独立测试包位于 `artifacts/windows-ui-20261018/win-x64`，Android debug 包位于 `artifacts/android/Fy1Switch-ui-20261018-debug.apk`。Windows 266 项自动化测试、Android 126 项单测及 lint/build 通过；WPF 隔离行为检查和自包含包模拟启动通过。未安装手机应用、未覆盖运行中的旧版、未操作实体显示器。Windows 11 原生布局弹层、系统高对比度切换及 Android 真机交互仍需设备验收。
 
 2026-10-09 显示器绑定修复：Windows 显示设置或睡眠恢复通知先通过新 Worker 只读核验；完整拓扑指纹、唯一目标和配置类型不变时保留原绑定及 targetId，避免复制模式下仅因系统通知反复要求重新发现。真实拓扑变化和已失效绑定仍需人工确认，不自动重放开关操作。新版输出为 `artifacts/windows-topology-fix/win-x64`，不覆盖运行中的旧版；已有失效标记需要手动发现并确认一次，后续使用新的通知处理逻辑。
 
-2026-10-07 多路径增量：Android 按局域网 → Tailscale → Relay 自动选择连接，保留既有配对与操作去重；Windows 可同时绑定 LAN 和可选 Tailscale 地址。新版输出为 `artifacts/windows-multipath/win-x64` 与 `artifacts/android/RemoteDisplaySwitch-multipath-debug.apk`，不覆盖正在运行的旧版。配置与跨网络验收见 `docs/Remote-Control.md` 的自动多路径章节。
+2026-10-07 多路径增量：Android 按局域网 → Tailscale → Relay 自动选择连接，保留既有配对与操作去重；Windows 可同时绑定 LAN 和可选 Tailscale 地址。新版输出为 `artifacts/windows-multipath/win-x64` 与 `artifacts/android/Fy1Switch-multipath-debug.apk`，不覆盖正在运行的旧版。配置与跨网络验收见 `docs/Remote-Control.md` 的自动多路径章节。
 
-2026-10-06 UI 增量：两端主页简化为可信状态对应的单一主操作，Windows 首次未绑定时只读发现并要求明确确认，设置/诊断折叠；电脑可显示现有安全配对信息二维码，手机按需申请相机权限扫码，并保留粘贴备用。已有凭据、包名与 Tile 组件保持不变。此增量 Windows 在 artifacts/windows-ui/win-x64，Android 在 artifacts/android/RemoteDisplaySwitch-ui-debug.apk。
+2026-10-06 UI 增量：两端主页简化为可信状态对应的单一主操作，Windows 首次未绑定时只读发现并要求明确确认，设置/诊断折叠；电脑可显示现有安全配对信息二维码，手机按需申请相机权限扫码，并保留粘贴备用。已有凭据、包名与 Tile 组件保持不变。此增量 Windows 在 artifacts/windows-ui/win-x64，Android 在 artifacts/android/Fy1Switch-ui-debug.apk。
 
 2026-10-06 用户确认六位短码方案后，已实现原生局域网双向发现和独立 SRP-6a 配对通道。两端打开配对页，自动搜索附近设备；点击对方并输入对方屏幕六位码，或继续扫码。短码五分钟有效、成功后消费、每码最多五次尝试，且进程级累计限流不因换码清零。现有二维码仍使用原高熵一次性凭据，HTTPS证书及已保存手机授权不迁移。地址候选由本机网卡生成，用户明确选择才保存，不静默覆盖旧配置。详见 docs/Pairing-v1.md。
 
-最新短码版 Windows 在 artifacts/windows-pairing/win-x64，Android 在 artifacts/android/RemoteDisplaySwitch-pairing-debug.apk。Windows 原生发布/浏览/撤销已在本机运行；C# 与 Android JVM 正向、反向 SRP→加密凭据→固定证书 HTTPS 配对都已联调通过。真实 Android NSD、OriginOS 配对页生命周期及不同路由器的组播仍需手机实测；本轮未安装 APK、未改变防火墙、未控制实体显示器。
+最新短码版 Windows 在 artifacts/windows-pairing/win-x64，Android 在 artifacts/android/Fy1Switch-pairing-debug.apk。Windows 原生发布/浏览/撤销已在本机运行；C# 与 Android JVM 正向、反向 SRP→加密凭据→固定证书 HTTPS 配对都已联调通过。真实 Android NSD、OriginOS 配对页生命周期及不同路由器的组播仍需手机实测；本轮未安装 APK、未改变防火墙、未控制实体显示器。
 
 ~~~powershell
 ./tools/Publish-Windows.ps1 -OutputDirectory ./artifacts/windows-remote/win-x64
@@ -73,7 +75,7 @@ Worker 首次原生发现前, 在取得 `worker.instance.lock` 独占租约并�
 ./tools/Publish-Relay.ps1
 ~~~
 
-本轮 Windows 新版位于 artifacts/windows-remote/win-x64，不要求关闭正在使用的旧版来构建。使用前请自己从旧版托盘退出，再打开新版 Host。发布脚本现在会检查目标目录是否有程序在运行，避免覆盖已加载的文件。APK 位于 artifacts/android/RemoteDisplaySwitch-debug.apk（debug 签名，尚未安装或上传商店）；Relay Linux x64 自包含产物位于 artifacts/relay/linux-x64。Docker/Compose 文件位于 src/relay，本机没有 Docker，未构建/运行容器或部署公网服务器。
+本轮 Windows 新版位于 artifacts/windows-remote/win-x64，不要求关闭正在使用的旧版来构建。使用前请自己从旧版托盘退出，再打开新版 Host。发布脚本现在会检查目标目录是否有程序在运行，避免覆盖已加载的文件。APK 位于 artifacts/android/Fy1Switch-debug.apk（debug 签名，尚未安装或上传商店）；Relay Linux x64 自包含产物位于 artifacts/relay/linux-x64。Docker/Compose 文件位于 src/relay，本机没有 Docker，未构建/运行容器或部署公网服务器。
 
 Windows 中先绑定显示器，再启用 HTTPS、填写手机可访问的 LAN/Tailscale 地址并生成一次性配对 JSON；在手机粘贴配对。每台手机独立凭据、可撤销、固定服务器 SPKI pin。Relay 是可信的两段 TLS 中继，不是服务器无法读取内容的端到端加密。手机首次配对建议直连，之后再配置 Relay 地址与控制端凭据。
 
@@ -85,9 +87,9 @@ Windows 中先绑定显示器，再启用 HTTPS、填写手机可访问的 LAN/T
 
 ~~~powershell
 ./tools/Test-P0.ps1
-dotnet run --project ./src/windows/RemoteDisplaySwitch.Probe -- inventory
-dotnet run --project ./src/windows/RemoteDisplaySwitch.Probe -- topology
-dotnet run --project ./src/windows/RemoteDisplaySwitch.Probe -- discover
+dotnet run --project ./src/windows/Fy1Switch.Probe -- inventory
+dotnet run --project ./src/windows/Fy1Switch.Probe -- topology
+dotnet run --project ./src/windows/Fy1Switch.Probe -- discover
 ~~~
 
 inventory 只读取显示拓扑；discover 会通过原始 Power Display 核心打开句柄、读取能力和初始值，不写电源。默认关闭最大兼容模式，不读取官方 PowerToys 配置或已知良好缓存。
@@ -106,18 +108,18 @@ topology 对照 CCD 路径顺序与 EnumDisplayDevices 的 GDI 设备顺序，�
 6. 确认单次结果后再做多轮、长时间关闭、重新发现、进程重启及睡眠/拔插恢复测试；本工具单次 cycle 不能替代这些验收。
 
 ~~~powershell
-./RemoteDisplaySwitch.Probe.exe read <完整targetKey>
-./RemoteDisplaySwitch.Probe.exe on <完整targetKey> --allow-power-write
-./RemoteDisplaySwitch.Probe.exe cycle <完整targetKey> --allow-power-write
-./RemoteDisplaySwitch.Probe.exe cycle <完整targetKey> --allow-power-write --off-seconds 60
-./RemoteDisplaySwitch.Probe.exe restart-cycle <完整targetKey> --allow-power-write --off-seconds 60
+./Fy1Switch.Probe.exe read <完整targetKey>
+./Fy1Switch.Probe.exe on <完整targetKey> --allow-power-write
+./Fy1Switch.Probe.exe cycle <完整targetKey> --allow-power-write
+./Fy1Switch.Probe.exe cycle <完整targetKey> --allow-power-write --off-seconds 60
+./Fy1Switch.Probe.exe restart-cycle <完整targetKey> --allow-power-write --off-seconds 60
 ~~~
 
 当前 G4Q + MTT VDD 复制环境只能使用显式诊断实验，不会自动选择或交换索引：
 
 ~~~powershell
-./RemoteDisplaySwitch.Probe.exe discover --gdi-order-experiment
-./RemoteDisplaySwitch.Probe.exe cycle <本次实验返回的G4Q完整targetKey> --gdi-order-experiment --allow-power-write
+./Fy1Switch.Probe.exe discover --gdi-order-experiment
+./Fy1Switch.Probe.exe cycle <本次实验返回的G4Q完整targetKey> --gdi-order-experiment --allow-power-write
 ~~~
 
 该开关仅接受两个指定 EDID 型号 SAC2563、MTT1337、同一 GDI 源、完整且唯一的活动 GDI/CCD 设备集合。实验直接调用上游 DdcCiController，以 GDI 顺序传入目标；写前重新核对拓扑，并要求只有一个被发现的 DDC 候选。名称和身份仍标记为未验证；不会保存实体绑定，不支持任意 VDD/多实体显示器，也不能证明微软保证此映射。
@@ -134,7 +136,7 @@ PowerToys 与本工具没有共同的硬件锁。检测到官方进程时拒绝�
 
 ## 隔离与诊断
 
-- 状态目录：%LOCALAPPDATA%/RemoteDisplaySwitch/Probe；不使用 Microsoft/PowerToys 的状态、事件或单实例名称。
+- 状态目录：%LOCALAPPDATA%/Fy1Switch/Probe；不使用 Microsoft/PowerToys 的状态、事件或单实例名称。
 - 标准输出为逐行 JSON；标准错误为脱敏上游日志。可在本地重定向保存，报告仍可能含显示型号和拓扑信息，不要无审查上传。
 - targetKey 是规范化 DevicePath 的 SHA-256，仅供本地诊断选择，不是认证秘密、实体身份证明或跨端口永久 ID。
 - 仅 P0 Probe 诊断工具保留旧策略: 遗留 `discovery.lock` 时拒绝自动探测, 应先排查再由操作者移走该工具的锁文件; 当前 Windows Worker 使用前述自动留档流程. 不要修改官方 PowerToys 文件.
@@ -152,7 +154,7 @@ PowerToys 与本工具没有共同的硬件锁。检测到官方进程时拒绝�
 
 ## 上游维护与许可
 
-vendor/powertoys/upstream.json 固定 Microsoft PowerToys 提交及每个原始文件的 SHA-256。tools/Verify-Upstream.ps1 检查原始快照未被修改；新增适配放在 src/windows/RemoteDisplaySwitch.PowerDisplay，不把产品行为混入 vendor。
+vendor/powertoys/upstream.json 固定 Microsoft PowerToys 提交及每个原始文件的 SHA-256。tools/Verify-Upstream.ps1 检查原始快照未被修改；新增适配放在 src/windows/Fy1Switch.PowerDisplay，不把产品行为混入 vendor。
 
 升级时显式更新源码快照/清单，检查依赖与相关上游差异，运行全部测试；发现、配对、句柄或电源路径变化必须重新通过目标实机回归。源码仅从锁定的上游提交导入。
 

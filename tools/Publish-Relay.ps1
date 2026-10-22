@@ -1,10 +1,12 @@
+[CmdletBinding()]
+param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$output = Join-Path $root 'artifacts/relay/linux-x64'
-& dotnet publish (Join-Path $root 'src/relay/RemoteDisplaySwitch.Relay/RemoteDisplaySwitch.Relay.csproj') -c Release -r linux-x64 --self-contained true -o $output -p:RuntimeIdentifiers= -p:NuGetLockFilePath=packages.linux-x64.lock.json -p:RestoreLockedMode=true --nologo
+$output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $root 'artifacts/relay/linux-x64' }
+& dotnet publish (Join-Path $root 'src/relay/Fy1Switch.Relay/Fy1Switch.Relay.csproj') -c Release -r linux-x64 --self-contained true -o $output -p:RuntimeIdentifiers= -p:NuGetLockFilePath=packages.linux-x64.lock.json -p:RestoreLockedMode=true --nologo
 if ($LASTEXITCODE -ne 0) { throw 'Relay publish failed.' }
-$assets = Get-Content -LiteralPath (Join-Path $root 'src/relay/RemoteDisplaySwitch.Relay/obj/project.assets.json') -Raw | ConvertFrom-Json
-$runtime = Get-Content -LiteralPath (Join-Path $output 'RemoteDisplaySwitch.Relay.runtimeconfig.json') -Raw | ConvertFrom-Json
+$assets = Get-Content -LiteralPath (Join-Path $root 'src/relay/Fy1Switch.Relay/obj/project.assets.json') -Raw | ConvertFrom-Json
+$runtime = Get-Content -LiteralPath (Join-Path $output 'Fy1Switch.Relay.runtimeconfig.json') -Raw | ConvertFrom-Json
 foreach ($framework in $runtime.runtimeOptions.includedFrameworks) {
     $packageName = $framework.name.ToLowerInvariant() + '.runtime.linux-x64'
     $package = $null

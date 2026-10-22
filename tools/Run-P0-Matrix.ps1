@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not $AllowPowerWrite) { throw 'This hardware test requires -AllowPowerWrite and a person available to recover the display.' }
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$probe = Join-Path $root 'artifacts/p0/win-x64/RemoteDisplaySwitch.Probe.exe'
+$probe = Join-Path $root 'artifacts/p0/win-x64/Fy1Switch.Probe.exe'
 if (-not (Test-Path -LiteralPath $probe)) { throw 'Publish the current P0 probe before running the matrix.' }
 $stamp = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
 $reportDirectory = Join-Path $root "diagnostics/matrix-$stamp"

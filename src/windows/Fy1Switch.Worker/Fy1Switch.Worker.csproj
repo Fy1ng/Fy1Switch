@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../shared/Fy1Switch.Contracts/Fy1Switch.Contracts.csproj" />
+    <ProjectReference Include="../Fy1Switch.PowerDisplay/Fy1Switch.PowerDisplay.csproj" />
+    <InternalsVisibleTo Include="Fy1Switch.Worker.Tests" />
+  </ItemGroup>
+</Project>

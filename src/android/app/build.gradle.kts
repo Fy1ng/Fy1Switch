@@ -5,10 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "com.fy1ng.remotedisplayswitch"
+    namespace = "com.fy1ng.fy1switch"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.fy1ng.remotedisplayswitch"
+        applicationId = "com.fy1ng.fy1switch"
         minSdk = 29
         targetSdk = 36
         versionCode = 1
@@ -57,14 +57,14 @@ afterEvaluate {
         doNotTrackState("One-shot fixture must never be cached.")
         maxParallelForks = 1
         doFirst {
-            val fixture = providers.environmentVariable("RDS_SHORT_CODE_FIXTURE").orNull
-            if (fixture.isNullOrBlank()) throw GradleException("RDS_SHORT_CODE_FIXTURE must name a temporary fixture JSON file.")
-            environment("RDS_SHORT_CODE_FIXTURE", fixture)
+            val fixture = providers.environmentVariable("FY1SWITCH_SHORT_CODE_FIXTURE").orNull
+            if (fixture.isNullOrBlank()) throw GradleException("FY1SWITCH_SHORT_CODE_FIXTURE must name a temporary fixture JSON file.")
+            environment("FY1SWITCH_SHORT_CODE_FIXTURE", fixture)
         }
     }
     tasks.register<Test>("liveWindowsTest") {
         group = "verification"
-        description = "Runs the real loopback Windows HTTPS fixture supplied by RDS_ANDROID_FIXTURE."
+        description = "Runs the real loopback Windows HTTPS fixture supplied by FY1SWITCH_ANDROID_FIXTURE."
         testClassesDirs = debugUnitTest.testClassesDirs
         classpath = debugUnitTest.classpath
         dependsOn(debugUnitTest.taskDependencies.getDependencies(debugUnitTest))
@@ -75,9 +75,9 @@ afterEvaluate {
         maxParallelForks = 1
         testLogging.showStandardStreams = false
         doFirst {
-            val fixture = providers.environmentVariable("RDS_ANDROID_FIXTURE").orNull
-            if (fixture.isNullOrBlank()) throw GradleException("RDS_ANDROID_FIXTURE must point to a temporary Windows HTTPS fixture JSON.")
-            environment("RDS_ANDROID_FIXTURE", fixture)
+            val fixture = providers.environmentVariable("FY1SWITCH_ANDROID_FIXTURE").orNull
+            if (fixture.isNullOrBlank()) throw GradleException("FY1SWITCH_ANDROID_FIXTURE must point to a temporary Windows HTTPS fixture JSON.")
+            environment("FY1SWITCH_ANDROID_FIXTURE", fixture)
         }
     }
 }

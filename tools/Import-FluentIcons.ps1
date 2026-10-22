@@ -3,7 +3,7 @@ param()
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $revision = '83b26348c811f072429427ff48362238656524fe'
-$destination = Join-Path $root 'src/windows/RemoteDisplaySwitch.Host/Assets/Fluent'
+$destination = Join-Path $root 'src/windows/Fy1Switch.Host/Assets/Fluent'
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 $icons = @(
     @{ Name = 'Desktop'; Slug = 'desktop'; Size = 20 },

@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $output = Join-Path $root 'artifacts/p0/win-x64'
 & (Join-Path $PSScriptRoot 'Verify-Upstream.ps1')
-& dotnet publish (Join-Path $root 'src/windows/RemoteDisplaySwitch.Probe/RemoteDisplaySwitch.Probe.csproj') --configuration Release --runtime win-x64 --self-contained true --output $output --nologo -p:RestoreLockedMode=true
+& dotnet publish (Join-Path $root 'src/windows/Fy1Switch.Probe/Fy1Switch.Probe.csproj') --configuration Release --runtime win-x64 --self-contained true --output $output --nologo -p:RestoreLockedMode=true
 if ($LASTEXITCODE -ne 0) { throw 'P0 publish failed.' }
 Copy-Item -LiteralPath (Join-Path $root 'vendor/powertoys/LICENSE') -Destination (Join-Path $output 'PowerToys.LICENSE')
 Copy-Item -LiteralPath (Join-Path $root 'licenses/WmiLight.LICENSE') -Destination (Join-Path $output 'WmiLight.LICENSE')
@@ -11,9 +11,9 @@ Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $ou
 New-Item -ItemType Directory -Path (Join-Path $output 'docs') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'docs/P0-findings.md') -Destination (Join-Path $output 'docs/P0-findings.md')
 Copy-Item -LiteralPath (Join-Path $root 'vendor/powertoys/upstream.json') -Destination (Join-Path $output 'powertoys-upstream.json')
-$runtime = Get-Content -LiteralPath (Join-Path $output 'RemoteDisplaySwitch.Probe.runtimeconfig.json') -Raw | ConvertFrom-Json
+$runtime = Get-Content -LiteralPath (Join-Path $output 'Fy1Switch.Probe.runtimeconfig.json') -Raw | ConvertFrom-Json
 $runtimeVersion = ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Microsoft.NETCore.App').version
-$assets = Get-Content -LiteralPath (Join-Path $root 'src/windows/RemoteDisplaySwitch.Probe/obj/project.assets.json') -Raw | ConvertFrom-Json
+$assets = Get-Content -LiteralPath (Join-Path $root 'src/windows/Fy1Switch.Probe/obj/project.assets.json') -Raw | ConvertFrom-Json
 $runtimePackage = $null
 foreach ($packageFolder in $assets.packageFolders.PSObject.Properties.Name) {
     $candidate = Join-Path $packageFolder "microsoft.netcore.app.runtime.win-x64/$runtimeVersion"

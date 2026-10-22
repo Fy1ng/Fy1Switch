@@ -2,11 +2,11 @@ param([switch]$Hardware, [string]$PackageDirectory)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $package = if ($PackageDirectory) { [IO.Path]::GetFullPath($PackageDirectory) } else { Join-Path $root 'artifacts/windows/win-x64' }
-$hostExe = Join-Path $package 'RemoteDisplaySwitch.Host.exe'
-$cli = Join-Path $package 'cli/RemoteDisplaySwitch.Cli.exe'
+$hostExe = Join-Path $package 'Fy1Switch.Host.exe'
+$cli = Join-Path $package 'cli/Fy1Switch.Cli.exe'
 $run = [Guid]::NewGuid().ToString('N')
 $data = Join-Path $root ".local/integration-$run"
-$pipe = "RemoteDisplaySwitch.Integration.$run"
+$pipe = "Fy1Switch.Integration.$run"
 $arguments = @('--background','--data-dir',('"'+$data+'"'),'--pipe',$pipe,'--stop-after-seconds','180')
 if (-not $Hardware) { $arguments += '--simulate' }
 function Invoke-Control([string[]]$Words) {
