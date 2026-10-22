@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
         android:name=".RemoteDisplayApplication"
@@ -28,6 +31,10 @@
         </activity>
         <activity android:name=".ui.PairCaptureActivity" android:exported="false"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <service
+            android:name=".background.BackgroundDisplaySyncService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
         <service
             android:name=".DisplayTileService"
             android:exported="true"

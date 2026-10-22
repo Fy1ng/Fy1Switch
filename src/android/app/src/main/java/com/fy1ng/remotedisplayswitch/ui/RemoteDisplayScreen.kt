@@ -24,7 +24,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.fy1ng.remotedisplayswitch.core.*
+import com.fy1ng.remotedisplayswitch.background.BackgroundSyncManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
@@ -42,8 +44,16 @@ fun RemoteDisplayScreen(
     repository: DeviceRepository, scope: CoroutineScope, onAddTile: () -> Unit,
     tileMessage: String?, showTileGuide: Boolean, onDismissTileGuide: () -> Unit, onPaired: () -> Unit,
     onTileMessageConsumed: (String) -> Unit, onPairingVisibilityChanged: (Boolean) -> Unit,
+    backgroundSync: BackgroundSyncManager, backgroundSyncMessage: String?, backgroundSyncPermissionPending: Boolean,
+    onBackgroundSyncEnabled: (Boolean) -> Unit, onOpenNotificationSettings: () -> Unit,
 ) {
     val state by repository.state.collectAsState()
+    val backgroundSyncState by backgroundSync.state.collectAsState()
+    var freshnessTick by remember { mutableLongStateOf(0L) }
+    val fresh = remember(repository, state, freshnessTick) {
+        state.defaultDeviceId?.let { repository.hasFreshPower(it) } == true
+    }
+    val visibleState = HomePolicy.visibleState(state, fresh)
     var page by rememberSaveable { mutableStateOf(HOME) }
     var choosing by remember { mutableStateOf(false) }
     var settingsDirty by remember { mutableStateOf(false) }
@@ -70,9 +80,28 @@ fun RemoteDisplayScreen(
         val deviceId = state.defaultDeviceId
         if (page == HOME && state.loaded && !state.storageFailed && deviceId != null) {
             lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                repository.recover(deviceId)
+                if (!HomePolicy.canReuseBackgroundPower(repository.state.value, backgroundSync.state.value.running,
+                        repository.hasFreshPower(deviceId))) repository.recover(deviceId)
                 repository.state.map { HomePolicy.completedUncertainSet(it, deviceId) }
                     .filterNotNull().distinctUntilChanged().collect { repository.recover(deviceId) }
+            }
+        }
+    }
+    LaunchedEffect(page, state.defaultDeviceId, lifecycle) {
+        if (page == HOME) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var expiredRecoveryRequested = repository.state.value.defaultDeviceId?.let { !repository.hasFreshPower(it) } ?: true
+            while (true) {
+                freshnessTick += 1
+                val current = repository.state.value
+                val deviceId = current.defaultDeviceId
+                val freshNow = deviceId?.let { repository.hasFreshPower(it) } == true
+                if (freshNow) expiredRecoveryRequested = false
+                else if (backgroundSync.state.value.running && !current.busy && current.loaded && !current.storageFailed &&
+                    deviceId != null && !expiredRecoveryRequested) {
+                    expiredRecoveryRequested = true
+                    repository.recover(deviceId)
+                }
+                delay(1_000)
             }
         }
     }
@@ -161,13 +190,17 @@ fun RemoteDisplayScreen(
                                     DeviceSettingsScreen(device, state, repository, scope,
                                         onBack = { if (page == SETTINGS) page = HOME },
                                         onPair = { leaveSettings(PAIRING) }, onAddTile = onAddTile,
-                                        onDirtyChanged = { settingsDirty = it })
+                                        onDirtyChanged = { settingsDirty = it },
+                                        backgroundSyncState = backgroundSyncState, backgroundSyncMessage = backgroundSyncMessage,
+                                        backgroundSyncPermissionPending = backgroundSyncPermissionPending,
+                                        onBackgroundSyncEnabled = onBackgroundSyncEnabled,
+                                        onOpenNotificationSettings = onOpenNotificationSettings)
                                 }
                             }
                             state.selected == null -> EmptyHome { page = PAIRING }
                             else -> {
-                                val device = requireNotNull(state.selected)
-                                key(device.profile.deviceId) { DeviceCard(device, state, repository, scope) }
+                                val device = requireNotNull(visibleState.selected)
+                                key(device.profile.deviceId) { DeviceCard(device, visibleState, repository, scope) }
                                 if (showTileGuide) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text("添加快捷开关，下次无需打开应用", style = MaterialTheme.typography.titleSmall)
@@ -258,7 +291,8 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
             scope.launch {
                 when {
                     action.queryOperation -> repository.recover(deviceId)
-                    action.intent != null -> repository.set(deviceId, action.intent)
+                    action.intent != null -> if (repository.hasFreshPower(deviceId)) repository.set(deviceId, action.intent)
+                        else repository.refresh(deviceId)
                     else -> repository.refresh(deviceId)
                 }
             }

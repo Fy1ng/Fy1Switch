@@ -14,7 +14,9 @@ import com.fy1ng.remotedisplayswitch.core.RepositoryAction
 import com.fy1ng.remotedisplayswitch.core.StatePolicy
 import com.fy1ng.remotedisplayswitch.core.TileClickCoordinator
 import com.fy1ng.remotedisplayswitch.core.TilePower
+import com.fy1ng.remotedisplayswitch.ui.HomePolicy
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 
@@ -24,6 +26,8 @@ class DisplayTileService : TileService() {
     private var unlockAttempt = 0
     private var observer: Job? = null
     private var recovery: Job? = null
+    private var freshnessObserver: Job? = null
+    private var expiredRecoveryRequested = true
     private val clicks = TileClickCoordinator()
 
     override fun onStartListening() {
@@ -36,13 +40,39 @@ class DisplayTileService : TileService() {
             app.repository.initialize()
             app.repository.state.collect {
                 deliverQueuedClick()
-                render(app.repository.state.value)
+                render(currentState())
             }
         }
         recovery?.cancel()
         recovery = app.scope.launch {
             app.repository.initialize()
-            app.repository.state.value.selected?.let { app.repository.recover(it.profile.deviceId) }
+            val state = app.repository.state.value
+            state.defaultDeviceId?.let { deviceId ->
+                if (!HomePolicy.canReuseBackgroundPower(state, app.backgroundSync.state.value.running,
+                        app.repository.hasFreshPower(deviceId))) app.repository.recover(deviceId)
+            }
+        }
+        expiredRecoveryRequested = true
+        freshnessObserver?.cancel()
+        freshnessObserver = app.scope.launch {
+            var previousFresh: Boolean? = null
+            while (listening) {
+                val state = app.repository.state.value
+                val deviceId = state.defaultDeviceId
+                val fresh = deviceId?.let { app.repository.hasFreshPower(it) } == true
+                if (fresh) expiredRecoveryRequested = false
+                else if (!expiredRecoveryRequested && !state.busy && deviceId != null) {
+                    expiredRecoveryRequested = true
+                    recovery?.cancel()
+                    recovery = app.scope.launch { app.repository.recover(deviceId) }
+                }
+                if (fresh != previousFresh) {
+                    previousFresh = fresh
+                    deliverQueuedClick()
+                    render(currentState())
+                }
+                delay(1_000)
+            }
         }
     }
 
@@ -53,6 +83,8 @@ class DisplayTileService : TileService() {
         observer = null
         recovery?.cancel()
         recovery = null
+        freshnessObserver?.cancel()
+        freshnessObserver = null
         super.onStopListening()
     }
 
@@ -64,13 +96,15 @@ class DisplayTileService : TileService() {
         observer = null
         recovery?.cancel()
         recovery = null
+        freshnessObserver?.cancel()
+        freshnessObserver = null
         super.onDestroy()
     }
 
     override fun onClick() {
         super.onClick()
         if (!listening) return
-        val current = app.repository.state.value
+        val current = currentState()
         val refreshing = StatePolicy.refreshing(current)
         val refreshOnly = StatePolicy.tileRefreshOnly(current)
         if (current.busy && !refreshing) return
@@ -85,7 +119,7 @@ class DisplayTileService : TileService() {
             // Unlock may collapse the shade before this callback; only refresh queues require listening.
             if ((!refreshing || listening) && attempt == unlockAttempt && SystemClock.elapsedRealtime() - startedAt < 30_000 && !isLocked) {
                 unlockAttempt += 1
-                val latest = app.repository.state.value
+                val latest = currentState()
                 if (refreshOnly) {
                     // The click was made while power was unknown. A later successful read cannot turn it into a write.
                     if (latest.loaded && !latest.storageFailed && latest.defaultDeviceId == deviceId &&
@@ -99,7 +133,10 @@ class DisplayTileService : TileService() {
                     latest.request?.id != requestId || !StatePolicy.canSet(latest, PowerIntent.Toggle)) {
                     openConfiguration()
                 } else if (deviceId != null) {
-                    app.scope.launch { app.repository.set(deviceId, PowerIntent.Toggle) }
+                    app.scope.launch {
+                        if (app.repository.hasFreshPower(deviceId)) app.repository.set(deviceId, PowerIntent.Toggle)
+                        else app.repository.refresh(deviceId, live = true)
+                    }
                 }
             }
         }
@@ -111,10 +148,15 @@ class DisplayTileService : TileService() {
         if (!clicks.hasPending) return
         app.scope.launch {
             yield()
-            val deviceId = clicks.takeReady(app.repository.state.value, SystemClock.elapsedRealtime(), isLocked)
+            val deviceId = clicks.takeReady(currentState(), SystemClock.elapsedRealtime(), isLocked)
             if (deviceId != null) app.repository.set(deviceId, PowerIntent.Toggle)
-            render(app.repository.state.value)
+            render(currentState())
         }
+    }
+
+    private fun currentState(): AppState {
+        val state = app.repository.state.value
+        return HomePolicy.visibleState(state, state.defaultDeviceId?.let { app.repository.hasFreshPower(it) } == true)
     }
 
     private fun render(state: AppState) {

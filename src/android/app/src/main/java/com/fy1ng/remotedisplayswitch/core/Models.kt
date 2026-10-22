@@ -112,6 +112,8 @@ data class DeviceState(
     val feedback: Feedback = Feedback.Ready,
     val requiresRefresh: Boolean = false,
     val lastSuccessfulRoute: Route? = null,
+    // Process-local phone time. Never restore freshness from a saved snapshot or host timestamp.
+    val lastLiveReadAtMillis: Long? = null,
 )
 data class AppState(
     val devices: List<DeviceState> = emptyList(),

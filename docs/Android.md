@@ -105,13 +105,27 @@ lint 的 `CustomX509TrustManager` 警告对应上述明确要求的 pin-only 自
 
 ## 结果与生命周期
 
+### 可选后台状态同步
+
+在电脑设置页开启"后台同步显示器状态". 这是应用级开关, 始终跟随当前默认电脑, 默认关闭. 开启前检查系统通知开关, Android 13+ 请求通知权限, 并检查后台同步通知类别; 未获得权限或服务启动失败时显示原因, 不把未运行的服务显示为正在同步. 通过用户在前台开启或返回应用恢复已启用选项来启动服务, 不新增开机广播或后台强行自启动.
+
+服务声明为 `connectedDevice`, 使用已配对外部电脑的网络连接, 复用原有 HTTPS/证书验证/设备授权以及 LAN/Tailscale/Relay 路由. 正常情况下每次读取结束后等待约 10 秒, 离线等失败逐步退避至 60 秒; 身份、安全、授权、协议或安全存储错误会停止同步. 常驻通知显示当前电脑和读回状态, 可点击"停止同步"; 关闭选项同时停止服务并取消读请求. 不使用普通 dataSync 服务冒充无限后台同步.
+
+后台仅发送 live `refresh`, 不发送开关命令, 不查询或改写历史操作记录. 后台读不设置前台 busy/request/notice, 避免按钮周期性不可用或 Snackbar 闪烁. 用户操作先取消并等待后台读释放共用 Mutex, 再执行原操作; 后台不会另建网络路径或与前台并发访问同一仓库. 后台取消不取消服务的后续同步循环, 退出服务则取消整个循环.
+
+仅成功的实时读回与当前 set 的确认读回更新手机单调时间记录, 旧 operation 查询不延长有效期; 此记录不保存到磁盘, 不比较电脑和手机的墙上时间. Tile 保留 non-active 模式和原组件身份: 后台实际运行且具有 25 秒内可信读回时, 下拉后直接呈现该状态, 不额外等待一次网络刷新. 过期状态在 UI/Tile 本地遮蔽并回退只读恢复, 不把旧缓存用于点击后的延迟切换. 未决操作仍沿用现有恢复流程.
+
+系统回收、强制停止、通知被禁用或网络不可达均可能中断后台同步, 不宣称具有系统内置组件的运行保证. 回到应用后可恢复仍启用的服务; 真机需覆盖通知授权/拒绝、类别禁用、熄屏、省电、系统停止、默认电脑切换、通知停止和耗电. 官方服务类型说明: https://developer.android.com/develop/background-work/services/fgs/service-types#connected-device.
+
+2026-10-22 本地验证: 169 项 JVM 单测通过, lint 0 errors/8 warnings, debug APK 构建成功. 新增用例覆盖后台预占/取消/Mutex 释放、只读与操作历史保留、全局 busy/request/notice 隔离、手机单调时间有效期、重启/切换/失败失效、Tile 过期展示及退避停止策略. 此轮未安装到手机, 未控制实体显示器, 前台服务和 OriginOS 长时后台行为仍待上述实机验收.
+
 App 与 Tile 使用同一进程内单例 DeviceRepository / Mutex，不创建独立网络路径。配对、配置修改、默认设备切换、请求之间串行，防止 UI/Tile 并发重复操作。set 在发包前持久化 Pending；保存失败则不发送。请求中的设备和 target 在操作期间固定，不跟随后收到的 body 改变。
 
 `Confirmed` 才展示操作确认。`AcceptedUnconfirmed`、`Pending`、`Unknown` 分别明确展示“已接受未确认 / 处理中 / 结果未知”。旧 on/off 观测不会在不确定操作之后继续作为成功证据。查询未找到记录也不表示未执行。显式成功的实时 refresh 或对应的已确认观测能够解除“不确定后需刷新”标记; 确定未发出的失败或可信终态 `Failed` 也不保留该标记, 包括恢复旧版持久化记录. 设备在线且绑定有效时, Unknown 可明确 ON/OFF, 仍不能 Toggle. 不会比较手机与 Windows 的时钟来猜测缓存是否足够新。实时刷新恢复当前状态不把此前 Unknown 操作改写为 Confirmed。
 
 首页进入或回到前台, 已完成的开关请求结果不确定, 以及 Tile 开始 listening 时, 自动执行只读恢复. 有未决操作则先查询原 operationId, 当前状态仍未知时继续 live refresh; 临时未知最多读取 2 次, 安全/授权/协议错误立即停止. 恢复与 UI/Tile 操作共用原有 Mutex 串行执行, 等待空闲最多 30 秒, 切换设备或生命周期结束后不继续后续读取. 刷新或查询期间显示进度, 持续失败后才展示真实错误或待确认提示.
 
-Tile 为 non-active 模式, 每次 onStartListening 发起短时只读恢复. 仅 listening 期间获取临时 qsTile 并 updateTile, 不长期持有 qsTile; 停止 listening/销毁时取消观察订阅与自动恢复 Job, 阻止排队读取和后续重试. 手动点击已开始的短请求仍可完成并持久化结果. 进程被系统结束后不重放 set: 重建时 Pending 转 Unknown, 保留操作查询 UUID, 缓存状态先视为未连接.
+Tile 为 non-active 模式, onStartListening 在缺少有效后台读回时发起短时只读恢复. 仅 listening 期间获取临时 qsTile 并 updateTile, 不长期持有 qsTile; 停止 listening/销毁时取消观察订阅与 Tile 自己的自动恢复 Job, 阻止其排队读取和后续重试, 不停止用户已开启的后台同步服务. 手动点击已开始的短请求仍可完成并持久化结果. 进程被系统结束后不重放 set: 重建时 Pending 转 Unknown, 保留操作查询 UUID, 缓存状态先视为未连接.
 
 Tile: 已确认 On 映射 STATE_ACTIVE, 已确认 Off 映射 STATE_INACTIVE. 当前设备实时刷新期间使用可点击的 STATE_INACTIVE 并显示刷新提示, 该外观不表示已关闭; 最多排队一次点击, 同次刷新成功且返回可信 On/Off 后才执行一次 Toggle. 刷新失败/取消/超时, 切换设备或目标, 面板关闭/组件销毁均取消排队, 不使用旧缓存执行. 其他未知/离线/远端 busy/本地写操作映射 STATE_UNAVAILABLE. 长按通过 QS_TILE_PREFERENCES 打开 MainActivity. API 34+ 展开 App 使用 PendingIntent; 不设置会绕过 onClick 的固定 activityLaunchForClick, 因此正常单击仍执行切换.
 
@@ -157,7 +171,7 @@ Direct/Tailscale 的 pinned TLS 客户端按规范化 HTTPS 地址和 certificat
 - 通知中心/快捷设置的不同展开方式、状态图标/字幕、深色/大字体/窄屏可读性；unknown/unavailable 不可点击时仍可长按或重新展开恢复。
 - Windows 自签证书正确 pin 成功，错 pin、过期/尚未生效证书失败；真实 IP / Tailscale MagicDNS 的 SAN 差异仅在同配对 host、同 pin 且有效证书时可用；手机时间偏差、Windows 更换证书后重新配对。
 - 局域网直连 → Wi-Fi/移动网络切换 → Relay 回退；检查两个通道同 operationId 仅执行一次；断网/Relay 故障/401/超时保持 unknown 并可查询。
-- 灭屏、后台限制、省电模式、清理进程、系统重启后重新展开能恢复；不要求后台长连接或前台保活，观察系统实际是否延迟/停止短任务。
+- 默认关闭后台同步时, 验证灭屏、后台限制、省电模式、清理进程、系统重启后重新展开的短任务恢复. 开启后台同步时, 另验证前台服务通知、暂停/停止和有效期回退; 观察系统是否限制或终止服务, 不把构建通过当作后台长期存活验收.
 - 操作发送后立即杀进程，再打开仍有原操作查询；结果未确认时不亮成“已开启”；实时 DDC 观测与显示器实际画面/电源状态分别验收。
 - 多设备切换时 App 和 Tile 只作用于当前默认设备；重新配对、Relay 凭据变更、卸载重装/迁移、不备份、Keystore 失效路径正确。
 

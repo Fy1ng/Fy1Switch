@@ -14,6 +14,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.fy1ng.remotedisplayswitch.core.*
+import com.fy1ng.remotedisplayswitch.background.BackgroundSyncState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -22,6 +23,8 @@ internal fun DeviceSettingsScreen(
     device: DeviceState, state: AppState, repository: DeviceRepository, scope: CoroutineScope,
     onBack: () -> Unit, onPair: () -> Unit, onAddTile: () -> Unit,
     onDirtyChanged: (Boolean) -> Unit,
+    backgroundSyncState: BackgroundSyncState, backgroundSyncMessage: String?, backgroundSyncPermissionPending: Boolean,
+    onBackgroundSyncEnabled: (Boolean) -> Unit, onOpenNotificationSettings: () -> Unit,
 ) {
     val profile = device.profile
     var name by remember(profile.name) { mutableStateOf(profile.name) }
@@ -51,6 +54,8 @@ internal fun DeviceSettingsScreen(
                 }
             }
         }
+        BackgroundSyncSettings(backgroundSyncState, backgroundSyncMessage, backgroundSyncPermissionPending,
+            onBackgroundSyncEnabled, onOpenNotificationSettings)
         OutlinedCard(shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = { advanced = !advanced }, modifier = Modifier.fillMaxWidth()) {

@@ -15,13 +15,15 @@
 - 新独立项目，不使用 RemoteScreenSwitch 实验代码。
 - Windows：.NET 10 用户会话内 Host/Worker，WPF 托盘设置界面；不在 Session 0 控制显示器。
 - 控制核心：锁定 PowerToys 源码子集，保留原始发现、配对、句柄及读写行为，独立适配日志、路径与产品状态。
-- Android：Kotlin/Compose 与原生 TileService；短时交互刷新，不以永驻进程保证状态。
+- Android: Kotlin/Compose 与原生 TileService; 默认短时交互刷新, 可选择开启 connectedDevice 前台服务进行后台只读同步. 后台服务不保证永久存活, 过期和失联时回退按需刷新.
 - 网络：HTTPS LAN/Tailscale 直连及可信自建 ASP.NET Core Relay；两段 TLS 不宣称端到端加密。
 - 当前受限环境下的 P0 开关、长关闭与工作进程恢复已验证；Windows P1、Android、HTTPS 与 Relay 实现已落地，系统级及跨设备验收按批准顺序后置。
 
 ## Windows 本地版本
 
 2026-10-22 自动状态刷新: Windows 拓扑复核成功后立即读回最新电源状态, 启动和短暂未知时最多自动补读 3 次. Android 首页进入或回到前台, 操作结果不确定及快捷开关打开时自动查询并实时读取, 临时未知最多读 2 次. 刷新期间显示进度, 尽量不要求用户手动刷新; 持续失败或真实绑定变化仍显示必要提示. 自动恢复仅查询和读取, 不重放开关命令或自动重新绑定. 独立 Windows 测试包位于 `artifacts/windows-auto-refresh-20261022/win-x64`, Android debug 包位于 `artifacts/android/RemoteDisplaySwitch-auto-refresh-20261022-debug.apk`.
+
+Android 可选后台同步: 设置中开启"后台同步显示器状态"后显示常驻通知, 复用已有 HTTPS 和自动路由, 正常情况下每次读取完成后约 10 秒再同步一次. 下拉快捷开关直接使用 25 秒内的可信读回; 未知、过期或断线时仍重新读取. 用户操作可抢占后台读, 通知中可立即停止; 默认关闭, 不新增 Windows/Relay 接口或改变已有配对. APK 输出为 `artifacts/android/RemoteDisplaySwitch-background-sync-20261022-debug.apk`, 设备后台限制和耗电仍需实机验证.
 
 ~~~powershell
 ./tools/Test-Windows.ps1

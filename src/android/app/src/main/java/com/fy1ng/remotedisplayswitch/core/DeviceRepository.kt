@@ -1,9 +1,15 @@
 package com.fy1ng.remotedisplayswitch.core
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,24 +27,31 @@ class DeviceRepository(
     private val store: StateStore,
     private val transport: Transport,
     private val clock: Clock = Clock.systemUTC(),
+    private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     private val mutableState = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = mutableState.asStateFlow()
     private val mutex = Mutex()
     private val router = Router(transport, clock)
+    private val admission = Any()
+    private var backgroundRead: Deferred<Feedback>? = null
+    private var foregroundWaiters = 0
 
-    suspend fun initialize() {
+    suspend fun initialize() = initializeInternal()
+
+    private suspend fun initializeInternal(notifyFailure: Boolean = true) {
         if (state.value.loaded) return
         mutex.withLock {
             if (!state.value.loaded) withContext(Dispatchers.IO) {
                 mutableState.value = try {
                     store.read().let { restored ->
                         restored.copy(loaded = true, busy = false, request = null, devices = restored.devices.map { device ->
-                            if (device.operation?.outcome == OperationOutcome.Failed) device.copy(requiresRefresh = false) else device
+                            device.copy(lastLiveReadAtMillis = null,
+                                requiresRefresh = device.requiresRefresh && device.operation?.outcome != OperationOutcome.Failed)
                         })
                     }
                 } catch (_: Exception) {
-                    AppState(loaded = true, storageFailed = true, notice = Feedback.Storage)
+                    AppState(loaded = true, storageFailed = true, notice = if (notifyFailure) Feedback.Storage else null)
                 }
             }
         }
@@ -82,7 +95,9 @@ class DeviceRepository(
 
     suspend fun select(deviceId: UUID): Feedback = guarded {
         require(state.value.devices.any { it.profile.deviceId == deviceId })
-        persist(state.value.copy(defaultDeviceId = deviceId))
+        persist(state.value.copy(defaultDeviceId = deviceId, devices = state.value.devices.map {
+            if (state.value.defaultDeviceId != deviceId) it.copy(lastLiveReadAtMillis = null) else it
+        }))
         Feedback.Saved
     }
 
@@ -102,7 +117,7 @@ class DeviceRepository(
         val tailscale = if (tailscaleEndpoint == null) device.profile.tailscaleEndpoint
             else if (tailscaleEndpoint.isBlank()) null else configurationValue(Feedback.InvalidTailscaleEndpoint) { Protocol.endpoint(tailscaleEndpoint) }
         val learn = autoLearnTailscale ?: if (tailscaleEndpoint == null) device.profile.autoLearnTailscale else tailscaleEndpoint.isNotBlank()
-        replace(device.copy(profile = device.profile.copy(name = savedName, relay = relay,
+        replace(device.copy(lastLiveReadAtMillis = null, profile = device.profile.copy(name = savedName, relay = relay,
             tailscaleEndpoint = tailscale, autoLearnTailscale = learn)))
         Feedback.Saved
     }
@@ -117,6 +132,53 @@ class DeviceRepository(
     suspend fun refresh(deviceId: UUID, live: Boolean = true): Feedback = guarded(
         if (live) RepositoryAction.Refresh else RepositoryAction.Other, deviceId,
     ) { readStatusInternal(deviceId, live) }
+
+    fun hasFreshPower(deviceId: UUID, maxAgeMillis: Long = 25_000): Boolean {
+        val snapshot = state.value
+        if (!snapshot.loaded || snapshot.storageFailed || snapshot.defaultDeviceId != deviceId || maxAgeMillis < 0) return false
+        val device = snapshot.selected ?: return false
+        if (StatePolicy.confirmedPower(device) == DisplayPower.Unknown) return false
+        val readAt = device.lastLiveReadAtMillis ?: return false
+        return monotonicMillis() - readAt in 0..maxAgeMillis
+    }
+
+    // This child can be preempted without cancelling the service's polling coroutine.
+    suspend fun backgroundRefresh(deviceId: UUID): Feedback {
+        if (state.value.busy) return Feedback.Busy
+        initializeInternal(notifyFailure = false)
+        if (state.value.storageFailed) return Feedback.Storage
+        return coroutineScope {
+            val read = synchronized(admission) {
+                if (foregroundWaiters > 0 || backgroundRead != null || state.value.busy ||
+                    state.value.defaultDeviceId != deviceId || state.value.selected == null) return@coroutineScope Feedback.Busy
+                async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                    val locked = synchronized(admission) {
+                        foregroundWaiters == 0 && !state.value.busy && !state.value.storageFailed &&
+                            state.value.defaultDeviceId == deviceId && mutex.tryLock()
+                    }
+                    if (!locked) return@async if (state.value.storageFailed) Feedback.Storage else Feedback.Busy
+                    try {
+                        currentCoroutineContext().ensureActive()
+                        readStatusInternal(deviceId, live = true)
+                    } catch (_: StorageFailure) {
+                        storageFailure(notify = false)
+                        Feedback.Storage
+                    } finally {
+                        mutex.unlock()
+                    }
+                }.also { backgroundRead = it }
+            }
+            try {
+                read.start()
+                read.await()
+            } catch (_: BackgroundReadPreempted) {
+                Feedback.Busy
+            } finally {
+                withContext(NonCancellable) { read.join() }
+                synchronized(admission) { if (backgroundRead === read) backgroundRead = null }
+            }
+        }
+    }
 
     suspend fun recover(deviceId: UUID): Feedback = guarded(
         RepositoryAction.Refresh, deviceId, waitForIdle = true,
@@ -155,7 +217,7 @@ class DeviceRepository(
         val operationId = UUID.randomUUID()
         val request = RemoteCommand(UUID.randomUUID(), deviceId, "set", clock.instant().plusSeconds(30), targetId, intent, operationId)
         val pending = OperationRecord(operationId, targetId, intent, null, OperationOutcome.Pending, null, null, clock.instant())
-        replace(device.copy(operation = pending, feedback = Feedback.Pending, requiresRefresh = true, status = device.status.let {
+        replace(device.copy(operation = pending, feedback = Feedback.Pending, requiresRefresh = true, lastLiveReadAtMillis = null, status = device.status.let {
             it.copy(observation = it.observation.copy(state = DisplayPower.Unknown))
         }))
         applyDelivery(deviceId, request, router.send(device.profile, request))
@@ -182,7 +244,7 @@ class DeviceRepository(
                     updatedAt = clock.instant(),
                 ) else device.operation
                 val feedback = if (request.command == "set" && delivery.mayHaveExecuted) Feedback.Unknown else delivery.feedback
-                replace(device.copy(operation = operation, connected = false, feedback = feedback,
+                replace(device.copy(operation = operation, connected = false, feedback = feedback, lastLiveReadAtMillis = null,
                     requiresRefresh = if (request.command == "set") delivery.mayHaveExecuted else device.requiresRefresh))
                 return feedback
             }
@@ -193,7 +255,7 @@ class DeviceRepository(
                         outcome = OperationOutcome.Unknown, updatedAt = clock.instant(),
                     ) else device.operation
                     val feedback = if (request.command == "set") Feedback.Unknown else Feedback.Failed
-                    replace(device.copy(operation = operation, connected = false, feedback = feedback,
+                    replace(device.copy(operation = operation, connected = false, feedback = feedback, lastLiveReadAtMillis = null,
                         requiresRefresh = device.requiresRefresh || request.command == "set"))
                     return feedback
                 }
@@ -240,8 +302,16 @@ class DeviceRepository(
                 }
                 val profile = device.profile.copy(tailscaleEndpoint =
                     reply.status?.tailscaleEndpoint.takeIf { device.profile.autoLearnTailscale } ?: device.profile.tailscaleEndpoint)
-                replace(device.copy(profile = profile, status = status, operation = operation, connected = connected,
-                    feedback = feedback, requiresRefresh = requiresRefresh, lastSuccessfulRoute = delivery.route))
+                val updated = device.copy(profile = profile, status = status, operation = operation, connected = connected,
+                    feedback = feedback, requiresRefresh = requiresRefresh, lastSuccessfulRoute = delivery.route)
+                val trusted = StatePolicy.confirmedPower(updated) != DisplayPower.Unknown
+                val readAt = when {
+                    trusted && freshRead -> monotonicMillis()
+                    trusted && request.command == "set" && confirmedRead && status?.observation == confirmedObservation -> monotonicMillis()
+                    !trusted || request.command in setOf("refresh", "set", "operation") || status != device.status -> null
+                    else -> device.lastLiveReadAtMillis
+                }
+                replace(updated.copy(lastLiveReadAtMillis = readAt))
                 return feedback
             }
         }
@@ -267,7 +337,16 @@ class DeviceRepository(
     ): Feedback {
         initialize()
         if (state.value.storageFailed) return Feedback.Storage
-        val locked = if (waitForIdle) mutex.lockWithin(30_000) else mutex.tryLock()
+        val background = synchronized(admission) {
+            foregroundWaiters += 1
+            backgroundRead.also { it?.cancel(BackgroundReadPreempted()) }
+        }
+        val locked = try {
+            background?.join()
+            if (waitForIdle) mutex.lockWithin(30_000) else mutex.tryLock()
+        } finally {
+            synchronized(admission) { foregroundWaiters -= 1 }
+        }
         if (!locked) return Feedback.Busy
         if (state.value.storageFailed) {
             mutex.unlock()
@@ -287,7 +366,7 @@ class DeviceRepository(
                     persist(state.value.copy(devices = state.value.devices.map {
                         if (it.profile.deviceId == deviceId && it.operation?.outcome == OperationOutcome.Pending) it.copy(
                             operation = it.operation.copy(outcome = OperationOutcome.Unknown, updatedAt = clock.instant()),
-                            connected = false, feedback = Feedback.Unknown, requiresRefresh = true,
+                            connected = false, feedback = Feedback.Unknown, requiresRefresh = true, lastLiveReadAtMillis = null,
                         ) else it
                     }))
                 } catch (_: StorageFailure) { storageFailure() }
@@ -311,8 +390,9 @@ class DeviceRepository(
         }
     }
 
-    private fun storageFailure() {
-        mutableState.value = state.value.copy(storageFailed = true, notice = Feedback.Storage)
+    private fun storageFailure(notify: Boolean = true) {
+        mutableState.value = state.value.copy(storageFailed = true, notice = if (notify) Feedback.Storage else state.value.notice,
+            devices = state.value.devices.map { it.copy(lastLiveReadAtMillis = null) })
     }
 
     private fun <T> configurationValue(feedback: Feedback, read: () -> T): T = try { read() }
@@ -323,6 +403,7 @@ class DeviceRepository(
 
     private class ConfigurationInputException(val feedback: Feedback) : RuntimeException(feedback.name)
     private class StorageFailure : RuntimeException()
+    private class BackgroundReadPreempted : CancellationException("Foreground request has priority")
 
     private companion object {
         val recoveryStopFeedback = setOf(Feedback.Security, Feedback.Unauthorized, Feedback.Protocol,

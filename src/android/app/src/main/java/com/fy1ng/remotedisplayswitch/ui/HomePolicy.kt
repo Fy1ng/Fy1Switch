@@ -12,6 +12,21 @@ import java.util.UUID
 data class HomeAction(val label: String, val intent: PowerIntent?, val enabled: Boolean, val queryOperation: Boolean = false)
 
 object HomePolicy {
+    fun canReuseBackgroundPower(state: AppState, running: Boolean, fresh: Boolean): Boolean =
+        running && fresh && state.loaded && !state.busy && !state.storageFailed && state.selected?.let {
+            !(it.requiresRefresh && StatePolicy.unresolved(it.operation)) &&
+                StatePolicy.confirmedPower(it) != DisplayPower.Unknown
+        } == true
+
+    // Freshness is a presentation and action gate. Keep persisted operation recovery facts intact.
+    fun visibleState(state: AppState, fresh: Boolean): AppState {
+        val device = state.selected ?: return state
+        if (fresh || StatePolicy.confirmedPower(device) == DisplayPower.Unknown) return state
+        return state.copy(devices = state.devices.map {
+            if (it.profile.deviceId == device.profile.deviceId) it.copy(connected = false) else it
+        })
+    }
+
     fun action(state: AppState): HomeAction {
         val query = state.selected?.let { it.requiresRefresh && StatePolicy.unresolved(it.operation) } == true
         val intent = if (query) null else when (StatePolicy.confirmedPower(state.selected)) {

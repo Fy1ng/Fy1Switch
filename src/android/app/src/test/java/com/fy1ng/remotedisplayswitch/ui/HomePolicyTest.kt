@@ -5,6 +5,48 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HomePolicyTest {
+    @Test fun onlyRunningFreshBackgroundPowerSkipsForegroundRecovery() {
+        val state = activeState()
+        assertTrue(HomePolicy.canReuseBackgroundPower(state, running = true, fresh = true))
+        assertFalse(HomePolicy.canReuseBackgroundPower(state, running = false, fresh = true))
+        assertFalse(HomePolicy.canReuseBackgroundPower(state, running = true, fresh = false))
+        assertFalse(HomePolicy.canReuseBackgroundPower(state.copy(loaded = false), running = true, fresh = true))
+        assertFalse(HomePolicy.canReuseBackgroundPower(state.copy(busy = true), running = true, fresh = true))
+        assertFalse(HomePolicy.canReuseBackgroundPower(state.copy(storageFailed = true), running = true, fresh = true))
+        val pending = state.copy(devices = listOf(state.selected!!.copy(
+            requiresRefresh = true, operation = operation(OperationOutcome.Unknown),
+        )))
+        assertFalse(HomePolicy.canReuseBackgroundPower(pending, running = true, fresh = true))
+        val unknown = state.copy(devices = listOf(state.selected!!.copy(status = status(DisplayPower.Unknown))))
+        assertFalse(HomePolicy.canReuseBackgroundPower(unknown, running = true, fresh = true))
+    }
+
+    @Test fun expiredPowerCannotLookConfirmedOrAuthorizeToggle() {
+        val original = activeState()
+        val visible = HomePolicy.visibleState(original, fresh = false)
+        assertEquals(DisplayPower.Unknown, StatePolicy.confirmedPower(visible.selected))
+        assertFalse(StatePolicy.canSet(visible, PowerIntent.Toggle))
+        assertTrue(StatePolicy.tileRefreshOnly(visible))
+        assertNull(HomePolicy.action(visible).intent)
+        assertEquals("显示器状态待确认", HomePolicy.status(visible))
+        assertTrue(original.selected!!.connected)
+        assertFalse(original.selected!!.requiresRefresh)
+        assertEquals(original, HomePolicy.visibleState(original, fresh = true))
+    }
+
+    @Test fun expirationKeepsOperationRecoveryFactsAndCannotReviveOldUncertainty() {
+        val confirmedAfterUnknown = activeState().let { it.copy(devices = listOf(it.selected!!.copy(
+            operation = operation(OperationOutcome.Unknown), requiresRefresh = false,
+        ))) }
+        val expired = HomePolicy.visibleState(confirmedAfterUnknown, fresh = false)
+        assertFalse(HomePolicy.action(expired).queryOperation)
+        assertEquals(confirmedAfterUnknown.selected!!.operation, expired.selected!!.operation)
+        val unresolved = confirmedAfterUnknown.copy(devices = listOf(confirmedAfterUnknown.selected!!.copy(requiresRefresh = true)))
+        val visibleUnresolved = HomePolicy.visibleState(unresolved, fresh = false)
+        assertTrue(HomePolicy.action(visibleUnresolved).queryOperation)
+        assertEquals(unresolved, visibleUnresolved)
+    }
+
     @Test fun knownPowerAlwaysUsesExplicitOppositeIntent() {
         val state = activeState()
         assertEquals(PowerIntent.Off, HomePolicy.action(state).intent)
