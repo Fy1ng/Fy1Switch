@@ -25,6 +25,7 @@ UI symbols use Microsoft's Fluent System Icons, Regular, pinned to
   Desktop Sync paths for single-color Quick Settings icons.
 
 Application identity and state remain distinct: the full-color artwork is the
-launcher/executable/window icon; the Windows tray adds check/minus/question badges,
-and Android Quick Settings retains state-specific monochrome symbols. Both UI
+launcher/executable/window icon; the Windows tray uses separate green/blue/amber
+monitor symbols for on/off/unknown, and Android Quick Settings retains
+state-specific monochrome symbols. Both UI
 clients retain text labels for critical actions and distinguish unknown state.
