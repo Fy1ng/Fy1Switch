@@ -46,9 +46,19 @@ try {
     Start-Sleep -Seconds 5
     $null = Invoke-Control @('shutdown')
     if (-not $hostProcess.WaitForExit(15000)) { throw 'Host shutdown timed out.' }
+    $restartedAt = [DateTimeOffset]::UtcNow
     $hostProcess = Start-TestHost
     $restored = (Invoke-Control @('status')).snapshot
-    if ($restored.binding.targetId -ne $targetId -or $restored.observation.state -ne 'Unknown') { throw 'Binding or unknown-on-restart state was not restored correctly.' }
+    if ($restored.binding.targetId -ne $targetId -or $restored.binding.needsConfirmation) { throw 'Binding was not restored correctly.' }
+    if (-not $Hardware) {
+        $refreshDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
+        while (($restored.busy -or $restored.observation.state -eq 'Unknown') -and [DateTimeOffset]::UtcNow -lt $refreshDeadline) {
+            Start-Sleep -Milliseconds 200
+            $restored = (Invoke-Control @('status')).snapshot
+        }
+        if ($restored.observation.state -ne 'On' -or $restored.observation.source -ne 'simulation' -or
+            [DateTimeOffset]$restored.observation.observedAt -le $restartedAt) { throw 'Restart did not automatically obtain a fresh simulated observation.' }
+    }
     $stored = (Invoke-Control @('operation',$operationId)).operation
     if ($stored.outcome -ne 'Confirmed') { throw 'Operation journal was not persisted.' }
     $on = (Invoke-Control @('on',$targetId,[Guid]::NewGuid().ToString())).operation
@@ -59,7 +69,7 @@ try {
         if (-not $startup.startupEnabled) { throw 'Simulated startup toggle failed.' }
         $null = Invoke-Control @('startup','off')
     }
-    [pscustomobject]@{simulation=(-not $Hardware);offConfirmed=$true;duplicateDeduplicated=$true;bindingRestored=$true;freshProcessOnConfirmed=$true;dataDirectory=$data} | ConvertTo-Json
+    [pscustomobject]@{simulation=(-not $Hardware);offConfirmed=$true;duplicateDeduplicated=$true;bindingRestored=$true;automaticRefreshConfirmed=(-not $Hardware);freshProcessOnConfirmed=$true;dataDirectory=$data} | ConvertTo-Json
 }
 finally {
     if ($offAttempted -and $targetId) {

@@ -21,6 +21,8 @@
 
 ## Windows 本地版本
 
+2026-10-22 自动状态刷新: Windows 拓扑复核成功后立即读回最新电源状态, 启动和短暂未知时最多自动补读 3 次. Android 首页进入或回到前台, 操作结果不确定及快捷开关打开时自动查询并实时读取, 临时未知最多读 2 次. 刷新期间显示进度, 尽量不要求用户手动刷新; 持续失败或真实绑定变化仍显示必要提示. 自动恢复仅查询和读取, 不重放开关命令或自动重新绑定. 独立 Windows 测试包位于 `artifacts/windows-auto-refresh-20261022/win-x64`, Android debug 包位于 `artifacts/android/RemoteDisplaySwitch-auto-refresh-20261022-debug.apk`.
+
 ~~~powershell
 ./tools/Test-Windows.ps1
 ./tools/Publish-Windows.ps1

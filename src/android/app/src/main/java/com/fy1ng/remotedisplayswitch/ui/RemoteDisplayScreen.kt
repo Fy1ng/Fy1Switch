@@ -20,9 +20,14 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.fy1ng.remotedisplayswitch.core.*
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -59,16 +64,17 @@ fun RemoteDisplayScreen(
         }
     }
     LaunchedEffect(Unit) { repository.initialize() }
-    LaunchedEffect(page, state.loaded, state.defaultDeviceId, state.storageFailed) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(page, state.loaded, state.defaultDeviceId, state.storageFailed, lifecycle) {
+        if (page == SETTINGS && state.loaded && state.selected == null) page = HOME
         val deviceId = state.defaultDeviceId
         if (page == HOME && state.loaded && !state.storageFailed && deviceId != null) {
-            repository.state.first { !it.busy }
-            if (repository.state.value.defaultDeviceId == deviceId) {
-                if (HomePolicy.action(repository.state.value).queryOperation) repository.queryOperation(deviceId)
-                else repository.refresh(deviceId)
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                repository.recover(deviceId)
+                repository.state.map { HomePolicy.completedUncertainSet(it, deviceId) }
+                    .filterNotNull().distinctUntilChanged().collect { repository.recover(deviceId) }
             }
         }
-        if (page == SETTINGS && state.loaded && state.selected == null) page = HOME
     }
     LaunchedEffect(state.notice, page) {
         if (page == SETTINGS && state.notice == Feedback.Saved) snackbar.showSnackbar(Feedback.Saved.text)
@@ -251,7 +257,7 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
             if (action.intent != null) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             scope.launch {
                 when {
-                    action.queryOperation -> repository.queryOperation(deviceId)
+                    action.queryOperation -> repository.recover(deviceId)
                     action.intent != null -> repository.set(deviceId, action.intent)
                     else -> repository.refresh(deviceId)
                 }
@@ -287,7 +293,8 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
                 Spacer(Modifier.width(10.dp))
                 Text(HomePolicy.status(state), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
             }
-            val message = if (device.connected && device.status?.available == false) "请在电脑上确认显示器绑定" else when (device.feedback) {
+            val message = if (StatePolicy.refreshing(state)) null
+            else if (device.connected && device.status?.available == false) "请在电脑上确认显示器绑定" else when (device.feedback) {
                 Feedback.Ready, Feedback.Paired -> "配对已保存，连接后读取状态"
                 Feedback.Updated, Feedback.Confirmed, Feedback.Saved, Feedback.Busy -> null
                 Feedback.Pending, Feedback.Unknown, Feedback.AcceptedUnconfirmed -> if (device.requiresRefresh) "先确认本次结果，避免重复开关" else null

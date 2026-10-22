@@ -109,7 +109,9 @@ App 与 Tile 使用同一进程内单例 DeviceRepository / Mutex，不创建独
 
 `Confirmed` 才展示操作确认。`AcceptedUnconfirmed`、`Pending`、`Unknown` 分别明确展示“已接受未确认 / 处理中 / 结果未知”。旧 on/off 观测不会在不确定操作之后继续作为成功证据。查询未找到记录也不表示未执行。显式成功的实时 refresh 或对应的已确认观测能够解除“不确定后需刷新”标记; 确定未发出的失败或可信终态 `Failed` 也不保留该标记, 包括恢复旧版持久化记录. 设备在线且绑定有效时, Unknown 可明确 ON/OFF, 仍不能 Toggle. 不会比较手机与 Windows 的时钟来猜测缓存是否足够新。实时刷新恢复当前状态不把此前 Unknown 操作改写为 Confirmed。
 
-Tile 为 non-active 模式，每次 onStartListening 发起短 `refresh`。仅 listening 期间获取临时 qsTile 并 updateTile，不长期持有 qsTile；停止 listening/销毁时取消观察订阅，已开始的短请求可完成并持久化结果。进程被系统结束后不重放 set：重建时 Pending 转 Unknown、保留操作查询 UUID、缓存状态先视为未连接。
+首页进入或回到前台, 已完成的开关请求结果不确定, 以及 Tile 开始 listening 时, 自动执行只读恢复. 有未决操作则先查询原 operationId, 当前状态仍未知时继续 live refresh; 临时未知最多读取 2 次, 安全/授权/协议错误立即停止. 恢复与 UI/Tile 操作共用原有 Mutex 串行执行, 等待空闲最多 30 秒, 切换设备或生命周期结束后不继续后续读取. 刷新或查询期间显示进度, 持续失败后才展示真实错误或待确认提示.
+
+Tile 为 non-active 模式, 每次 onStartListening 发起短时只读恢复. 仅 listening 期间获取临时 qsTile 并 updateTile, 不长期持有 qsTile; 停止 listening/销毁时取消观察订阅与自动恢复 Job, 阻止排队读取和后续重试. 手动点击已开始的短请求仍可完成并持久化结果. 进程被系统结束后不重放 set: 重建时 Pending 转 Unknown, 保留操作查询 UUID, 缓存状态先视为未连接.
 
 Tile: 已确认 On 映射 STATE_ACTIVE, 已确认 Off 映射 STATE_INACTIVE. 当前设备实时刷新期间使用可点击的 STATE_INACTIVE 并显示刷新提示, 该外观不表示已关闭; 最多排队一次点击, 同次刷新成功且返回可信 On/Off 后才执行一次 Toggle. 刷新失败/取消/超时, 切换设备或目标, 面板关闭/组件销毁均取消排队, 不使用旧缓存执行. 其他未知/离线/远端 busy/本地写操作映射 STATE_UNAVAILABLE. 长按通过 QS_TILE_PREFERENCES 打开 MainActivity. API 34+ 展开 App 使用 PendingIntent; 不设置会绕过 onClick 的固定 activityLaunchForClick, 因此正常单击仍执行切换.
 

@@ -88,4 +88,32 @@ class HomePolicyTest {
         assertEquals("连接状态待确认", HomePolicy.connectionStatus(device.copy(connected = false)))
         assertEquals("最近连接失败", HomePolicy.connectionStatus(device.copy(connected = false, feedback = Feedback.Offline)))
     }
+
+    @Test fun liveRecoveryShowsProgressInsteadOfUncertainty() {
+        val uncertain = activeState().let { it.copy(devices = listOf(it.selected!!.copy(
+            connected = false, operation = operation(OperationOutcome.Unknown), requiresRefresh = true,
+        ))) }
+        val refreshing = uncertain.copy(busy = true, request = RepositoryRequest(REQUEST, RepositoryAction.Refresh, DEVICE))
+        assertEquals("正在刷新显示器状态", HomePolicy.status(refreshing))
+        assertEquals("正在刷新", HomePolicy.action(refreshing).label)
+        assertFalse(HomePolicy.action(refreshing).enabled)
+        val querying = refreshing.copy(request = RepositoryRequest(REQUEST, RepositoryAction.Other, DEVICE))
+        assertEquals("正在确认显示器状态", HomePolicy.status(querying))
+        assertEquals("正在查询", HomePolicy.action(querying).label)
+        assertEquals("显示器状态待确认", HomePolicy.status(uncertain))
+    }
+
+    @Test fun onlyCompletedSelectedUncertainWritesTriggerAutomaticRecovery() {
+        val completed = RepositoryRequest(REQUEST, RepositoryAction.Set, DEVICE, Feedback.Unknown)
+        val uncertain = activeState().let { it.copy(devices = listOf(it.selected!!.copy(
+            operation = operation(OperationOutcome.Unknown), requiresRefresh = true,
+        )), request = completed) }
+        assertEquals(REQUEST, HomePolicy.completedUncertainSet(uncertain, DEVICE))
+        assertEquals(REQUEST, HomePolicy.completedUncertainSet(uncertain.copy(request = completed.copy(result = null)), DEVICE))
+        assertNull(HomePolicy.completedUncertainSet(uncertain.copy(busy = true), DEVICE))
+        assertNull(HomePolicy.completedUncertainSet(uncertain, OTHER))
+        assertNull(HomePolicy.completedUncertainSet(uncertain.copy(request = completed.copy(action = RepositoryAction.Refresh)), DEVICE))
+        assertNull(HomePolicy.completedUncertainSet(uncertain.copy(devices = listOf(uncertain.selected!!.copy(requiresRefresh = false))), DEVICE))
+        assertNull(HomePolicy.completedUncertainSet(uncertain.copy(devices = listOf(uncertain.selected!!.copy(operation = operation(OperationOutcome.Confirmed)))), DEVICE))
+    }
 }

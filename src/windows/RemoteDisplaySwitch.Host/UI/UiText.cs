@@ -5,6 +5,12 @@ namespace RemoteDisplaySwitch.Host.UI;
 
 internal static class UiText
 {
+    internal static bool CanAutomaticallyRefresh(HostSnapshot? snapshot) =>
+        snapshot is { Busy: false, Binding.NeedsConfirmation: false } &&
+        snapshot.ErrorCode is null or "state_unknown" or "read_failed" or "readback_failed" or
+            "power_io_failed" or "topology_unavailable" or "worker_timeout" or "worker_unavailable" or
+            "worker_disconnected" or "worker_start_failed";
+
     internal static bool IsTrusted(PowerObservation observation, bool simulation) =>
         observation.ObservedAt != default && (simulation
             ? observation.Source is "simulation" or "simulated"

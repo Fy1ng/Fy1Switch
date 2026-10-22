@@ -220,10 +220,12 @@ public sealed partial class MainWindow
             var power = PrimaryPower;
             _on.Visibility = _off.Visibility = power == DisplayPower.Unknown ? Visibility.Visible : Visibility.Collapsed;
             _refresh.Visibility = power == DisplayPower.Unknown ? Visibility.Collapsed : Visibility.Visible;
-            _power.Text = (power switch { DisplayPower.On => "显示器已开启", DisplayPower.Off => "显示器已关闭", _ => "显示器状态待确认" }) +
+            var refreshing = !needsConfirmation && power == DisplayPower.Unknown &&
+                (snapshot is null || IsAutomaticallyRefreshing || busy);
+            _power.Text = (refreshing ? "正在刷新显示器状态…" : power switch { DisplayPower.On => "显示器已开启", DisplayPower.Off => "显示器已关闭", _ => "显示器状态待确认" }) +
                 (simulation ? "（模拟）" : string.Empty);
-            _powerIcon.Kind = power switch { DisplayPower.On => AppIconKind.Monitor, DisplayPower.Off => AppIconKind.MonitorOff, _ => AppIconKind.Question };
-            var stateBrush = power switch
+            _powerIcon.Kind = refreshing ? AppIconKind.Refresh : power switch { DisplayPower.On => AppIconKind.Monitor, DisplayPower.Off => AppIconKind.MonitorOff, _ => AppIconKind.Question };
+            var stateBrush = refreshing ? DesktopTheme.ForegroundBrush : power switch
             {
                 DisplayPower.On => DesktopTheme.SuccessBrush,
                 DisplayPower.Off => DesktopTheme.OffBrush,
@@ -231,7 +233,7 @@ public sealed partial class MainWindow
             };
             _power.SetResourceReference(TextBlock.ForegroundProperty, stateBrush);
             _powerIcon.SetResourceReference(VectorIcon.ForegroundProperty, stateBrush);
-            AppIcons.SetButton(_toggle, busy ? "正在处理…" : power switch
+            AppIcons.SetButton(_toggle, refreshing ? "正在刷新状态…" : busy ? "正在处理…" : power switch
             {
                 DisplayPower.On => "关闭显示器",
                 DisplayPower.Off => "开启显示器",
@@ -270,10 +272,11 @@ public sealed partial class MainWindow
                 (binding is null ? "目标 ID：尚未绑定" : $"目标 ID：{binding.TargetId}\n目标键：{binding.TargetKey}");
 
             var error = _snapshotError ?? snapshot?.ErrorCode;
-            var warning = _actionWarning || error is not null || needsConfirmation || HasUnconfirmedOperation;
+            var warning = !refreshing && (_actionWarning || error is not null || needsConfirmation || HasUnconfirmedOperation);
             var message = _localBusy ? _actionMessage ?? "操作进行中，请等待…"
                 : _snapshotError is not null ? "无法加载最新状态，请稍后重试。"
                 : needsConfirmation ? "连接已变化，请在设置中重新确认显示器。"
+                : refreshing ? "正在自动刷新显示器状态，请稍候。"
                 : error is not null ? UiText.BriefError(error)
                 : snapshot?.Busy == true ? "正在处理显示器操作，请稍候。"
                 : HasUnconfirmedOperation ? UiText.Operation(_lastOperation!, simulation)

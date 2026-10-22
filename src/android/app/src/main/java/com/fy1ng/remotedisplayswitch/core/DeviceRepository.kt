@@ -3,6 +3,7 @@ package com.fy1ng.remotedisplayswitch.core
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,6 +118,29 @@ class DeviceRepository(
         if (live) RepositoryAction.Refresh else RepositoryAction.Other, deviceId,
     ) { readStatusInternal(deviceId, live) }
 
+    suspend fun recover(deviceId: UUID): Feedback = guarded(
+        RepositoryAction.Refresh, deviceId, waitForIdle = true,
+    ) {
+        if (state.value.defaultDeviceId != deviceId) return@guarded Feedback.Busy
+        val device = find(deviceId)
+        if (device.requiresRefresh && StatePolicy.unresolved(device.operation)) {
+            val queried = queryOperationInternal(deviceId)
+            if (queried in recoveryStopFeedback) return@guarded queried
+            if (StatePolicy.confirmedPower(find(deviceId)) != DisplayPower.Unknown) return@guarded queried
+            // A failed route remains in Router's five-second cooldown after an uncertain write.
+            if (queried == Feedback.Offline) delay(5_000)
+        }
+        var result = Feedback.Updated
+        repeat(2) { attempt ->
+            result = readStatusInternal(deviceId, live = true)
+            val current = find(deviceId)
+            if (result != Feedback.Updated || StatePolicy.confirmedPower(current) != DisplayPower.Unknown ||
+                current.status?.available != true) return@guarded result
+            if (attempt == 0) delay(500)
+        }
+        result
+    }
+
     private suspend fun readStatusInternal(deviceId: UUID, live: Boolean): Feedback {
         val device = find(deviceId)
         val request = RemoteCommand(UUID.randomUUID(), deviceId, if (live) "refresh" else "status", clock.instant().plusSeconds(30))
@@ -137,14 +161,16 @@ class DeviceRepository(
         applyDelivery(deviceId, request, router.send(device.profile, request))
     }
 
-    suspend fun queryOperation(deviceId: UUID): Feedback = guarded {
+    suspend fun queryOperation(deviceId: UUID): Feedback = guarded { queryOperationInternal(deviceId) }
+
+    private suspend fun queryOperationInternal(deviceId: UUID): Feedback {
         val device = find(deviceId)
-        val operation = device.operation ?: return@guarded Feedback.NotFound
+        val operation = device.operation ?: return Feedback.NotFound
         val request = RemoteCommand(
             UUID.randomUUID(), deviceId, "operation", clock.instant().plusSeconds(30),
             targetId = operation.targetId, operationId = operation.operationId,
         )
-        applyDelivery(deviceId, request, router.send(device.profile, request))
+        return applyDelivery(deviceId, request, router.send(device.profile, request))
     }
 
     private fun applyDelivery(deviceId: UUID, request: RemoteCommand, delivery: Delivery): Feedback {
@@ -236,11 +262,17 @@ class DeviceRepository(
         kind: RepositoryAction = RepositoryAction.Other,
         deviceId: UUID? = null,
         invalidInputFeedback: Feedback = Feedback.InvalidInput,
+        waitForIdle: Boolean = false,
         action: suspend () -> Feedback,
     ): Feedback {
         initialize()
         if (state.value.storageFailed) return Feedback.Storage
-        if (!mutex.tryLock()) return Feedback.Busy
+        val locked = if (waitForIdle) mutex.lockWithin(30_000) else mutex.tryLock()
+        if (!locked) return Feedback.Busy
+        if (state.value.storageFailed) {
+            mutex.unlock()
+            return Feedback.Storage
+        }
         val request = RepositoryRequest(UUID.randomUUID(), kind, deviceId)
         var result: Feedback? = null
         mutableState.value = state.value.copy(busy = true, notice = null, request = request)
@@ -250,10 +282,10 @@ class DeviceRepository(
             mutableState.value = state.value.copy(notice = feedback)
             return feedback
         } catch (exception: CancellationException) {
-            withContext(NonCancellable + Dispatchers.IO) {
+            if (kind == RepositoryAction.Set) withContext(NonCancellable + Dispatchers.IO) {
                 try {
                     persist(state.value.copy(devices = state.value.devices.map {
-                        if (it.operation?.outcome == OperationOutcome.Pending) it.copy(
+                        if (it.profile.deviceId == deviceId && it.operation?.outcome == OperationOutcome.Pending) it.copy(
                             operation = it.operation.copy(outcome = OperationOutcome.Unknown, updatedAt = clock.instant()),
                             connected = false, feedback = Feedback.Unknown, requiresRefresh = true,
                         ) else it
@@ -291,4 +323,9 @@ class DeviceRepository(
 
     private class ConfigurationInputException(val feedback: Feedback) : RuntimeException(feedback.name)
     private class StorageFailure : RuntimeException()
+
+    private companion object {
+        val recoveryStopFeedback = setOf(Feedback.Security, Feedback.Unauthorized, Feedback.Protocol,
+            Feedback.Storage, Feedback.InvalidInput, Feedback.Expired)
+    }
 }

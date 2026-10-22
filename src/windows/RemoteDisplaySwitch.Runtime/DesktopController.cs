@@ -225,7 +225,18 @@ public sealed class DesktopController : IDesktopController, IAsyncDisposable
                     HandleError("topology_changed");
                     return;
                 }
-                Publish(_snapshot with { Observation = Unknown(), ErrorCode = null });
+            }
+            var reading = await _worker.SendAsync(new(Guid.NewGuid(), "read", binding.TargetKey, binding.TopologyFingerprint), cancellationToken);
+            lock (_topologyGate)
+            {
+                if (Volatile.Read(ref _disposed) != 0 || generation != Interlocked.Read(ref _displaySettingsGeneration) ||
+                    topologyGeneration != Interlocked.Read(ref _topologyGeneration) || _invalidated) return;
+                if (!reading.Success)
+                {
+                    HandleError(reading.ErrorCode ?? "read_failed");
+                    return;
+                }
+                Publish(_snapshot with { Observation = reading.Observation ?? Unknown(), ErrorCode = null });
             }
         }
         catch (Exception exception) when (checking)

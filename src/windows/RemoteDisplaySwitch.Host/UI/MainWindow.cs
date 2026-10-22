@@ -34,6 +34,9 @@ public sealed partial class MainWindow : Window
     private bool _initialDiscoveryChecked;
     private bool _startupSaving;
     private bool _hasHiddenToTray;
+    private bool _automaticRefreshing;
+    private int _automaticRefreshAttempts;
+    private readonly DispatcherTimer _automaticRefreshTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _feedbackTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _relativeTimeTimer = new() { Interval = TimeSpan.FromMinutes(1) };
 
@@ -45,6 +48,7 @@ public sealed partial class MainWindow : Window
         _requestStartupReplacement = requestStartupReplacement;
         _lifetimeToken = _lifetime.Token;
         InitializeView();
+        _automaticRefreshTimer.Tick += async (_, _) => await AutomaticallyRefreshAsync();
         _feedbackTimer.Tick += (_, _) =>
         {
             _feedbackTimer.Stop();
@@ -58,6 +62,11 @@ public sealed partial class MainWindow : Window
         _relativeTimeTimer.Start();
         _controller.Changed += ControllerChanged;
         Loaded += WindowLoaded;
+        Activated += (_, _) =>
+        {
+            _automaticRefreshAttempts = 0;
+            _ = RefreshViewAsync();
+        };
         Render();
     }
 
@@ -72,11 +81,14 @@ public sealed partial class MainWindow : Window
         if (!_closed && _snapshot?.Binding?.TargetId == operation.TargetId)
         {
             _lastOperation = operation;
+            _automaticRefreshAttempts = 0;
+            ScheduleAutomaticRefresh();
             SetOperationMessage(operation);
         }
     }
-    internal string TrayStatus => !_snapshotAvailable ? "显示器状态待确认"
+    internal string TrayStatus => !_snapshotAvailable ? "正在加载显示器状态…"
         : _snapshot?.Binding is null ? "尚未绑定显示器"
+        : IsAutomaticallyRefreshing ? "正在刷新显示器状态…"
         : IsBusy ? "正在处理显示器操作…"
         : PrimaryPower switch
         {
@@ -126,6 +138,7 @@ public sealed partial class MainWindow : Window
         _ = ClosePairingCoreAsync(restoreFocus: false);
         _feedbackTimer.Stop();
         _relativeTimeTimer.Stop();
+        _automaticRefreshTimer.Stop();
         _controller.Changed -= ControllerChanged;
         Loaded -= WindowLoaded;
         _lifetime.Cancel();
@@ -190,6 +203,7 @@ public sealed partial class MainWindow : Window
                 {
                     _snapshotAvailable = false;
                     _snapshotError = ErrorCode(exception);
+                    ScheduleAutomaticRefresh();
                     Render();
                 }
             }
@@ -207,6 +221,7 @@ public sealed partial class MainWindow : Window
             (snapshot.ErrorCode == "topology_changed" && _snapshot?.ErrorCode != "topology_changed");
         if (bindingChanged || newlyInvalidated)
         {
+            _automaticRefreshAttempts = 0;
             _lastOperation = null;
             _actionMessage = null;
             _actionDetails = null;
@@ -225,10 +240,60 @@ public sealed partial class MainWindow : Window
             _actionWarning = false;
             _feedbackTimer.Stop();
         }
+        ScheduleAutomaticRefresh();
         Render();
     }
 
-    private bool IsBusy => _localBusy || _snapshot?.Busy == true;
+    private bool IsBusy => _localBusy || _automaticRefreshing || _snapshot?.Busy == true;
+    private bool IsAutomaticallyRefreshing => _automaticRefreshing || _automaticRefreshTimer.IsEnabled;
+
+    private bool NeedsAutomaticRefresh => _snapshotAvailable && UiText.CanAutomaticallyRefresh(_snapshot) &&
+        !_localBusy && PrimaryPower == DisplayPower.Unknown && _lastOperation?.Outcome != OperationOutcome.Pending;
+
+    private void ScheduleAutomaticRefresh()
+    {
+        if (PrimaryPower != DisplayPower.Unknown) _automaticRefreshAttempts = 0;
+        if (_closed || _automaticRefreshing || !NeedsAutomaticRefresh || _automaticRefreshAttempts >= 3)
+            _automaticRefreshTimer.Stop();
+        else if (!_automaticRefreshTimer.IsEnabled)
+        {
+            _automaticRefreshTimer.Interval = TimeSpan.FromSeconds(_automaticRefreshAttempts + 1);
+            _automaticRefreshTimer.Start();
+        }
+    }
+
+    private async Task AutomaticallyRefreshAsync()
+    {
+        _automaticRefreshTimer.Stop();
+        if (_closed || _automaticRefreshing || !NeedsAutomaticRefresh || _automaticRefreshAttempts >= 3)
+        {
+            if (!_closed) Render();
+            return;
+        }
+        _automaticRefreshAttempts++;
+        _automaticRefreshing = true;
+        Render();
+        try
+        {
+            ApplySnapshot(await _controller.RefreshAsync(_lifetimeToken));
+        }
+        catch (OperationCanceledException) when (_closed) { }
+        catch (Exception)
+        {
+            // Read-only recovery stays quiet while it is being retried. The latest
+            // controller error is rendered once the bounded attempts are exhausted.
+            if (!_closed) await RefreshViewAsync();
+        }
+        finally
+        {
+            _automaticRefreshing = false;
+            if (!_closed)
+            {
+                ScheduleAutomaticRefresh();
+                Render();
+            }
+        }
+    }
 
     private bool HasUnconfirmedOperation => _lastOperation is { } operation &&
         (operation.Outcome == OperationOutcome.Pending ||
@@ -287,6 +352,8 @@ public sealed partial class MainWindow : Window
         if (_closed || IsBusy)
             return;
         _localBusy = true;
+        _automaticRefreshTimer.Stop();
+        _automaticRefreshAttempts = 0;
         _feedbackTimer.Stop();
         _actionMessage = message;
         _actionDetails = null;
@@ -318,6 +385,7 @@ public sealed partial class MainWindow : Window
                 if (!_closed)
                 {
                     _localBusy = false;
+                    ScheduleAutomaticRefresh();
                     Render();
                     StartFeedbackTimer();
                 }

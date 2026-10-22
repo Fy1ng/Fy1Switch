@@ -19,6 +19,7 @@ public sealed class DisplaySettingsRevalidationTests
         await fixture.Controller.RefreshAsync();
         var requests = fixture.Worker.Requests.Length;
         var stops = fixture.Worker.StopCount;
+        fixture.Worker.Reading = FakeWorkerTransport.Observe(DisplayPower.Off);
 
         await fixture.Controller.RevalidateTopologyAsync(restartWorker: restartWorker);
 
@@ -27,9 +28,9 @@ public sealed class DisplaySettingsRevalidationTests
         Assert.AreEqual(deviceId, snapshot.DeviceId);
         Assert.IsFalse(snapshot.Busy);
         Assert.IsNull(snapshot.ErrorCode);
-        Assert.AreEqual(DisplayPower.Unknown, snapshot.Observation.State);
+        Assert.AreEqual(fixture.Worker.Reading, snapshot.Observation);
         Assert.AreEqual(stops + (restartWorker ? 1 : 0), fixture.Worker.StopCount);
-        CollectionAssert.AreEqual(new[] { "discover" }, fixture.Worker.Requests.Skip(requests).Select(request => request.Command).ToArray());
+        CollectionAssert.AreEqual(new[] { "discover", "read" }, fixture.Worker.Requests.Skip(requests).Select(request => request.Command).ToArray());
         Assert.AreEqual(0, fixture.Worker.Writes.Length);
         await fixture.RestartAsync();
         Assert.AreEqual(binding, (await fixture.Controller.GetSnapshotAsync()).Binding);
@@ -136,10 +137,95 @@ public sealed class DisplaySettingsRevalidationTests
         Assert.AreEqual(binding, snapshot.Binding);
         Assert.IsNull(snapshot.ErrorCode);
         Assert.IsFalse(snapshot.Busy);
-        Assert.AreEqual(requests + 2, fixture.Worker.Requests.Length);
+        Assert.AreEqual(requests + 3, fixture.Worker.Requests.Length);
         Assert.AreEqual(stops, fixture.Worker.StopCount);
         Assert.AreEqual(0, fixture.Worker.Writes.Length);
         Assert.AreEqual(1, fixture.Worker.MaximumConcurrentRequests);
+    }
+
+    [TestMethod]
+    public async Task NotificationsDuringReadDiscardTheOldObservationAndRefreshAgain()
+    {
+        await using var fixture = new ControllerFixture();
+        var binding = await fixture.BindAsync();
+        var gate = new RequestGate();
+        var reads = 0;
+        fixture.Worker.Reading = FakeWorkerTransport.Observe(DisplayPower.Off);
+        fixture.Worker.Handler = async (request, token) =>
+        {
+            if (request.Command == "read" && Interlocked.Increment(ref reads) == 1)
+            {
+                await gate.WaitAsync(request, token);
+                return new(request.RequestId, true, Observation: FakeWorkerTransport.Observe(DisplayPower.On));
+            }
+            return fixture.Worker.Reply(request);
+        };
+        var first = fixture.Controller.RevalidateTopologyAsync();
+        Task? next = null;
+        try
+        {
+            await gate.Entered;
+            next = fixture.Controller.RevalidateTopologyAsync();
+        }
+        finally { gate.Release(); }
+
+        await Task.WhenAll(first, next!).WaitAsync(RequestGate.Deadline);
+
+        var snapshot = await fixture.Controller.GetSnapshotAsync();
+        Assert.AreEqual(binding, snapshot.Binding);
+        Assert.AreEqual(fixture.Worker.Reading, snapshot.Observation);
+        Assert.AreEqual(2, reads);
+        Assert.AreEqual(0, fixture.Worker.Writes.Length);
+        Assert.AreEqual(1, fixture.Worker.MaximumConcurrentRequests);
+    }
+
+    [TestMethod]
+    public async Task DefiniteTopologyChangeDuringReadDoesNotPublishTheObservation()
+    {
+        await using var fixture = new ControllerFixture();
+        await fixture.BindAsync();
+        var gate = new RequestGate();
+        fixture.Worker.Reading = FakeWorkerTransport.Observe(DisplayPower.On);
+        fixture.Worker.Handler = async (request, token) =>
+        {
+            if (request.Command == "read") await gate.WaitAsync(request, token);
+            return fixture.Worker.Reply(request);
+        };
+        var validation = fixture.Controller.RevalidateTopologyAsync();
+        try
+        {
+            await gate.Entered;
+            fixture.Controller.NotifyTopologyChanged();
+        }
+        finally { gate.Release(); }
+
+        await validation.WaitAsync(RequestGate.Deadline);
+        var snapshot = await fixture.Controller.GetSnapshotAsync();
+        Assert.IsTrue(snapshot.Binding!.NeedsConfirmation);
+        Assert.AreEqual(DisplayPower.Unknown, snapshot.Observation.State);
+        Assert.AreEqual("topology_changed", snapshot.ErrorCode);
+        Assert.AreEqual(0, fixture.Worker.Writes.Length);
+    }
+
+    [DataTestMethod]
+    [DataRow("worker_timeout", false)]
+    [DataRow("target_mismatch", true)]
+    public async Task ReadFailureIsNotHiddenBySuccessfulTopologyValidation(string errorCode, bool invalidated)
+    {
+        await using var fixture = new ControllerFixture();
+        await fixture.BindAsync();
+        fixture.Worker.Handler = (request, _) => Task.FromResult(request.Command == "read"
+            ? new WorkerReply(request.RequestId, false, errorCode)
+            : fixture.Worker.Reply(request));
+
+        await fixture.Controller.RevalidateTopologyAsync();
+
+        var snapshot = await fixture.Controller.GetSnapshotAsync();
+        Assert.AreEqual(invalidated, snapshot.Binding!.NeedsConfirmation);
+        Assert.AreEqual(DisplayPower.Unknown, snapshot.Observation.State);
+        Assert.AreEqual(invalidated ? "topology_changed" : errorCode, snapshot.ErrorCode);
+        Assert.IsFalse(snapshot.Busy);
+        Assert.AreEqual(0, fixture.Worker.Writes.Length);
     }
 
     [TestMethod]

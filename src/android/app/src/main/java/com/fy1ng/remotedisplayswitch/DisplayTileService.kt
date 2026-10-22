@@ -23,6 +23,7 @@ class DisplayTileService : TileService() {
     private var listening = false
     private var unlockAttempt = 0
     private var observer: Job? = null
+    private var recovery: Job? = null
     private val clicks = TileClickCoordinator()
 
     override fun onStartListening() {
@@ -38,9 +39,10 @@ class DisplayTileService : TileService() {
                 render(app.repository.state.value)
             }
         }
-        app.scope.launch {
+        recovery?.cancel()
+        recovery = app.scope.launch {
             app.repository.initialize()
-            app.repository.state.value.selected?.let { app.repository.refresh(it.profile.deviceId, live = true) }
+            app.repository.state.value.selected?.let { app.repository.recover(it.profile.deviceId) }
         }
     }
 
@@ -49,6 +51,8 @@ class DisplayTileService : TileService() {
         clicks.stopListening()
         observer?.cancel()
         observer = null
+        recovery?.cancel()
+        recovery = null
         super.onStopListening()
     }
 
@@ -58,6 +62,8 @@ class DisplayTileService : TileService() {
         unlockAttempt += 1
         observer?.cancel()
         observer = null
+        recovery?.cancel()
+        recovery = null
         super.onDestroy()
     }
 
