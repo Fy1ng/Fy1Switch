@@ -328,10 +328,6 @@ internal static class DesktopTheme
                     <Trigger Property="IsPressed" Value="True">
                       <Setter TargetName="Surface" Property="Opacity" Value="0.65"/>
                     </Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True">
-                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                      <Setter TargetName="Surface" Property="BorderThickness" Value="2"/>
-                    </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
                       <Setter TargetName="Surface" Property="Opacity" Value="0.45"/>
                       <Setter Property="Cursor" Value="Arrow"/>
