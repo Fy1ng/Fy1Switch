@@ -147,11 +147,11 @@ public sealed partial class MainWindow
         var settings = new StackPanel { Margin = new Thickness(24, 16, 24, 20) };
         var settingsHeading = new DockPanel { Margin = new Thickness(0, 0, 0, 22) };
         SettingsUi.Button(_settingsBack);
+        _settingsBack.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.BackButton");
         _settingsBack.MinWidth = 32;
         _settingsBack.Width = 32;
         _settingsBack.Padding = new Thickness(7);
         _settingsBack.BorderThickness = new Thickness(0);
-        _settingsBack.SetResourceReference(Control.BackgroundProperty, DesktopTheme.SurfaceBrush);
         _settingsBack.Content = new VectorIcon { Kind = AppIconKind.Back, Width = 18, Height = 18 };
         _settingsBack.ToolTip = "返回";
         _settingsBack.Margin = new Thickness(0, 0, 14, 0);
