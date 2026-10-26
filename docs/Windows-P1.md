@@ -59,15 +59,20 @@ cli/Fy1Switch.Cli.exe 与 Host 必须来自同一完整目录。CLI 检查命名
 
 在完整发布目录执行 Install.ps1，默认复制到当前用户 LocalAppData/Programs/Fy1Switch，并建立开始菜单快捷方式。不会自动启动程序或打开登录自启。更新前先从托盘退出；安装器不覆盖无标记目录或经过重解析点的路径。
 
-在安装目录运行 Uninstall.ps1，检查安装标记、完整绝对路径和文件归属后删除程序文件及其自有快捷方式/自启项。保留 LocalAppData/Fy1Switch/Host 中的用户数据。当前是可审查的 PowerShell 安装流程，不是签名 MSI/商店包；SmartScreen、代码签名和干净系统首次安装仍未验收。
+NSIS 安装包为上述 PowerShell 安装流程提供图形入口, 使用当前用户权限, 默认安装到 LocalAppData/Programs/Fy1Switch, 并在 Windows 的已安装应用列表提供卸载入口. 安装后不自动运行或启用登录自启. 免安装 ZIP 解压后运行 Fy1Switch/Fy1Switch.Host.exe, 需要保留同目录依赖及 worker/cli 子目录.
+
+在安装目录运行 Uninstall.ps1, 或使用 NSIS 安装包创建的卸载入口, 检查安装标记、完整绝对路径和文件归属后删除程序文件及其自有快捷方式/自启项. 保留 LocalAppData/Fy1Switch/Host 中的用户数据. 安装包未进行代码签名; SmartScreen 和干净系统首次安装仍未验收.
 
 ## 构建及测试
 
 ~~~powershell
 ./tools/Test-Windows.ps1
 ./tools/Publish-Windows.ps1
+./tools/Package-Windows.ps1 -MakeNsisPath 'C:\NSIS\makensis.exe'
 ./tools/Test-Windows-Integration.ps1
 ~~~
+
+打包需要本地 NSIS 3 编译器, 不自动下载或安装构建工具. 默认读取 artifacts/windows/win-x64, 通过 -PublishDirectory 可指定其他发布目录. 输出位于 artifacts/windows/packages, 包括 Fy1Switch-<版本>-win-x64-setup.exe 和 Fy1Switch-<版本>-win-x64-portable.zip.
 
 默认集成测试使用模拟 Worker、隔离数据目录，不访问硬件和真实自启注册表。-Hardware 显式运行本机受限配置，OFF 后在 finally 尝试 ON；测试失败不会自动补发原 OFF。
 

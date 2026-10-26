@@ -133,6 +133,9 @@ cd Fy1Switch
 # Windows 自包含目录
 .\tools\Publish-Windows.ps1
 
+# Windows NSIS 安装包和免安装 ZIP, 需本地 NSIS 3
+.\tools\Package-Windows.ps1 -MakeNsisPath 'C:\NSIS\makensis.exe'
+
 # Android 单测, lint 和 debug APK
 .\tools\Build-Android.ps1
 ```
@@ -140,9 +143,12 @@ cd Fy1Switch
 | 产物 | 默认位置 |
 | --- | --- |
 | Windows | `artifacts/windows/win-x64/Fy1Switch.Host.exe` 及同目录依赖 |
+| Windows 安装包和免安装版 | `artifacts/windows/packages/Fy1Switch-<版本>-win-x64-setup.exe` 和 `Fy1Switch-<版本>-win-x64-portable.zip` |
 | Android | `src/android/app/build/outputs/apk/debug/app-debug.apk` |
 
 Android 脚本默认使用 `C:\android-sdk`, 读取 `JAVA_HOME`, 并查找本机缓存的 Gradle 8.13. 其他安装位置请使用 `-SdkPath`, `-JavaHome`, `-GradlePath` 指定, 详见 [Android 构建说明](docs/Android.md). 脚本不自动安装 SDK 或 Gradle, 不安装 APK.
+
+Windows 打包脚本使用已发布的完整目录, 可通过 `-PublishDirectory` 指定路径. 安装包沿用当前用户安装流程; 免安装 ZIP 解压后运行 `Fy1Switch/Fy1Switch.Host.exe`. 两者均包含 .NET 运行时, 无需安装 .NET SDK. 详见 [Windows 使用说明](docs/Windows-P1.md).
 
 <details>
 <summary>开发验证与目录说明</summary>
