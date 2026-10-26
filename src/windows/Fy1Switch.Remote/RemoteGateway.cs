@@ -17,7 +17,7 @@ public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity 
     {
         if (RelayEndpoint is null || PublicEndpoint is null) return null;
         var reply = security.CompleteRelayPairing(deviceId, request);
-        return reply is null ? null : new(deviceId, reply.ClientId, reply.Token, PublicEndpoint, security.CertificatePin, TailscaleEndpoint);
+        return reply is null ? null : new(deviceId, reply.ClientId, reply.Token, PublicEndpoint, security.CertificatePin, TailscaleEndpoint, reply.DeviceName);
     }
     public async Task<RelayBootstrapReply?> PairRelayAsync(PairRequest request, CancellationToken cancellationToken = default)
     {

@@ -83,6 +83,7 @@ public sealed class ManagedRelayRoundTripTests
         Assert.AreEqual(HttpStatusCode.OK, firstPair.StatusCode);
         var phone = WireJson.Parse<RelayPairingReply>(await firstPair.Content.ReadAsStringAsync());
         Assert.AreEqual(bound.DeviceId, phone.DeviceId);
+        Assert.AreEqual(Environment.MachineName, phone.DeviceName);
         Assert.AreNotEqual(Guid.Empty, phone.ClientId);
         Assert.AreEqual(manager.Security.CertificatePin, phone.CertificatePin);
         Assert.AreEqual(windowsOrigin.GetLeftPart(UriPartial.Authority), phone.Endpoint);

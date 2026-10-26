@@ -94,7 +94,7 @@ public static class RelayEnrollment
             // Recheck registration after the remote validation, since revocation can race it.
             if (!registry.Active(deviceId)) { await RelayApplication.WriteError(context, 401, "authorization_rejected"); return; }
             await RelayApplication.WriteResult(context, new(200, new RelayPairingReply(deviceId, bootstrap.ClientId, grant.ControllerToken,
-                bootstrap.DeviceToken, bootstrap.Endpoint, bootstrap.CertificatePin, bootstrap.TailscaleEndpoint)));
+                bootstrap.DeviceToken, bootstrap.Endpoint, bootstrap.CertificatePin, bootstrap.TailscaleEndpoint, bootstrap.DeviceName)));
         }
         else await RelayApplication.WriteResult(context, result);
     }

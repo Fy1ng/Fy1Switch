@@ -106,9 +106,11 @@ public sealed class RelayAdmissionTests
         var reply = fixture.Gateway.PairRelay(new(code.Code, "Remote phone"));
         Assert.IsNotNull(reply);
         Assert.AreEqual(fixture.DeviceId, reply.DeviceId);
+        Assert.AreEqual(Environment.MachineName, reply.DeviceName);
         Assert.AreEqual(fixture.Security.CertificatePin, reply.CertificatePin);
         Assert.AreEqual(fixture.Gateway.PublicEndpoint, reply.Endpoint);
         Assert.IsTrue(fixture.Security.Authenticate(reply.DeviceToken));
+        Assert.AreEqual("Remote phone", fixture.Security.Clients.Single().Name);
         Assert.AreEqual(0, fixture.Controller.Calls.Length);
         Assert.IsNull(fixture.Gateway.PairRelay(new(code.Code, "Replay")));
     }

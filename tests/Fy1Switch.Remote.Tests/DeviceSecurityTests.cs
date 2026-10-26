@@ -24,6 +24,9 @@ public sealed class DeviceSecurityTests
         Assert.IsNotNull(reply);
         Assert.AreNotEqual(Guid.Empty, reply.ClientId);
         Assert.AreEqual(64, reply.Token.Length);
+        Assert.AreEqual(Environment.MachineName, reply.DeviceName);
+        using var json = System.Text.Json.JsonDocument.Parse(WireJson.Serialize(reply));
+        Assert.AreEqual(Environment.MachineName, json.RootElement.GetProperty("deviceName").GetString());
         Assert.IsTrue(fixture.Security.Authenticate(reply.Token));
         Assert.IsNull(fixture.Gateway.Pair(request));
         Assert.AreEqual("Test client", fixture.Security.Clients.Single().Name);

@@ -107,7 +107,7 @@ public sealed class DeviceSecurity : IDisposable
         var updated = _clients.Append(client).ToList();
         AtomicFile.Write(_clientsPath, Encoding.UTF8.GetBytes(WireJson.Serialize(updated)));
         _clients.Add(client);
-        return new(deviceId, client.ClientId, token);
+        return new(deviceId, client.ClientId, token, Environment.MachineName);
     }
     public bool Authenticate(string? token) => AuthenticateClient(token) is not null;
     public PairedClient? AuthenticateClient(string? token)

@@ -72,7 +72,8 @@ object Protocol {
         val json = JSONObject(text)
         val deviceId = uuid(json.getString("deviceId"))
         require(deviceId == expectedDevice)
-        return PairReply(deviceId, uuid(json.getString("clientId")), token(json.getString("token")))
+        return PairReply(deviceId, uuid(json.getString("clientId")), token(json.getString("token")),
+            json.stringOrNull("deviceName")?.let(::label))
     }
 
     fun relayCode(value: String): String = value.also {
@@ -85,7 +86,7 @@ object Protocol {
         val result = RelayPairReply(uuid(json.getString("deviceId")), uuid(json.getString("clientId")),
             token(json.getString("controllerToken")), token(json.getString("deviceToken")),
             endpoint(json.getString("endpoint")), pin(json.getString("certificatePin")),
-            json.stringOrNull("tailscaleEndpoint")?.let(::endpoint))
+            json.stringOrNull("tailscaleEndpoint")?.let(::endpoint), json.stringOrNull("deviceName")?.let(::label))
         require(result.controllerToken != result.deviceToken)
         return result
     }

@@ -56,7 +56,7 @@ data class PairBundle(
 ) {
     override fun toString() = "PairBundle(redacted)"
 }
-data class PairReply(val deviceId: UUID, val clientId: UUID, val token: String) {
+data class PairReply(val deviceId: UUID, val clientId: UUID, val token: String, val deviceName: String? = null) {
     override fun toString() = "PairReply(redacted)"
 }
 data class RelayConfig(val endpoint: String, val controllerToken: String) {
@@ -70,6 +70,7 @@ data class RelayPairReply(
     val endpoint: String,
     val certificatePin: String,
     val tailscaleEndpoint: String? = null,
+    val deviceName: String? = null,
 ) {
     override fun toString() = "RelayPairReply(redacted)"
 }

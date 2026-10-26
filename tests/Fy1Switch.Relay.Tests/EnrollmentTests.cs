@@ -44,13 +44,14 @@ public sealed class EnrollmentTests
         Assert.AreEqual(code.Code, first.Pair!.Code);
         var clientId = Guid.NewGuid();
         var token = new string('a', 64);
-        var identity = new RelayBootstrapReply(registration.DeviceId, clientId, token, "https://192.168.1.5:48152", "sha256/" + Convert.ToBase64String(new byte[32]));
+        var identity = new RelayBootstrapReply(registration.DeviceId, clientId, token, "https://192.168.1.5:48152", "sha256/" + Convert.ToBase64String(new byte[32]), DeviceName: "Windows desktop");
         await RelayFixture.ReplyAsync(windows, new(first.Id, 200, Bootstrap: identity));
         using var paired = await pairing;
         Assert.AreEqual(HttpStatusCode.OK, paired.StatusCode);
         var grant = JsonSerializer.Deserialize<RelayPairingReply>(await paired.Content.ReadAsStringAsync(), RelayJson.Options)!;
         Assert.AreEqual(token, grant.DeviceToken);
         Assert.AreEqual(clientId, grant.ClientId);
+        Assert.AreEqual(identity.DeviceName, grant.DeviceName);
         Assert.IsTrue(fixture.Registry.Authenticate(registration.DeviceId, grant.ControllerToken, false));
         Assert.IsFalse(fixture.Registry.Authenticate(registration.DeviceId, grant.ControllerToken, true));
         using var replay = await fixture.PostAsync("/v1/relay/pair", new RelayJoinRequest(code.Code, "other"));
@@ -68,6 +69,7 @@ public sealed class EnrollmentTests
         Assert.AreEqual(grant.ControllerToken, same.ControllerToken);
         Assert.IsNull(same.DeviceToken);
         Assert.IsNull(same.CertificatePin);
+        Assert.IsNull(same.DeviceName);
     }
 
     [TestMethod]

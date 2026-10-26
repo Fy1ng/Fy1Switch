@@ -60,12 +60,12 @@ class DeviceRepository(
 
     suspend fun pair(text: String, clientName: String): Feedback = guarded {
         val bundle = Protocol.pairBundle(text, clock.instant())
-        val name = Protocol.label(clientName)
+        val phoneName = Protocol.label(clientName)
         require(state.value.devices.size < 20 || state.value.devices.any { it.profile.deviceId == bundle.deviceId })
         val remaining = Duration.between(clock.instant(), bundle.expiresAt).toMillis()
         if (remaining <= 0) return@guarded Feedback.Expired
         val response = try {
-            transport.pair(bundle, name, minOf(remaining, 7_000))
+            transport.pair(bundle, phoneName, minOf(remaining, 7_000))
         } catch (_: ExpiredRequestException) {
             return@guarded Feedback.Expired
         } catch (_: SSLException) {
@@ -81,7 +81,7 @@ class DeviceRepository(
         }
         val existing = state.value.devices.find { it.profile.deviceId == bundle.deviceId }
         val profile = DeviceProfile(
-            bundle.deviceId, paired.clientId, existing?.profile?.name ?: name, bundle.endpoint,
+            bundle.deviceId, paired.clientId, existing?.profile?.name ?: paired.deviceName ?: "Windows 电脑", bundle.endpoint,
             bundle.certificatePin, paired.token, null,
             bundle.tailscaleEndpoint.takeIf { existing?.profile?.autoLearnTailscale != false } ?: existing?.profile?.tailscaleEndpoint,
             existing?.profile?.autoLearnTailscale ?: true,
@@ -98,10 +98,10 @@ class DeviceRepository(
     suspend fun pairRelay(relayEndpoint: String, code: String, clientName: String): Feedback = guarded {
         val endpoint = configurationValue(Feedback.InvalidRelayEndpoint) { Protocol.endpoint(relayEndpoint) }
         val pairingCode = configurationValue(Feedback.InvalidRelayCode) { Protocol.relayCode(code) }
-        val name = Protocol.label(clientName)
+        val phoneName = Protocol.label(clientName)
         require(state.value.devices.size < 20)
         val response = try {
-            transport.pairRelay(endpoint, pairingCode, name, 15_000)
+            transport.pairRelay(endpoint, pairingCode, phoneName, 15_000)
         } catch (_: ExpiredRequestException) { return@guarded Feedback.Expired
         } catch (_: SSLException) { return@guarded Feedback.Security
         } catch (_: IOException) { return@guarded Feedback.Offline }
@@ -110,7 +110,7 @@ class DeviceRepository(
         val paired = try { Protocol.relayPairReply(response.body) } catch (_: Exception) { return@guarded Feedback.Protocol }
         currentCoroutineContext().ensureActive()
         val existing = state.value.devices.find { it.profile.deviceId == paired.deviceId }?.profile
-        val profile = DeviceProfile(paired.deviceId, paired.clientId, existing?.name ?: name, paired.endpoint,
+        val profile = DeviceProfile(paired.deviceId, paired.clientId, existing?.name ?: paired.deviceName ?: "Windows 电脑", paired.endpoint,
             paired.certificatePin, paired.deviceToken, RelayConfig(endpoint, paired.controllerToken), paired.tailscaleEndpoint,
             existing?.autoLearnTailscale ?: true, existing?.autoLearnRelay ?: true)
         persist(state.value.copy(devices = state.value.devices.filterNot { it.profile.deviceId == paired.deviceId } +
