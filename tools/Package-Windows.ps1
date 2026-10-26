@@ -29,11 +29,12 @@ foreach ($checkedPath in @($payload, $output)) {
         $cursor = $next
     }
 }
-foreach ($relativePath in @('Fy1Switch.Host.exe', 'Fy1Switch.Host.runtimeconfig.json', 'coreclr.dll',
-        'worker/Fy1Switch.Worker.exe', 'worker/coreclr.dll', 'cli/Fy1Switch.Cli.exe', 'cli/coreclr.dll',
+foreach ($relativePath in @('Fy1Switch.Host.exe', 'Fy1Switch.Host.dll', 'Fy1Switch.Host.deps.json', 'Fy1Switch.Host.runtimeconfig.json',
+        'worker/Fy1Switch.Worker.exe', 'worker/Fy1Switch.Worker.dll', 'worker/Fy1Switch.Worker.deps.json', 'worker/Fy1Switch.Worker.runtimeconfig.json',
+        'cli/Fy1Switch.Cli.exe', 'cli/Fy1Switch.Cli.dll', 'cli/Fy1Switch.Cli.deps.json', 'cli/Fy1Switch.Cli.runtimeconfig.json',
         'Install.ps1', 'Uninstall.ps1', 'THIRD-PARTY-NOTICES.md', 'PowerToys.LICENSE')) {
     if (-not (Test-Path -LiteralPath (Join-Path $payload $relativePath) -PathType Leaf)) {
-        throw "The complete self-contained published package is required. Missing: $relativePath"
+        throw "The complete published package is required. Missing: $relativePath"
     }
 }
 $entries = @(Get-ChildItem -LiteralPath $payload -Recurse -Force)
@@ -45,6 +46,28 @@ foreach ($entry in $entries) {
     }
 }
 $files = @($entries | Where-Object { -not $_.PSIsContainer })
+. (Join-Path $PSScriptRoot 'Check-WindowsRuntime.ps1')
+$runtime = Get-Fy1SwitchRuntimeRequirements -Directory $payload
+foreach ($application in @('Fy1Switch.Host', 'worker/Fy1Switch.Worker', 'cli/Fy1Switch.Cli')) {
+    $applicationDirectory = Split-Path -Parent (Join-Path $payload $application)
+    $dependencies = Get-Content -LiteralPath (Join-Path $payload ($application + '.deps.json')) -Raw | ConvertFrom-Json
+    if ($dependencies.runtimeTarget.name -notlike '*/win-x64') { throw "A win-x64 dependency manifest is required: $application" }
+    if ($runtime.SelfContained) {
+        foreach ($runtimeFile in @('coreclr.dll', 'hostfxr.dll', 'hostpolicy.dll', 'System.Private.CoreLib.dll')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $applicationDirectory $runtimeFile) -PathType Leaf)) {
+                throw "The self-contained payload is incomplete: $application/$runtimeFile"
+            }
+        }
+    }
+}
+if (-not $runtime.SelfContained) {
+    if (@($files | Where-Object { $_.Name -in @('coreclr.dll','hostfxr.dll','hostpolicy.dll','System.Private.CoreLib.dll') }).Count) {
+        throw 'The framework-dependent payload contains a bundled .NET runtime. Publish into a clean directory.'
+    }
+    foreach ($runtimeFile in @('Check-Runtime.ps1','Runtime-Requirements.txt')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $payload $runtimeFile) -PathType Leaf)) { throw "Runtime prerequisite information is missing: $runtimeFile" }
+    }
+}
 
 if (-not $Version) {
     $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payload 'Fy1Switch.Host.exe'))

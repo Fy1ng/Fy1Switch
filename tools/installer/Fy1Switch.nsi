@@ -64,7 +64,11 @@ Function un.onInit
 FunctionEnd
 
 Function ValidateInstallDirectory
-    GetFullPathName $INSTDIR "$INSTDIR"
+    ; NSIS GetFullPathName fails for a directory that does not exist yet.
+    System::Call 'kernel32::GetFullPathNameW(w "$INSTDIR", i ${NSIS_MAX_STRLEN}, w .r0, p 0) i.r1'
+    IntCmp $1 0 invalid_directory invalid_directory
+    IntCmp $1 ${NSIS_MAX_STRLEN} invalid_directory 0 invalid_directory
+    StrCpy $INSTDIR $0
     ${GetFileName} "$INSTDIR" $0
     StrCmp $0 "Fy1Switch" 0 invalid_directory
     ${GetParent} "$INSTDIR" $InstallParent

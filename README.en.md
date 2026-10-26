@@ -130,7 +130,7 @@ Use PowerShell 7 on Windows. The Windows build requires .NET SDK `10.0.400`, as 
 git clone https://github.com/Fy1ng/Fy1Switch.git
 cd Fy1Switch
 
-# Self-contained Windows directory
+# Windows directory using system .NET runtimes
 .\tools\Publish-Windows.ps1
 
 # Windows NSIS installer and portable ZIP, requires local NSIS 3
@@ -138,6 +138,9 @@ cd Fy1Switch
 
 # Android unit tests, lint, and debug APK
 .\tools\Build-Android.ps1
+
+# Optimized Android APK using the local test signature
+.\tools\Build-Android.ps1 -Configuration Optimized -Clean
 ```
 
 | Output | Default location |
@@ -145,10 +148,13 @@ cd Fy1Switch
 | Windows | `artifacts/windows/win-x64/Fy1Switch.Host.exe` and dependencies in the same directory |
 | Windows installer and portable ZIP | `artifacts/windows/packages/Fy1Switch-<version>-win-x64-setup.exe` and `Fy1Switch-<version>-win-x64-portable.zip` |
 | Android | `src/android/app/build/outputs/apk/debug/app-debug.apk` |
+| Optimized Android | `src/android/app/build/outputs/apk/optimized/app-optimized.apk` |
 
 The Android script defaults to `C:\android-sdk`, reads `JAVA_HOME`, and looks for a locally cached Gradle 8.13 installation. Use `-SdkPath`, `-JavaHome`, and `-GradlePath` for other locations. See the [Android build guide](docs/Android.md). The script does not automatically install the SDK or Gradle, or install the APK.
 
-The Windows packaging script uses a complete published directory, which can be selected with `-PublishDirectory`. The installer follows the existing per-user installation flow. Extract the portable ZIP and run `Fy1Switch/Fy1Switch.Host.exe`. Both include the .NET runtime and do not require the .NET SDK. See the [Windows guide](docs/Windows-P1.md).
+Windows packages exclude .NET runtimes by default. Install .NET Desktop Runtime 10.0 x64 and ASP.NET Core Runtime 10.0 x64; the SDK is not required. Installation checks dependencies first, and portable users can run `Check-Runtime.ps1`. To publish a self-contained directory, explicitly use `-SelfContained` with a separate output directory. Select the complete published directory with `-PublishDirectory`, or extract the portable ZIP and run `Fy1Switch/Fy1Switch.Host.exe`. See the [Windows guide](docs/Windows-P1.md).
+
+The optimized Android variant enables R8 code and resource shrinking and uses the existing local debug certificate for local installation and updates. Production release signing remains separate. See the [Android build guide](docs/Android.md).
 
 <details>
 <summary>Development checks and directory layout</summary>

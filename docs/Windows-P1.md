@@ -61,6 +61,12 @@ cli/Fy1Switch.Cli.exe 与 Host 必须来自同一完整目录。CLI 检查命名
 
 NSIS 安装包为上述 PowerShell 安装流程提供图形入口, 使用当前用户权限, 默认安装到 LocalAppData/Programs/Fy1Switch, 并在 Windows 的已安装应用列表提供卸载入口. 安装后不自动运行或启用登录自启. 免安装 ZIP 解压后运行 Fy1Switch/Fy1Switch.Host.exe, 需要保留同目录依赖及 worker/cli 子目录.
 
+默认安装包和免安装版不附带 .NET 运行时. 需要 .NET Desktop Runtime 10.0 x64 和 ASP.NET Core Runtime 10.0 x64, 接受同一 10.0 分支的新补丁, 不需要 SDK. 运行时下载见 [微软 .NET 10 下载页](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). 安装前检查缺失依赖并给出提示, 不自动下载或安装; 免安装版可运行 Check-Runtime.ps1. .NET Framework 或其他主版本的 .NET 不满足此依赖.
+
+从旧自包含安装切换到不带运行时的版本时, 先退出并卸载旧程序, 再安装新版, 以免残留的运行时文件干扰加载. 卸载保留用户数据. 使用 Publish-Windows.ps1 -SelfContained 可显式生成自包含版本, 但应选择独立输出目录; 发布脚本拒绝混用两种模式的目录.
+
+2026-10-26 修复首次安装路径校验: NSIS 的 GetFullPathName 在新目录不存在时返回空字符串, 现改用 Windows GetFullPathNameW, 可在创建目录前规范化路径. 同时修复 PowerShell 5.1 路径检查遇到隐藏 AppData 目录时失败的问题, 使用 Get-Item -Force 读取属性, 保留重解析点检查. 默认路径、新目录、已有目录、空格/中文路径、尾部斜杠、父目录规范化及错误目录名/根目录共 8 个场景有编译后回归覆盖.
+
 在安装目录运行 Uninstall.ps1, 或使用 NSIS 安装包创建的卸载入口, 检查安装标记、完整绝对路径和文件归属后删除程序文件及其自有快捷方式/自启项. 保留 LocalAppData/Fy1Switch/Host 中的用户数据. 安装包未进行代码签名; SmartScreen 和干净系统首次安装仍未验收.
 
 ## 构建及测试
@@ -69,10 +75,13 @@ NSIS 安装包为上述 PowerShell 安装流程提供图形入口, 使用当前�
 ./tools/Test-Windows.ps1
 ./tools/Publish-Windows.ps1
 ./tools/Package-Windows.ps1 -MakeNsisPath 'C:\NSIS\makensis.exe'
+./tools/Test-Windows-Packaging.ps1 -MakeNsisPath 'C:\NSIS\makensis.exe'
 ./tools/Test-Windows-Integration.ps1
 ~~~
 
 打包需要本地 NSIS 3 编译器, 不自动下载或安装构建工具. 默认读取 artifacts/windows/win-x64, 通过 -PublishDirectory 可指定其他发布目录. 输出位于 artifacts/windows/packages, 包括 Fy1Switch-<版本>-win-x64-setup.exe 和 Fy1Switch-<版本>-win-x64-portable.zip.
+
+Test-Windows-Packaging.ps1 还覆盖 6 个系统运行时版本场景. 添加 -PackageDirectory <完整发布目录> 可编译隔离 NSIS 测试包, 验证安装、升级和卸载. 该测试使用唯一临时注册表键、禁用测试快捷方式, 并用独立进程名隔离已运行的用户程序; 不写真实安装项或控制用户实例. 系统运行时版发布包已通过模拟显示器的启动、控制和重启恢复验证; 不代表干净系统或真实硬件已验收.
 
 默认集成测试使用模拟 Worker、隔离数据目录，不访问硬件和真实自启注册表。-Hardware 显式运行本机受限配置，OFF 后在 finally 尝试 ON；测试失败不会自动补发原 OFF。
 

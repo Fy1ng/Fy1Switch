@@ -3,6 +3,9 @@ param(
     [string]$SdkPath = 'C:\android-sdk',
     [string]$JavaHome = $env:JAVA_HOME,
     [string]$GradlePath,
+    [ValidateSet('Debug', 'Optimized')]
+    [string]$Configuration = 'Debug',
+    [switch]$Clean,
     [switch]$Offline,
     [switch]$LiveWindowsTest
 )
@@ -44,7 +47,14 @@ try {
     $env:ANDROID_SDK_ROOT = $SdkPath
     $version = & $GradlePath --version
     if ($LASTEXITCODE -ne 0 -or -not ($version -match '^Gradle 8\.13$')) { throw 'Use stable Gradle 8.13 for this project.' }
-    $tasks = if ($LiveWindowsTest) { @(':app:liveWindowsTest') } else { @(':app:testDebugUnitTest', ':app:lintDebug', ':app:assembleDebug') }
+    $tasks = if ($LiveWindowsTest) { @(':app:liveWindowsTest') } else {
+        @(
+            ":app:test${Configuration}UnitTest"
+            ":app:lint${Configuration}"
+            ":app:assemble${Configuration}"
+        )
+    }
+    if ($Clean) { $tasks = @('clean') + $tasks }
     $arguments = @('-p', $project, '--no-daemon', '--console=plain') + $tasks
     if ($Offline) { $arguments += '--offline' }
     & $GradlePath @arguments
@@ -53,9 +63,13 @@ try {
         Write-Output "Live Windows tests: $(Join-Path $project 'app\build\reports\tests\liveWindowsTest\index.html')"
     }
     else {
-        Write-Output "APK: $(Join-Path $project 'app\build\outputs\apk\debug\app-debug.apk')"
-        Write-Output "Tests: $(Join-Path $project 'app\build\reports\tests\testDebugUnitTest\index.html')"
-        Write-Output "Lint: $(Join-Path $project 'app\build\reports\lint-results-debug.html')"
+        $variant = $Configuration.ToLowerInvariant()
+        Write-Output "APK: $(Join-Path $project "app\build\outputs\apk\$variant\app-$variant.apk")"
+        Write-Output "Tests: $(Join-Path $project "app\build\reports\tests\test${Configuration}UnitTest\index.html")"
+        Write-Output "Lint: $(Join-Path $project "app\build\reports\lint-results-$variant.html")"
+        if ($Configuration -eq 'Optimized') {
+            Write-Output 'Optimized APK: R8 code/resource shrinking enabled; signed with the local debug certificate for testing, not a production signing key.'
+        }
     }
 }
 finally {

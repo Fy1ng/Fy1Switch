@@ -1,14 +1,32 @@
-param([string]$OutputDirectory)
+param([string]$OutputDirectory, [switch]$SelfContained)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $root 'artifacts/windows/win-x64' }
 $busy = @(Get-Process -Name 'Fy1Switch.Host','Fy1Switch.Worker','Fy1Switch.Cli' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($output.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) })
 if ($busy.Count) { throw 'The output directory contains a running application. Exit it manually or choose -OutputDirectory; no process was stopped.' }
+$applications = @(@{Name='Host';Sub=''}, @{Name='Worker';Sub='worker'}, @{Name='Cli';Sub='cli'})
+foreach ($entry in $applications) {
+    $destination = if ($entry.Sub) { Join-Path $output $entry.Sub } else { $output }
+    $existingConfig = Join-Path $destination "Fy1Switch.$($entry.Name).runtimeconfig.json"
+    if (Test-Path -LiteralPath $existingConfig) {
+        $existingRuntime = (Get-Content -LiteralPath $existingConfig -Raw | ConvertFrom-Json).runtimeOptions
+        if ([bool]$existingRuntime.includedFrameworks -ne [bool]$SelfContained) {
+            throw 'The output contains a different deployment mode. Choose a new -OutputDirectory; existing files were not removed.'
+        }
+    }
+}
+if (-not $SelfContained -and (Test-Path -LiteralPath $output)) {
+    if (@(Get-ChildItem -LiteralPath $output -Recurse -File | Where-Object { $_.Name -in @('coreclr.dll','hostfxr.dll','hostpolicy.dll','System.Private.CoreLib.dll') }).Count) {
+        throw 'The output contains a bundled .NET runtime. Choose a new -OutputDirectory; existing files were not removed.'
+    }
+}
 & (Join-Path $PSScriptRoot 'Verify-Upstream.ps1')
-foreach ($entry in @(@{Name='Host';Sub=''}, @{Name='Worker';Sub='worker'}, @{Name='Cli';Sub='cli'})) {
+foreach ($entry in $applications) {
     $destination = if ($entry.Sub) { Join-Path $output $entry.Sub } else { $output }
     $project = Join-Path $root "src/windows/Fy1Switch.$($entry.Name)/Fy1Switch.$($entry.Name).csproj"
-    & dotnet publish $project -c Release -r win-x64 --self-contained true -o $destination --nologo -p:RestoreLockedMode=true
+    $publishArguments = @('publish', $project, '-c', 'Release', '-r', 'win-x64', '--self-contained', ([bool]$SelfContained).ToString().ToLowerInvariant(), '-o', $destination, '--nologo', '-p:RestoreLockedMode=true')
+    if (-not $SelfContained) { $publishArguments += @('-p:RollForward=LatestPatch', '-p:TargetLatestRuntimePatch=false') }
+    & dotnet @publishArguments
     if ($LASTEXITCODE -ne 0) { throw "Publish failed: $($entry.Name)" }
     $runtime = Get-Content -LiteralPath (Join-Path $destination "Fy1Switch.$($entry.Name).runtimeconfig.json") -Raw | ConvertFrom-Json
     $assets = Get-Content -LiteralPath (Join-Path (Split-Path $project) 'obj/project.assets.json') -Raw | ConvertFrom-Json
@@ -49,4 +67,21 @@ New-Item -ItemType Directory -Path (Join-Path $output 'licenses') -Force | Out-N
 Get-ChildItem -LiteralPath (Join-Path $root 'licenses') -File | Copy-Item -Destination (Join-Path $output 'licenses')
 Copy-Item -LiteralPath (Join-Path $root 'tools/Install-Windows.ps1') -Destination (Join-Path $output 'Install.ps1')
 Copy-Item -LiteralPath (Join-Path $root 'tools/Uninstall-Windows.ps1') -Destination (Join-Path $output 'Uninstall.ps1')
+Copy-Item -LiteralPath (Join-Path $root 'tools/Check-WindowsRuntime.ps1') -Destination (Join-Path $output 'Check-Runtime.ps1')
+if ($SelfContained) {
+    'This package includes its .NET runtime. No separate .NET runtime installation is required.' | Set-Content -LiteralPath (Join-Path $output 'Runtime-Requirements.txt') -Encoding utf8
+}
+else {
+    $runtimeGuide = @(
+        'This win-x64 package uses installed system runtimes; it does not bundle .NET.',
+        'Install both .NET Desktop Runtime 10.0 x64 and ASP.NET Core Runtime 10.0 x64.',
+        '.NET Desktop Runtime also includes Microsoft.NETCore.App. The .NET SDK is not required.',
+        'Use the latest stable 10.0 servicing patch. Other major versions, x86 and ARM64 runtimes do not satisfy this package.',
+        'Official downloads: https://dotnet.microsoft.com/en-us/download/dotnet/10.0',
+        'Check locally: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Check-Runtime.ps1',
+        'Extract the complete package and run Fy1Switch.Host.exe. The app does not install runtimes automatically.'
+    )
+    $runtimeGuide | Set-Content -LiteralPath (Join-Path $output 'Runtime-Requirements.txt') -Encoding utf8
+    & (Join-Path $output 'Check-Runtime.ps1') -PackageDirectory $output
+}
 Write-Output "Windows package: $output"

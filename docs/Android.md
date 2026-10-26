@@ -53,7 +53,11 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 .\tools\Build-Android.ps1 -SdkPath C:\android-sdk -JavaHome 'C:\Program Files\Java\jdk-21.0.11'
 ```
 
-脚本从当前用户 Gradle wrapper cache 定位 **8.13**，也可用 `-GradlePath <gradle-8.13\bin\gradle.bat>` 显式指定。不会安装 Gradle、写入 local.properties 或安装 APK；默认模式不接触 Windows 服务，仅显式 `-LiveWindowsTest` 才访问下述 loopback fixture。首次缺少 Maven 依赖时从 Google/Maven Central 下载；依赖完整后可加 `-Offline`。只构建本地 debug 包，不代表可直接商店发布。
+脚本从当前用户 Gradle wrapper cache 定位 **8.13**，也可用 `-GradlePath <gradle-8.13\bin\gradle.bat>` 显式指定。不会安装 Gradle、写入 local.properties 或安装 APK；默认模式不接触 Windows 服务，仅显式 `-LiveWindowsTest` 才访问下述 loopback fixture。首次缺少 Maven 依赖时从 Google/Maven Central 下载；依赖完整后可加 `-Offline`。默认构建 debug 包, 不代表可直接商店发布.
+
+需要较小的本地安装包时, 使用 `.\tools\Build-Android.ps1 -Configuration Optimized -Clean`. optimized 基于 release, 开启 R8 代码裁剪和资源裁剪, 关闭 debuggable, 使用本机既有 debug 签名以便更新同证书的 debug 安装. 正式 release 未配置生产签名, 不自动生成密钥或使用测试证书发布. `-Clean` 清除增量打包空洞; 首次优化构建可能额外下载工具依赖.
+
+优化包位于 `src/android/app/build/outputs/apk/optimized/app-optimized.apk`, 对应检查为 `testOptimizedUnitTest`, `lintOptimized`, `assembleOptimized`. R8 mapping 保存在 `app/build/outputs/mapping/optimized/`, 不放入 APK. 2026-10-26 本地优化包为 3,107,418 bytes, 相比原 46,278,720 bytes debug 包减少约 93.3%; 188 项 JVM 测试和 lint 通过, APK CRC 与测试签名校验通过. 这些检查不替代裁剪后 APK 的真机配对、Tile 和后台行为验证.
 
 执行单元测试、lint 和 debug APK 构建（Gradle 可并行执行互不依赖任务）：
 

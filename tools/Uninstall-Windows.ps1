@@ -7,13 +7,13 @@ $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
 if ($marker.product -ne 'Fy1Switch' -or $marker.path -ne $target) { throw 'Installation path does not match its marker.' }
 $cursor = $target
 while ($cursor) {
-    if ((Get-Item -LiteralPath $cursor).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a reparse-point uninstall path.' }
+    if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a reparse-point uninstall path.' }
     $next = Split-Path -Parent $cursor
     if ($next -eq $cursor) { break }
     $cursor = $next
 }
 if (@(Get-Process -Name 'Fy1Switch.Host','Fy1Switch.Worker','Fy1Switch.Cli' -ErrorAction SilentlyContinue).Count) { throw 'Exit Fy1Switch before uninstalling.' }
-if ((Get-Item -LiteralPath $target).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a reparse-point target.' }
+if ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a reparse-point target.' }
 if (@(Get-ChildItem -LiteralPath $target -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Refusing an installation containing reparse points.' }
 $registry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $expected = '"' + (Join-Path $target 'Fy1Switch.Host.exe') + '" --background'

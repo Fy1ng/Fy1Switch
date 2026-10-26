@@ -18,6 +18,21 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+        }
+        create("optimized") {
+            initWith(getByName("release"))
+            // Local testing only: retain the existing debug certificate for in-place updates.
+            // The release build stays unsigned until a distribution key is configured.
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            matchingFallbacks += "release"
+        }
+    }
     buildFeatures { compose = true }
     testOptions { unitTests.isReturnDefaultValues = false }
     lint { abortOnError = true }

@@ -9,21 +9,28 @@ if ($target.Equals($source, [StringComparison]::OrdinalIgnoreCase)) { throw 'The
 foreach ($checkedPath in @($source, $parent)) {
     $cursor = $checkedPath
     while ($cursor) {
-        if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Refusing a reparse-point installation path.' }
+        if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Refusing a reparse-point installation path.' }
         $next = Split-Path -Parent $cursor
         if ($next -eq $cursor) { break }
         $cursor = $next
     }
 }
 if (@(Get-ChildItem -LiteralPath $source -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Refusing a package containing reparse points.' }
+$runtimeCheck = Join-Path $source 'Check-Runtime.ps1'
+if (Test-Path -LiteralPath $runtimeCheck -PathType Leaf) { & $runtimeCheck -PackageDirectory $source }
+elseif (-not (Test-Path -LiteralPath (Join-Path $source 'coreclr.dll'))) { throw 'Runtime checker missing. Use the complete Windows package.' }
 if (@(Get-Process -Name 'Fy1Switch.Host','Fy1Switch.Worker','Fy1Switch.Cli' -ErrorAction SilentlyContinue).Count) { throw 'Exit Fy1Switch before installation or upgrade.' }
 if (Test-Path -LiteralPath $target) {
     $markerPath = Join-Path $target '.installation.json'
     if (-not (Test-Path -LiteralPath $markerPath)) { throw 'Refusing to overwrite an unrecognized directory.' }
     $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
     if ($marker.product -ne 'Fy1Switch' -or $marker.path -ne $target) { throw 'Invalid installation marker.' }
-    if ((Get-Item -LiteralPath $target).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a reparse-point target.' }
+    if ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a reparse-point target.' }
     if (@(Get-ChildItem -LiteralPath $target -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Refusing an installation containing reparse points.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $source 'coreclr.dll')) -and
+        @(Get-ChildItem -LiteralPath $target -Recurse -File | Where-Object { $_.Name -in @('coreclr.dll','hostfxr.dll','hostpolicy.dll','System.Private.CoreLib.dll') }).Count) {
+        throw 'The existing installation bundles .NET. Uninstall it before installing this system-runtime package. Uninstall preserves user data.'
+    }
 }
 New-Item -ItemType Directory -Path $target -Force | Out-Null
 Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $target -Recurse -Force
