@@ -371,6 +371,7 @@ internal static class DesktopTheme
           <Style x:Key="Fy1Switch.Settings.Expander" TargetType="Expander">
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="MinHeight" Value="32"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
               <Setter.Value>
@@ -378,7 +379,8 @@ internal static class DesktopTheme
                   <StackPanel>
                     <ToggleButton x:Name="HeaderToggle" FocusVisualStyle="{x:Null}"
                                   Foreground="{TemplateBinding Foreground}" Background="Transparent"
-                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="32" Padding="0"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="{TemplateBinding MinHeight}"
+                                  Padding="{TemplateBinding Padding}" Cursor="Hand"
                                   Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}"
                                   ContentTemplateSelector="{TemplateBinding HeaderTemplateSelector}"
                                   ContentStringFormat="{TemplateBinding HeaderStringFormat}"
@@ -386,7 +388,7 @@ internal static class DesktopTheme
                       <ToggleButton.Template>
                         <ControlTemplate TargetType="ToggleButton">
                           <Border x:Name="HeaderBorder" Background="{TemplateBinding Background}" BorderBrush="Transparent"
-                                  BorderThickness="1" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                                  BorderThickness="0" CornerRadius="10" Padding="{TemplateBinding Padding}">
                             <Grid>
                               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                               <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
@@ -410,7 +412,7 @@ internal static class DesktopTheme
                       </ToggleButton.Template>
                     </ToggleButton>
                     <ContentPresenter x:Name="ExpandSite" Visibility="Collapsed" ContentSource="Content"
-                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="0,14,0,0"/>
+                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
                   </StackPanel>
                   <ControlTemplate.Triggers>
                     <Trigger Property="IsExpanded" Value="True">

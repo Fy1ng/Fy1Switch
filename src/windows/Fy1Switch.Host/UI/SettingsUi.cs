@@ -19,6 +19,21 @@ internal static class SettingsUi
         };
         card.SetResourceReference(Border.BackgroundProperty, DesktopTheme.SurfaceBrush);
         card.SetResourceReference(Border.BorderBrushProperty, DesktopTheme.SettingsBorderBrush);
+        if (content is Expander section)
+        {
+            // The header owns the card's whitespace so its complete surface can toggle.
+            var padding = card.Padding;
+            card.Padding = new Thickness(0);
+            section.Padding = padding;
+            section.MinHeight = 32 + padding.Top + padding.Bottom;
+            var body = (UIElement)section.Content;
+            section.Content = null;
+            section.Content = new Border
+            {
+                Padding = new Thickness(padding.Left, 0, padding.Right, padding.Bottom),
+                Child = body
+            };
+        }
         return card;
     }
 
