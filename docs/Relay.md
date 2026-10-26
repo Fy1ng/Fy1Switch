@@ -174,7 +174,7 @@ docker compose -f src/relay/compose.yaml up -d --build
 
 - 多阶段 Dockerfile 自包含构建 linux-x64/linux-arm64（TARGETARCH amd64/arm64），runtime-deps 最终镜像以非 root APP_UID 运行。没有依赖宿主 dotnet、Windows runtime 或父构建配置。
 - 管理模式的命名卷 `relay-data` 挂载到 `/var/lib/fy1switch-relay`, 镜像为非 root APP_UID 创建可写目录; 其他根文件系统继续只读. 不删除该卷来进行普通升级.
-- 现代 Docker/BuildKit 实际读取邻接的 **Dockerfile.dockerignore**，与提供的 `src/relay/.dockerignore` 使用相同白名单。仓库根 context 不会自动采用子目录 .dockerignore，所以不能省略前者。仅传入 Relay 源文件与共享契约源文件及其项目文件；排除配置、.git、凭据、bin/obj、Windows/Android 和整个父构建文件。
+- BuildKit 使用邻接的 `src/relay/Dockerfile.dockerignore`, 旧构建器使用仓库根 `.dockerignore`; 两者及 `src/relay/.dockerignore` 保持相同白名单. 每次重新允许父目录后先排除其全部后代, 再精确开放源码和 WebUI 资源, 避免目录继承意外放行锁文件或私有配置. 仅传入 Relay/共享契约源码和项目文件, 排除配置, Git, 凭据, bin/obj, packages lock, Windows/Android 和父构建文件.
 - Compose 单实例、宿主仅映射 `127.0.0.1:5080`；容器内部监听 8080 不代表可公开此端口。根文件系统只读，/tmp 为有界 tmpfs，配置只读挂载，不自动创建缺失宿主文件。
 - 配置宿主路径必须绝对且确实为文件。为镜像非 root 用户授予只读访问；官方镜像 app UID 通常为 1654，正式部署应核实具体镜像 UID/宿主权限，不要为图省事改成全员可读。应按运维策略固定镜像 digest 并定期更新补丁。
 - 不执行 scale，不启动两个实例共享同一设备凭据。凭据轮换会断开连接，须协调 Windows/手机配置后重新连接。
