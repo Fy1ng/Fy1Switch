@@ -36,6 +36,7 @@ class DeviceRepository(
     private val admission = Any()
     private var backgroundRead: Deferred<Feedback>? = null
     private var foregroundWaiters = 0
+    private val relayLearningAttempts = mutableMapOf<UUID, Pair<String, java.time.Instant>>()
 
     suspend fun initialize() = initializeInternal()
 
@@ -81,9 +82,10 @@ class DeviceRepository(
         val existing = state.value.devices.find { it.profile.deviceId == bundle.deviceId }
         val profile = DeviceProfile(
             bundle.deviceId, paired.clientId, existing?.profile?.name ?: name, bundle.endpoint,
-            bundle.certificatePin, paired.token, existing?.profile?.relay,
+            bundle.certificatePin, paired.token, null,
             bundle.tailscaleEndpoint.takeIf { existing?.profile?.autoLearnTailscale != false } ?: existing?.profile?.tailscaleEndpoint,
             existing?.profile?.autoLearnTailscale ?: true,
+            existing?.profile?.autoLearnRelay ?: true,
         )
         val device = DeviceState(profile, feedback = Feedback.Paired)
         persist(state.value.copy(
@@ -91,6 +93,58 @@ class DeviceRepository(
             defaultDeviceId = profile.deviceId,
         ))
         readStatusInternal(profile.deviceId, live = false)
+    }
+
+    suspend fun pairRelay(relayEndpoint: String, code: String, clientName: String): Feedback = guarded {
+        val endpoint = configurationValue(Feedback.InvalidRelayEndpoint) { Protocol.endpoint(relayEndpoint) }
+        val pairingCode = configurationValue(Feedback.InvalidRelayCode) { Protocol.relayCode(code) }
+        val name = Protocol.label(clientName)
+        require(state.value.devices.size < 20)
+        val response = try {
+            transport.pairRelay(endpoint, pairingCode, name, 15_000)
+        } catch (_: ExpiredRequestException) { return@guarded Feedback.Expired
+        } catch (_: SSLException) { return@guarded Feedback.Security
+        } catch (_: IOException) { return@guarded Feedback.Offline }
+        if (response.status !in 200..299) return@guarded if (response.status in setOf(400, 401, 403, 404))
+            Feedback.InvalidInput else relayFailure(response.status)
+        val paired = try { Protocol.relayPairReply(response.body) } catch (_: Exception) { return@guarded Feedback.Protocol }
+        currentCoroutineContext().ensureActive()
+        val existing = state.value.devices.find { it.profile.deviceId == paired.deviceId }?.profile
+        val profile = DeviceProfile(paired.deviceId, paired.clientId, existing?.name ?: name, paired.endpoint,
+            paired.certificatePin, paired.deviceToken, RelayConfig(endpoint, paired.controllerToken), paired.tailscaleEndpoint,
+            existing?.autoLearnTailscale ?: true, existing?.autoLearnRelay ?: true)
+        persist(state.value.copy(devices = state.value.devices.filterNot { it.profile.deviceId == paired.deviceId } +
+            DeviceState(profile, feedback = Feedback.Paired), defaultDeviceId = paired.deviceId))
+        Feedback.Paired
+    }
+
+    suspend fun configureConnection(
+        deviceId: UUID, name: String, relayEndpoint: String, tailscaleEndpoint: String,
+        autoLearnTailscale: Boolean, autoLearnRelay: Boolean, refreshRelay: Boolean = false,
+    ): Feedback = guarded(invalidInputFeedback = Feedback.InvalidConfiguration) {
+        val device = configurationValue(Feedback.DeviceMissing) { find(deviceId) }
+        val savedName = configurationValue(Feedback.InvalidName) { Protocol.label(name) }
+        val endpoint = if (relayEndpoint.isBlank()) null else configurationValue(Feedback.InvalidRelayEndpoint) { Protocol.endpoint(relayEndpoint) }
+        val tailscale = if (tailscaleEndpoint.isBlank()) null else configurationValue(Feedback.InvalidTailscaleEndpoint) { Protocol.endpoint(tailscaleEndpoint) }
+        val relay = if (endpoint == null) null else if (!refreshRelay && device.profile.relay?.let { Protocol.sameEndpoint(it.endpoint, endpoint) } == true) {
+            device.profile.relay
+        } else {
+            val response = try {
+                transport.authorizeRelay(device.profile, endpoint, 15_000)
+            } catch (_: ExpiredRequestException) { return@guarded Feedback.Expired
+            } catch (_: SSLException) { return@guarded Feedback.Security
+            } catch (_: IOException) { return@guarded Feedback.Offline }
+            if (response.status !in 200..299) return@guarded relayFailure(response.status)
+            try { Protocol.relayAuthorization(response.body, device.profile, endpoint) }
+            catch (_: Exception) { return@guarded Feedback.Protocol }
+        }
+        currentCoroutineContext().ensureActive()
+        val removed = device.profile.relay != null && relay == null
+        replace(device.copy(lastLiveReadAtMillis = null, profile = device.profile.copy(name = savedName, relay = relay,
+            tailscaleEndpoint = tailscale, autoLearnTailscale = autoLearnTailscale,
+            autoLearnRelay = autoLearnRelay && !removed)))
+        relayLearningAttempts.remove(deviceId)
+        Feedback.Saved
     }
 
     suspend fun select(deviceId: UUID): Feedback = guarded {
@@ -118,7 +172,8 @@ class DeviceRepository(
             else if (tailscaleEndpoint.isBlank()) null else configurationValue(Feedback.InvalidTailscaleEndpoint) { Protocol.endpoint(tailscaleEndpoint) }
         val learn = autoLearnTailscale ?: if (tailscaleEndpoint == null) device.profile.autoLearnTailscale else tailscaleEndpoint.isNotBlank()
         replace(device.copy(lastLiveReadAtMillis = null, profile = device.profile.copy(name = savedName, relay = relay,
-            tailscaleEndpoint = tailscale, autoLearnTailscale = learn)))
+            tailscaleEndpoint = tailscale, autoLearnTailscale = learn,
+            autoLearnRelay = device.profile.autoLearnRelay && !(device.profile.relay != null && relay == null))))
         Feedback.Saved
     }
 
@@ -126,6 +181,7 @@ class DeviceRepository(
         val devices = state.value.devices.filterNot { it.profile.deviceId == deviceId }
         persist(state.value.copy(devices = devices, defaultDeviceId =
             if (state.value.defaultDeviceId == deviceId) devices.firstOrNull()?.profile?.deviceId else state.value.defaultDeviceId))
+        relayLearningAttempts.remove(deviceId)
         Feedback.Saved
     }
 
@@ -206,7 +262,39 @@ class DeviceRepository(
     private suspend fun readStatusInternal(deviceId: UUID, live: Boolean): Feedback {
         val device = find(deviceId)
         val request = RemoteCommand(UUID.randomUUID(), deviceId, if (live) "refresh" else "status", clock.instant().plusSeconds(30))
-        return applyDelivery(deviceId, request, router.send(device.profile, request))
+        val delivery = router.send(device.profile, request)
+        val feedback = applyDelivery(deviceId, request, delivery)
+        if (delivery is Delivery.Reply && delivery.route == Route.Direct && delivery.value.success &&
+            feedback == Feedback.Updated) learnRelay(deviceId, delivery.value.status?.relayEndpoint)
+        return feedback
+    }
+
+    private suspend fun learnRelay(deviceId: UUID, relayEndpoint: String?) {
+        if (relayEndpoint == null) return
+        val device = find(deviceId)
+        if (!device.profile.autoLearnRelay || device.profile.relay?.let { Protocol.sameEndpoint(it.endpoint, relayEndpoint) } == true) return
+        val previous = relayLearningAttempts[deviceId]
+        if (previous?.first == relayEndpoint && previous.second > clock.instant()) return
+        relayLearningAttempts[deviceId] = relayEndpoint to clock.instant().plusSeconds(60)
+        val response = try { transport.learnRelay(device.profile, 5_000) }
+        catch (exception: CancellationException) { throw exception }
+        catch (_: IOException) { return }
+        catch (_: ExpiredRequestException) { return }
+        catch (_: IllegalArgumentException) { return }
+        if (response.status !in 200..299) return
+        val relay = try { Protocol.relayConfiguration(response.body, device.profile, relayEndpoint) }
+        catch (_: Exception) { return }
+        currentCoroutineContext().ensureActive()
+        replace(find(deviceId).let { it.copy(profile = it.profile.copy(relay = relay)) })
+    }
+
+    private fun relayFailure(status: Int): Feedback = when (status) {
+        400 -> Feedback.InvalidInput
+        401, 403 -> Feedback.Unauthorized
+        409, 429 -> Feedback.Busy
+        410 -> Feedback.Expired
+        503, 504 -> Feedback.Offline
+        else -> Feedback.Failed
     }
 
     suspend fun set(deviceId: UUID, intent: PowerIntent): Feedback = guarded(RepositoryAction.Set, deviceId) {

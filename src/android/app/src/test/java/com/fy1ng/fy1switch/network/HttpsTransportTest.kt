@@ -1,6 +1,7 @@
 package com.fy1ng.fy1switch.network
 
 import com.fy1ng.fy1switch.core.DEVICE
+import com.fy1ng.fy1switch.core.CLIENT
 import com.fy1ng.fy1switch.core.PIN
 import com.fy1ng.fy1switch.core.Protocol
 import com.fy1ng.fy1switch.core.Route
@@ -11,8 +12,51 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
+import org.json.JSONObject
 
 class HttpsTransportTest {
+    @Test fun relayFirstPairingSendsOnlyOneTimeCodeAndPhoneName() {
+        val transport = HttpsTransport()
+        val request = transport.relayPairRequest("https://relay.example/", "000042", "Phone")
+        assertEquals("https://relay.example/v1/relay/pair", request.url.toString())
+        assertNull(request.header("Authorization"))
+        assertNull(request.header("X-Device-Token"))
+        val buffer = Buffer()
+        request.body!!.writeTo(buffer)
+        val body = JSONObject(buffer.readUtf8())
+        assertEquals("000042", body.getString("code"))
+        assertEquals("Phone", body.getString("clientName"))
+        assertEquals(2, body.length())
+    }
+
+    @Test fun existingPhoneAuthorizationNeverSendsOldRelayCredentialToNewOrigin() {
+        val transport = HttpsTransport()
+        val request = transport.relayAuthorizationRequest(profile(true), "https://new.example")
+        assertEquals("https://new.example/v1/devices/$DEVICE/authorize", request.url.toString())
+        assertNull(request.header("Authorization"))
+        assertEquals("fixture-device-token", request.header("X-Device-Token"))
+        val buffer = Buffer()
+        request.body!!.writeTo(buffer)
+        val body = JSONObject(buffer.readUtf8())
+        assertEquals(CLIENT.toString(), body.getString("clientId"))
+        assertEquals(1, body.length())
+    }
+
+    @Test fun automaticRelayLearningUsesWindowsPinnedOriginAndOnlyDeviceBearer() {
+        val transport = HttpsTransport()
+        val device = profile(true)
+        val request = transport.relayLearningRequest(device)
+        assertEquals(device.endpoint + "/v1/relay", request.url.toString())
+        assertEquals("Bearer fixture-device-token", request.header("Authorization"))
+        assertNull(request.header("X-Device-Token"))
+        val buffer = Buffer()
+        request.body!!.writeTo(buffer)
+        assertEquals(CLIENT.toString(), JSONObject(buffer.readUtf8()).getString("clientId"))
+        val pinned = transport.controlClient(device, Route.Direct)
+        val relay = transport.controlClient(device, Route.Relay)
+        assertNotSame(pinned.sslSocketFactory, relay.sslSocketFactory)
+    }
+
     @Test fun sameTlsOriginReusesClientAcrossRefreshesAndCredentialChanges() {
         val transport = HttpsTransport()
         val device = profile()

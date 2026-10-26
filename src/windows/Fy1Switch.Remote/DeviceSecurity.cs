@@ -13,6 +13,10 @@ public sealed class DeviceSecurity : IDisposable
     private readonly List<PairedClient> _clients;
     private byte[]? _pairHash;
     private DateTimeOffset _pairExpiry;
+    private byte[]? _relayPairHash;
+    private DateTimeOffset _relayPairExpiry;
+    private int _relayPairAttempts;
+    private readonly Queue<DateTimeOffset> _relayPairAdmissions = new();
     private readonly Func<DateTimeOffset> _clock;
     public X509Certificate2 Certificate { get; }
     public string CertificatePin { get; }
@@ -58,19 +62,59 @@ public sealed class DeviceSecurity : IDisposable
         lock (_gate)
         {
             if (_pairHash is null || _clock() >= _pairExpiry || !CryptographicOperations.FixedTimeEquals(_pairHash, Hash(request.Code)) || _clients.Count >= 32) return null;
-            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-            var client = new PairedClient(Guid.NewGuid(), request.ClientName.Trim(), Convert.ToHexString(Hash(token)), _clock());
-            var updated = _clients.Append(client).ToList();
-            AtomicFile.Write(_clientsPath, Encoding.UTF8.GetBytes(WireJson.Serialize(updated)));
-            _clients.Add(client); _pairHash = null;
-            return new(deviceId, client.ClientId, token);
+            var reply = AddClient(deviceId, request.ClientName);
+            _pairHash = null;
+            return reply;
         }
     }
-    public bool Authenticate(string? token)
+    public RelayCode BeginRelayPairing()
     {
-        if (token is null || token.Length != 64) return false;
+        lock (_gate)
+        {
+            var now = _clock();
+            while (_relayPairAdmissions.TryPeek(out var admitted) && admitted <= now.AddMinutes(-10)) _relayPairAdmissions.Dequeue();
+            if (_relayPairAdmissions.Count >= 10) throw new InvalidOperationException("relay_pairing_limited");
+            _relayPairAdmissions.Enqueue(now);
+            var code = RandomNumberGenerator.GetInt32(1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
+            _relayPairHash = Hash(code); _relayPairExpiry = now.AddMinutes(5); _relayPairAttempts = 0;
+            return new(code, _relayPairExpiry);
+        }
+    }
+    public PairReply? CompleteRelayPairing(Guid deviceId, PairRequest request)
+    {
+        lock (_gate)
+        {
+            if (_relayPairHash is null || _clock() >= _relayPairExpiry || _clients.Count >= 32) return null;
+            if (++_relayPairAttempts > 5) { _relayPairHash = null; return null; }
+            if (!IsSixDigitCode(request.Code) || string.IsNullOrWhiteSpace(request.ClientName) || request.ClientName.Length > 80
+                || !CryptographicOperations.FixedTimeEquals(_relayPairHash, Hash(request.Code)))
+            {
+                if (_relayPairAttempts >= 5) _relayPairHash = null;
+                return null;
+            }
+            var reply = AddClient(deviceId, request.ClientName);
+            _relayPairHash = null;
+            return reply;
+        }
+    }
+    public bool RelayPairingActive { get { lock (_gate) return _relayPairHash is not null && _clock() < _relayPairExpiry; } }
+    public void CancelRelayPairing() { lock (_gate) _relayPairHash = null; }
+    public static bool IsSixDigitCode(string? code) => code is { Length: 6 } && code.All(character => character is >= '0' and <= '9');
+    private PairReply AddClient(Guid deviceId, string name)
+    {
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+        var client = new PairedClient(Guid.NewGuid(), name.Trim(), Convert.ToHexString(Hash(token)), _clock());
+        var updated = _clients.Append(client).ToList();
+        AtomicFile.Write(_clientsPath, Encoding.UTF8.GetBytes(WireJson.Serialize(updated)));
+        _clients.Add(client);
+        return new(deviceId, client.ClientId, token);
+    }
+    public bool Authenticate(string? token) => AuthenticateClient(token) is not null;
+    public PairedClient? AuthenticateClient(string? token)
+    {
+        if (token is null || token.Length != 64) return null;
         var hash = Hash(token);
-        lock (_gate) return _clients.Any(client => CryptographicOperations.FixedTimeEquals(Convert.FromHexString(client.TokenHash), hash));
+        lock (_gate) return _clients.FirstOrDefault(client => CryptographicOperations.FixedTimeEquals(Convert.FromHexString(client.TokenHash), hash));
     }
     public IReadOnlyList<PairedClient> Clients { get { lock (_gate) return _clients.ToArray(); } }
     public void Revoke(Guid clientId)

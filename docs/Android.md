@@ -63,6 +63,13 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 
 ## 使用
 
+### Relay 配对与自动配置
+
+- 首次配对可以在添加电脑页面选择 Relay, 填写可信 HTTPS 地址和 Windows 显示的六位手机配对码. WebUI 生成的 Windows 接入码不能用于手机. 手机无需 WebUI 账户.
+- 已有 Windows 绑定时, 在设备连接设置填写 Relay 地址并保存或重新连接, 自动用已有 ClientId/deviceToken 请求 Windows 授权, 不再要求控制端 token 或六位码. Windows 离线或手机授权已撤销时失败, 不重建身份.
+- 成功的固定证书 Direct 状态响应可提供无秘密的 `relayEndpoint` 提示. 开启自动配置时, 手机再向 Windows `POST /v1/relay` 领取本手机 Relay 凭据, 核对设备/客户端和地址后原子加密保存. Tailscale/Relay 响应不触发自动配置. 同一提示失败退避 60 秒, 不影响已成功读取的显示器状态.
+- 清空 Relay 后关闭自动配置开关, 避免下一次刷新重新添加. 可以手动恢复开关. 重新配对 Windows 会清除属于旧 ClientId 的 Relay 凭据, 再获取新授权.
+
 1. 在可信 Windows 端启用 HTTPS 服务并导出一次性 PairBundle JSON；手机和电脑先有直连网络。
 2. 打开 App，粘贴 JSON，填写本手机名称。App 仅接受 version 1、有效期尚未结束且最多剩余 5 分钟的 bundle，严格绑定其中的设备 UUID 和证书 pin。
 3. 配对成功后加密保存 token 并立即请求 `status`。若配对成功但连接状态获取失败，配对仍保留，可实时刷新。配对超时不自动重放一次性码；应检查 Windows，必要时重新导出。
@@ -82,7 +89,7 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 | 直连控制 | Windows `POST /v1/control` | `Authorization: Bearer <deviceToken>` |
 | Relay 控制 | Relay `POST /v1/devices/{selectedDeviceId}/control` | `Authorization: Bearer <relayControllerToken>`；`X-Device-Token: <deviceToken>` |
 
-Relay 在每台设备的配置内后置添加，不支持 Relay-only 首次配对。地址必须为 HTTPS 根地址（允许端口、IPv4、IPv6；禁止 userinfo、路径、query、fragment）。更换 Relay 地址必须重新填写控制端凭据，避免把旧 token 静默发送给新主机；同地址留空保留现有 token。控制端 token 不得等于 deviceToken。Relay 可接触代理调用所需的设备 token，需由用户明确配置可信服务。
+Relay 支持首次配对及已有手机自动授权. 地址必须为 HTTPS 根地址(允许端口, IPv4, IPv6; 禁止 userinfo, 路径, query, fragment). 更换地址时通过新服务请求 Windows 验证手机授权, 不发送旧服务的 controllerToken. Relay 可以接触 deviceToken 和转发内容, 需要使用可信服务. 旧存储格式仍可读取, 新界面无需手工填写控制端凭据.
 
 每条命令使用新 UUID requestId，expiresAt 为 UTC 当前时间 + 30 秒、version 1；set 必带 targetId、intent 和 operationId。operation 查询携带原 operationId 和原 targetId，并使用**新的、未过期的查询请求**。不把旧 set 请求重新排队。
 

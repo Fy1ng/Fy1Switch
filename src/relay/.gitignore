@@ -1,3 +1,7 @@
 *.local.json
 relay.config.json
 !relay.config.example.json
+!relay.management.config.example.json
+data/
+*.db
+*.db-*

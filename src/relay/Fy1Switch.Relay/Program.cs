@@ -16,8 +16,12 @@ public static class RelayApplication
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         builder.Services.PostConfigure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
             options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.None);
-        builder.Services.AddSingleton(_ => RelaySettings.Load(builder.Configuration["FY1SWITCH_RELAY_CONFIG"]));
+        var settings = RelaySettings.Load(builder.Configuration["FY1SWITCH_RELAY_CONFIG"]);
+        builder.Services.AddSingleton(settings);
+        builder.Services.AddDataProtection();
+        builder.Services.AddSingleton<RelayRegistry>();
         builder.Services.AddSingleton<RelayRouter>();
+        builder.Services.AddRelayWebUi(settings);
         builder.Services.AddRateLimiter(_ => { });
         builder.Services.AddOptions<RateLimiterOptions>().Configure<RelaySettings>((options, settings) =>
         {
@@ -27,18 +31,24 @@ public static class RelayApplication
                     new FixedWindowRateLimiterOptions { PermitLimit = settings.RequestsPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             var global = PartitionedRateLimiter.Create<HttpContext, string>(_ =>
                 RateLimitPartition.GetFixedWindowLimiter("relay-ingress", _ =>
-                    new FixedWindowRateLimiterOptions { PermitLimit = (int)Math.Min((long)settings.DeviceCount * settings.RequestsPerMinute, 6000), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+                    new FixedWindowRateLimiterOptions { PermitLimit = (int)Math.Min((long)Math.Max(settings.DeviceCount, settings.Management is null ? 1 : 32) * settings.RequestsPerMinute, 6000), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             options.GlobalLimiter = PartitionedRateLimiter.CreateChained(global, perIp);
+            options.AddPolicy("bootstrap", context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown-peer", _ => new FixedWindowRateLimiterOptions
+                { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
         });
         configure?.Invoke(builder);
         var app = builder.Build();
         _ = app.Services.GetRequiredService<RelaySettings>();
+        _ = app.Services.GetRequiredService<RelayRegistry>();
+        app.InitializeRelayWebUiAsync().GetAwaiter().GetResult();
         app.UseRateLimiter();
+        app.UseRelayWebUi();
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20), KeepAliveTimeout = TimeSpan.FromSeconds(20) });
 
-        app.MapGet("/v1/devices/{deviceId:guid}/connect", async (Guid deviceId, HttpContext context, RelaySettings settings, RelayRouter router) =>
+        app.MapGet("/v1/devices/{deviceId:guid}/connect", async (Guid deviceId, HttpContext context, RelaySettings settings, RelayRegistry registry, RelayRouter router) =>
         {
-            if (!Authenticate(context, settings, deviceId, windows: true)) return;
+            if (!Authenticate(context, settings, registry, deviceId, windows: true)) return;
             if (!context.WebSockets.IsWebSocketRequest)
             {
                 await WriteError(context, 400, "websocket_required");
@@ -50,14 +60,16 @@ public static class RelayApplication
                 await WriteError(context, 409, "device_already_connected");
                 return;
             }
+            // Revocation can race authentication and reservation; recheck before accepting.
+            if (!Authenticate(context, settings, registry, deviceId, windows: true)) return;
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, app.Lifetime.ApplicationStopping);
             await connection.RunAsync(socket, stopping.Token);
         });
 
-        app.MapPost("/v1/devices/{deviceId:guid}/control", async (Guid deviceId, HttpContext context, RelaySettings settings, RelayRouter router) =>
+        app.MapPost("/v1/devices/{deviceId:guid}/control", async (Guid deviceId, HttpContext context, RelaySettings settings, RelayRegistry registry, RelayRouter router) =>
         {
-            if (!Authenticate(context, settings, deviceId, windows: false)) return;
+            if (!Authenticate(context, settings, registry, deviceId, windows: false)) return;
             var token = context.Request.Headers["X-Device-Token"];
             if (token.Count != 1 || string.IsNullOrWhiteSpace(token[0]) || token[0]!.Length > 4096)
             {
@@ -87,9 +99,9 @@ public static class RelayApplication
             await WriteResult(context, result);
         });
 
-        app.MapPost("/v1/devices/{deviceId:guid}/pair", async (Guid deviceId, HttpContext context, RelaySettings settings, RelayRouter router) =>
+        app.MapPost("/v1/devices/{deviceId:guid}/pair", async (Guid deviceId, HttpContext context, RelaySettings settings, RelayRegistry registry, RelayRouter router) =>
         {
-            if (!Authenticate(context, settings, deviceId, windows: false)) return;
+            if (!Authenticate(context, settings, registry, deviceId, windows: false)) return;
             var pair = await ReadBody<PairRequest>(context);
             if (pair is null) return;
             if (string.IsNullOrWhiteSpace(pair.Code) || string.IsNullOrWhiteSpace(pair.ClientName) || pair.Code.Length > 128 || pair.ClientName.Length > 256)
@@ -101,21 +113,22 @@ public static class RelayApplication
             await WriteResult(context, result);
         });
 
+        app.MapRelayEnrollment();
         return app;
     }
 
-    static bool Authenticate(HttpContext context, RelaySettings settings, Guid deviceId, bool windows)
+    internal static bool Authenticate(HttpContext context, RelaySettings settings, RelayRegistry registry, Guid deviceId, bool windows)
     {
         var values = context.Request.Headers.Authorization;
         var header = values.Count == 1 ? values[0] : null;
         var token = header is { Length: > 7 and <= 179 } && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..] : string.Empty;
-        if (settings.Authenticate(deviceId, token, windows)) return true;
+        if (registry.Contains(deviceId) ? registry.Authenticate(deviceId, token, windows) : settings.Authenticate(deviceId, token, windows)) return true;
         context.Response.StatusCode = 401;
         context.Response.Headers.WWWAuthenticate = "Bearer";
         return false;
     }
 
-    static async Task<T?> ReadBody<T>(HttpContext context) where T : class
+    internal static async Task<T?> ReadBody<T>(HttpContext context) where T : class
     {
         if (!context.Request.HasJsonContentType())
         {
@@ -149,8 +162,8 @@ public static class RelayApplication
         return null;
     }
 
-    static Task WriteError(HttpContext context, int status, string code) => WriteResult(context, RelayResult.Error(status, code));
-    static async Task WriteResult(HttpContext context, RelayResult result)
+    internal static Task WriteError(HttpContext context, int status, string code) => WriteResult(context, RelayResult.Error(status, code));
+    internal static async Task WriteResult(HttpContext context, RelayResult result)
     {
         context.Response.StatusCode = result.StatusCode;
         context.Response.Headers.CacheControl = "no-store";

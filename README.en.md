@@ -98,9 +98,9 @@ Pairing details expire after a short time and can only be used once. Each phone 
 | --- | --- | --- |
 | LAN HTTPS | Phone and computer are on the same network | Enable phone control on the computer and make sure the phone can reach the selected address and port. |
 | Tailscale HTTPS | Connect while away from your home network | Install and configure Tailscale separately on both devices, then enable the corresponding route in Fy1Switch. |
-| Self-hosted Relay | Use a relay as a connection route | Deploy a trusted Relay and configure the corresponding credentials separately on the computer and phone. |
+| Self-hosted Relay | Use a relay as a connection route | Deploy a trusted Relay, sign in to its WebUI, and register Windows with a six-digit code. Phones authorize automatically or use a separate code for initial pairing. |
 
-Only configured routes are attempted. Network connection failures can trigger a route change; certificate and authorization errors are reported directly. Initial pairing uses a direct connection. Add Relay after pairing. This project does not automatically configure Tailscale, change firewall rules, or deploy a server.
+Only configured routes are attempted. Network connection failures can trigger a route change; certificate and authorization errors are reported directly. Initial pairing supports direct access or a Relay address and a phone pairing code shown by Windows. Existing phones learn Relay settings automatically over authenticated LAN access; away from the LAN, enter only the Relay address. The WebUI supports password and Passkey sign-in. This project does not automatically configure Tailscale, change firewall rules, or deploy a server.
 
 Direct connections pin the computer's certificate, and each phone uses separate credentials. **Relay is a trusted intermediary with TLS on both connection legs. It can read forwarded content and does not provide end-to-end encryption that hides content from the relay.** See the [security and connection model](docs/Remote-Control.md) and [self-hosted Relay guide](docs/Relay.md).
 

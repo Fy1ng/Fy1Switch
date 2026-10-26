@@ -16,6 +16,9 @@ data class HttpResult(val status: Int, val body: String) {
 interface Transport {
     suspend fun pair(bundle: PairBundle, clientName: String, timeoutMillis: Long): HttpResult
     suspend fun control(device: DeviceProfile, route: Route, body: String, timeoutMillis: Long): HttpResult
+    suspend fun pairRelay(endpoint: String, code: String, clientName: String, timeoutMillis: Long): HttpResult = HttpResult(503, "")
+    suspend fun authorizeRelay(device: DeviceProfile, endpoint: String, timeoutMillis: Long): HttpResult = HttpResult(503, "")
+    suspend fun learnRelay(device: DeviceProfile, timeoutMillis: Long): HttpResult = HttpResult(503, "")
 }
 
 sealed interface Delivery {

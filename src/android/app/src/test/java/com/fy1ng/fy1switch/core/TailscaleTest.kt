@@ -192,7 +192,7 @@ class TailscaleTest {
         repository.pair(JSONObject(bundleJson()).put("tailscaleEndpoint", endpoint).toString(), "Phone")
         assertFalse(store.value.selected!!.profile.autoLearnTailscale)
         assertNull(store.value.selected!!.profile.tailscaleEndpoint)
-        repository.configure(DEVICE, "Phone", "https://relay.example", "", false, autoLearnTailscale = true)
+        repository.configure(DEVICE, "Phone", "", "", false, autoLearnTailscale = true)
         repository.refresh(DEVICE)
         assertEquals(endpoint, store.value.selected!!.profile.tailscaleEndpoint)
         assertTrue(store.value.selected!!.profile.autoLearnTailscale)

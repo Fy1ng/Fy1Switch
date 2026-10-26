@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Fy1Switch.Contracts;
 
@@ -13,23 +14,31 @@ public sealed class RelayRouter
 {
     public const int MessageLimit = 64 * 1024;
     public const int PendingLimit = 16;
-    private readonly Dictionary<Guid, DeviceRoute> routes;
+    private readonly ConcurrentDictionary<Guid, DeviceRoute> routes;
     private readonly RelaySettings settings;
 
     public RelayRouter(RelaySettings settings)
     {
         this.settings = settings;
-        routes = settings.DeviceIds.ToDictionary(deviceId => deviceId, deviceId => new DeviceRoute());
+        routes = new(settings.DeviceIds.Select(deviceId => new KeyValuePair<Guid, DeviceRoute>(deviceId, new())));
     }
 
     public RelayConnection? Reserve(Guid deviceId)
     {
-        if (!routes.TryGetValue(deviceId, out var route)) return null;
+        var route = routes.GetOrAdd(deviceId, _ => new DeviceRoute());
         lock (route.Gate)
         {
             if (route.Connection is not null) return null;
             return route.Connection = new RelayConnection(route);
         }
+    }
+
+    public bool IsConnected(Guid deviceId) => routes.TryGetValue(deviceId, out var route) && Connected(route);
+    private static bool Connected(DeviceRoute route) { lock (route.Gate) return route.Connection is { Ready: true }; }
+    public void Disconnect(Guid deviceId)
+    {
+        if (routes.TryGetValue(deviceId, out var route))
+            lock (route.Gate) route.Connection?.Dispose();
     }
 
     public async Task<RelayResult> ForwardAsync(Guid deviceId, RelayEnvelope envelope, CancellationToken requestAborted)
@@ -40,7 +49,7 @@ public sealed class RelayRouter
         if (deadline <= now) return RelayResult.Error(504, "deadline_expired");
         var payload = JsonSerializer.SerializeToUtf8Bytes(envelope, RelayJson.Options);
         if (payload.Length > MessageLimit) return RelayResult.Error(413, "message_too_large");
-        var route = routes[deviceId];
+        if (!routes.TryGetValue(deviceId, out var route)) return RelayResult.Error(503, "device_offline");
         RelayConnection connection;
         var pending = new TaskCompletionSource<RelayResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (route.Gate)
@@ -87,7 +96,7 @@ public sealed class RelayRouter
     private static RelayResult ValidateResponse(Guid deviceId, RelayEnvelope envelope, RelayResponse response)
     {
         if (response.StatusCode is < 200 or > 599 or 204 or 205 or 304 ||
-            (response.Reply is not null && response.Pair is not null))
+            (response.Reply is not null ? 1 : 0) + (response.Pair is not null ? 1 : 0) + (response.Bootstrap is not null ? 1 : 0) > 1)
             return RelayResult.Error(502, "invalid_device_response");
         if (envelope.Request is { } command && response.Reply is { } reply && response.Pair is null)
         {
@@ -98,7 +107,16 @@ public sealed class RelayRouter
         }
         if (envelope.Kind == "pair" && response.Pair is { } pair && response.Reply is null && pair.DeviceId == deviceId)
             return new RelayResult(response.StatusCode, pair);
-        if (response.StatusCode >= 400 && response.Reply is null && response.Pair is null && !string.IsNullOrEmpty(response.ErrorCode))
+        if (envelope.Kind is "authorize" or "relay-pair" && response.Bootstrap is { } bootstrap &&
+            bootstrap.DeviceId == deviceId && bootstrap.ClientId != Guid.Empty && response.StatusCode is >= 200 and < 300)
+        {
+            if (envelope.Kind == "authorize" && (bootstrap.ClientId != envelope.Authorize?.ClientId || bootstrap.DeviceToken is not null || bootstrap.Endpoint is not null || bootstrap.CertificatePin is not null || bootstrap.TailscaleEndpoint is not null))
+                return RelayResult.Error(502, "invalid_device_response");
+            if (envelope.Kind == "relay-pair" && (bootstrap.DeviceToken is not { Length: 64 } || bootstrap.Endpoint is null || bootstrap.CertificatePin is null))
+                return RelayResult.Error(502, "invalid_device_response");
+            return new(response.StatusCode, bootstrap);
+        }
+        if (response.StatusCode >= 400 && response.Reply is null && response.Pair is null && response.Bootstrap is null && !string.IsNullOrEmpty(response.ErrorCode))
             return RelayResult.Error(response.StatusCode, response.ErrorCode);
         return RelayResult.Error(502, "invalid_device_response");
     }

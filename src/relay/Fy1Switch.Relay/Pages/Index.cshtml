@@ -1,0 +1,71 @@
+@page
+@inject RelaySettings Settings
+@{
+    ViewData["Title"] = "设备管理";
+}
+<main class="dashboard" data-page="dashboard">
+    <section aria-labelledby="connect-heading" id="devices">
+        <h1 id="connect-heading">连接你的 Windows 电脑</h1>
+        <p class="intro muted">登录后生成接入码, 在电脑端输入 Relay 地址和接入码即可连接.</p>
+        <div class="connection-grid">
+            <section class="enrollment-panel" aria-labelledby="code-heading">
+                <h2 id="code-heading">Windows 接入码</h2>
+                <p id="registration-code" class="registration-code" aria-live="polite">--- ---</p>
+                <p id="code-expiry" class="code-expiry muted">正在生成接入码</p>
+                <div class="code-actions">
+                    <button id="new-code" class="primary" type="button">生成新接入码</button>
+                    <button id="copy-code" class="secondary" type="button" disabled>复制接入码</button>
+                </div>
+                <div class="relay-address"><span>Relay 地址</span><code id="relay-address">@Settings.Management?.PublicUrl</code><button id="copy-address" class="text-button" type="button">复制</button></div>
+            </section>
+            <aside class="phone-guide" aria-labelledby="phone-heading">
+                <h2 id="phone-heading">手机如何连接</h2>
+                <ol>
+                    <li><strong>已配对手机</strong><p>局域网自动配置, 异地输入 Relay 地址即可.</p></li>
+                    <li><strong>首次配对</strong><p>输入 Relay 地址和电脑显示的六位配对码.</p></li>
+                </ol>
+            </aside>
+        </div>
+        <p id="notice" class="notice" role="status" aria-live="polite"></p>
+    </section>
+    <section class="device-section" aria-labelledby="device-heading">
+        <div class="section-title">
+            <h2 id="device-heading">已注册电脑</h2>
+            <div class="table-actions">
+                @if (Settings.DeviceCount > 0)
+                {
+                    <button id="import-legacy" class="text-button" type="button">导入旧配置</button>
+                }
+                <button id="refresh-devices" class="text-button" type="button">刷新</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table><thead><tr><th scope="col">电脑</th><th scope="col">设备 ID</th><th scope="col">连接状态</th><th scope="col">操作</th></tr></thead><tbody id="device-list"><tr><td colspan="4" class="empty-state">正在读取设备</td></tr></tbody></table>
+        </div>
+        <p id="table-scroll-hint" class="table-scroll-hint muted" hidden>左右滑动查看完整设备信息和操作.</p>
+        <p class="helper muted">每台手机使用独立授权, 可在 Windows 端撤销.</p>
+    </section>
+    <section class="security-section" id="security" aria-labelledby="security-heading">
+        <h2 id="security-heading">账户安全</h2>
+        <div class="security-grid">
+            <section class="security-panel" aria-labelledby="password-heading">
+                <h3 id="password-heading">修改密码</h3>
+                <form id="password-form">
+                    <label for="current-password">当前密码</label><input id="current-password" type="password" autocomplete="current-password" required maxlength="1024" />
+                    <label for="new-password">新密码</label><input id="new-password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024" placeholder="至少 12 位, 包含大小写字母, 数字和符号" />
+                    <label for="confirm-password">确认新密码</label><input id="confirm-password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024" />
+                    <button class="primary full-width" type="submit">修改密码</button>
+                </form>
+                <p id="password-notice" class="notice" role="status" aria-live="polite"></p>
+            </section>
+            <section class="security-panel" aria-labelledby="passkey-heading">
+                <h3 id="passkey-heading">Passkey 管理</h3>
+                <p class="muted">使用 Passkey 可更安全, 便捷地登录你的账户.</p>
+                <ul id="passkey-list" class="passkey-list"><li class="muted">正在读取 Passkey</li></ul>
+                <label for="passkey-name">Passkey 名称</label><input id="passkey-name" type="text" maxlength="80" value="我的 Passkey" autocomplete="off" />
+                <button id="add-passkey" class="secondary" type="button">添加 Passkey</button>
+                <p id="passkey-notice" class="notice" role="status" aria-live="polite"></p>
+            </section>
+        </div>
+    </section>
+</main>

@@ -13,6 +13,9 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       FY1SWITCH_RELAY_CONFIG: /run/relay/config.json
     volumes:
+      - type: volume
+        source: relay-data
+        target: /var/lib/fy1switch-relay
       - type: bind
         source: ${FY1SWITCH_RELAY_CONFIG:?Set an absolute host config file path}
         target: /run/relay/config.json
@@ -28,3 +31,5 @@ services:
       - no-new-privileges:true
     deploy:
       replicas: 1
+volumes:
+  relay-data:

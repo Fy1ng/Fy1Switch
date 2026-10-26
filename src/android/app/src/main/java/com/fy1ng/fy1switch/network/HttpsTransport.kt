@@ -57,6 +57,30 @@ class HttpsTransport : Transport {
         return post(directClient(bundle.endpoint, bundle.certificatePin), request, timeoutMillis, bundle.expiresAt)
     }
 
+    internal fun relayPairRequest(endpoint: String, code: String, clientName: String): Request =
+        Request.Builder().url(Protocol.endpoint(endpoint) + "/v1/relay/pair")
+            .post(Protocol.pairRequest(Protocol.relayCode(code), clientName).toRequestBody(JSON)).build()
+
+    internal fun relayAuthorizationRequest(device: DeviceProfile, endpoint: String): Request =
+        Request.Builder().url(Protocol.endpoint(endpoint) + "/v1/devices/" + device.deviceId + "/authorize")
+            .header("X-Device-Token", device.deviceToken)
+            .post(JSONObject().put("clientId", device.clientId.toString()).toString().toRequestBody(JSON)).build()
+
+    internal fun relayLearningRequest(device: DeviceProfile): Request =
+        Request.Builder().url(device.endpoint + "/v1/relay")
+            .header("Authorization", "Bearer " + device.deviceToken)
+            .post(JSONObject().put("clientId", device.clientId.toString()).toString().toRequestBody(JSON)).build()
+
+    override suspend fun pairRelay(endpoint: String, code: String, clientName: String, timeoutMillis: Long): HttpResult =
+        post(systemClient, relayPairRequest(endpoint, code, clientName), timeoutMillis, Instant.now().plusMillis(timeoutMillis))
+
+    override suspend fun authorizeRelay(device: DeviceProfile, endpoint: String, timeoutMillis: Long): HttpResult =
+        post(systemClient, relayAuthorizationRequest(device, endpoint), timeoutMillis, Instant.now().plusMillis(timeoutMillis))
+
+    override suspend fun learnRelay(device: DeviceProfile, timeoutMillis: Long): HttpResult =
+        post(directClient(device.endpoint, device.certificatePin), relayLearningRequest(device), timeoutMillis,
+            Instant.now().plusMillis(timeoutMillis))
+
     internal fun controlRequest(device: DeviceProfile, route: Route, body: String): Request {
         val builder = Request.Builder().post(body.toRequestBody(JSON))
         when (route) {

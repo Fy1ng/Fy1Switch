@@ -6,9 +6,50 @@ namespace Fy1Switch.Remote;
 public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity security, Guid deviceId, Func<DateTimeOffset>? clock = null)
 {
     private readonly SemaphoreSlim _slots = new(8, 8);
+    private readonly SemaphoreSlim _relayAdmissions = new(1, 1);
     public Guid DeviceId => deviceId;
     public string? TailscaleEndpoint { get; set; }
+    public string? PublicEndpoint { get; set; }
+    public string? RelayEndpoint { get; set; }
+    public Func<Guid, CancellationToken, Task<RelayControllerReply>>? IssueRelayController { get; set; }
     public PairReply? Pair(PairRequest request) => security.CompletePairing(deviceId, request);
+    public RelayBootstrapReply? PairRelay(PairRequest request)
+    {
+        if (RelayEndpoint is null || PublicEndpoint is null) return null;
+        var reply = security.CompleteRelayPairing(deviceId, request);
+        return reply is null ? null : new(deviceId, reply.ClientId, reply.Token, PublicEndpoint, security.CertificatePin, TailscaleEndpoint);
+    }
+    public async Task<RelayBootstrapReply?> PairRelayAsync(PairRequest request, CancellationToken cancellationToken = default)
+    {
+        await _relayAdmissions.WaitAsync(cancellationToken);
+        try { return PairRelay(request); }
+        finally { _relayAdmissions.Release(); }
+    }
+    public RelayBootstrapReply? AuthorizeRelay(string? token, RelayAuthorizeRequest request)
+        => request.ClientId != Guid.Empty && security.AuthenticateClient(token)?.ClientId == request.ClientId
+            ? new(deviceId, request.ClientId) : null;
+    public async Task<(int StatusCode, RelayConfigurationReply? Reply)> RelayConfigurationAsync(string? token, RelayAuthorizeRequest request, CancellationToken cancellationToken = default)
+    {
+        if (AuthorizeRelay(token, request) is null) return (401, null);
+        var endpoint = RelayEndpoint;
+        var issue = IssueRelayController;
+        if (endpoint is null || issue is null) return (503, null);
+        await _relayAdmissions.WaitAsync(cancellationToken);
+        try
+        {
+            if (AuthorizeRelay(token, request) is null) return (401, null);
+            var controller = await issue(request.ClientId, cancellationToken);
+            if (AuthorizeRelay(token, request) is null) return (401, null);
+            if (endpoint != RelayEndpoint) return (503, null);
+            if (controller.DeviceId != deviceId || controller.ClientId != request.ClientId) return (502, null);
+            return (200, new(deviceId, request.ClientId, endpoint, controller.ControllerToken));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return (504, null); }
+        catch (RelayApiException) { return (503, null); }
+        catch (HttpRequestException) { return (503, null); }
+        catch (InvalidDataException) { return (502, null); }
+        finally { _relayAdmissions.Release(); }
+    }
     public async Task<(int StatusCode, RemoteReply Reply)> ControlAsync(string? token, RemoteCommand request, CancellationToken cancellationToken = default)
     {
         if (!security.Authenticate(token)) return (401, new(request.RequestId, false, "unauthorized"));
@@ -35,7 +76,7 @@ public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity 
             }
             var snapshot = request.Command == "refresh" ? await controller.RefreshAsync(deadline.Token) : await controller.GetSnapshotAsync(deadline.Token);
             var available = snapshot.Binding is not null && !snapshot.Binding.NeedsConfirmation && snapshot.ErrorCode is null;
-            return (200, new(request.RequestId, true, Status: new(snapshot.DeviceId, snapshot.Binding?.TargetId, snapshot.Binding?.Name, snapshot.Observation, available, snapshot.Busy, TailscaleEndpoint)));
+            return (200, new(request.RequestId, true, Status: new(snapshot.DeviceId, snapshot.Binding?.TargetId, snapshot.Binding?.Name, snapshot.Observation, available, snapshot.Busy, TailscaleEndpoint, RelayEndpoint)));
         }
         catch (ControlException exception) { return (409, new(request.RequestId, false, exception.Code)); }
         catch (OperationCanceledException) { return (504, new(request.RequestId, false, "deadline_exceeded_result_unknown")); }

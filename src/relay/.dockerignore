@@ -6,6 +6,10 @@
 !src/relay/Fy1Switch.Relay/
 !src/relay/Fy1Switch.Relay/*.cs
 !src/relay/Fy1Switch.Relay/*.csproj
+!src/relay/Fy1Switch.Relay/Pages/
+!src/relay/Fy1Switch.Relay/Pages/**
+!src/relay/Fy1Switch.Relay/wwwroot/
+!src/relay/Fy1Switch.Relay/wwwroot/**
 !src/shared/
 !src/shared/Fy1Switch.Contracts/
 !src/shared/Fy1Switch.Contracts/Messages.cs

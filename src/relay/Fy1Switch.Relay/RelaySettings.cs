@@ -10,17 +10,21 @@ public sealed class RelaySettings
     private readonly Dictionary<Guid, DeviceCredentials> devices;
     private readonly byte[] missingHash = SHA256.HashData("unconfigured-device"u8);
 
-    private RelaySettings(Dictionary<Guid, DeviceCredentials> devices, double timeoutSeconds, int requestsPerMinute)
+    private RelaySettings(Dictionary<Guid, DeviceCredentials> devices, double timeoutSeconds, int requestsPerMinute, RelayManagementOptions? management)
     {
         this.devices = devices;
         RequestTimeout = TimeSpan.FromSeconds(timeoutSeconds);
         RequestsPerMinute = requestsPerMinute;
+        Management = management;
     }
 
     public IEnumerable<Guid> DeviceIds => devices.Keys;
     public int DeviceCount => devices.Count;
     public TimeSpan RequestTimeout { get; }
     public int RequestsPerMinute { get; }
+    public RelayManagementOptions? Management { get; }
+    internal IEnumerable<(Guid DeviceId, byte[] WindowsHash, byte[] ControllerHash)> LegacyDevices =>
+        devices.Select(entry => (entry.Key, entry.Value.WindowsHash, entry.Value.ControllerHash));
 
     public static RelaySettings Load(string? path)
     {
@@ -37,13 +41,13 @@ public sealed class RelaySettings
         {
             throw new InvalidOperationException("Cannot load relay configuration; check file access and JSON schema.");
         }
-        if (config.Devices is not { Count: > 0 } || !double.IsFinite(config.RequestTimeoutSeconds) ||
+        if ((config.Devices is not { Count: > 0 } && config.Management is null) || !double.IsFinite(config.RequestTimeoutSeconds) ||
             config.RequestTimeoutSeconds < 0.05 || config.RequestTimeoutSeconds > 100 ||
             config.RequestsPerMinute is < 1 or > 120)
             throw new InvalidOperationException("Invalid relay devices or limits.");
         var devices = new Dictionary<Guid, DeviceCredentials>();
         var seenHashes = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var entry in config.Devices)
+        foreach (var entry in config.Devices ?? [])
         {
             if (entry is null || entry.DeviceId == Guid.Empty || devices.ContainsKey(entry.DeviceId))
                 throw new InvalidOperationException("Invalid or duplicate configured device.");
@@ -53,7 +57,8 @@ public sealed class RelaySettings
                 throw new InvalidOperationException("Relay credentials must be unique across devices and roles.");
             devices.Add(entry.DeviceId, new DeviceCredentials(windowsHash, controllerHash));
         }
-        return new RelaySettings(devices, config.RequestTimeoutSeconds, config.RequestsPerMinute);
+        config.Management?.Validate();
+        return new RelaySettings(devices, config.RequestTimeoutSeconds, config.RequestsPerMinute, config.Management);
     }
 
     public bool Authenticate(Guid deviceId, string token, bool windows)
@@ -82,7 +87,20 @@ public sealed class RelaySettings
 
     private sealed record DeviceCredentials(byte[] WindowsHash, byte[] ControllerHash);
     private sealed record DeviceConfiguration(Guid DeviceId, string WindowsToken, string ControllerToken);
-    private sealed record Configuration(List<DeviceConfiguration?> Devices, double RequestTimeoutSeconds = 30, int RequestsPerMinute = 60);
+    private sealed record Configuration(List<DeviceConfiguration?>? Devices = null, double RequestTimeoutSeconds = 30, int RequestsPerMinute = 60, RelayManagementOptions? Management = null);
+}
+
+public sealed record RelayManagementOptions(string PublicUrl, string DataDirectory, string? AdminPasswordFile = null)
+{
+    public void Validate()
+    {
+        if (!Uri.TryCreate(PublicUrl, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
+            uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 || uri.AbsolutePath != "/" ||
+            PublicUrl != uri.GetLeftPart(UriPartial.Authority) || uri.HostNameType != UriHostNameType.Dns ||
+            !Path.IsPathFullyQualified(DataDirectory) ||
+            (AdminPasswordFile is not null && !Path.IsPathFullyQualified(AdminPasswordFile)))
+            throw new InvalidOperationException("Management requires a canonical HTTPS origin with a DNS host and absolute private data/password paths.");
+    }
 }
 
 public static class RelayJson

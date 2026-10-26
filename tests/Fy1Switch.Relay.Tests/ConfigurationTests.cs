@@ -46,4 +46,29 @@ public sealed class ConfigurationTests
         }
         finally { File.Delete(path); }
     }
+
+    [TestMethod]
+    [DataRow("http://relay.example.test", false, false)]
+    [DataRow("https://relay.example.test/", false, false)]
+    [DataRow("https://relay.example.test/management", false, false)]
+    [DataRow("https://relay.example.test?key=placeholder", false, false)]
+    [DataRow("https://user:password@relay.example.test", false, false)]
+    [DataRow("https://127.0.0.1", false, false)]
+    [DataRow("https://relay.example.test", true, false)]
+    [DataRow("https://relay.example.test", false, true)]
+    public void ManagementRequiresFixedHttpsOriginAndAbsolutePrivatePaths(string publicUrl, bool relativeData, bool relativePassword)
+    {
+        var directory = Path.Combine(AppContext.BaseDirectory, "TestResults");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "config-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            File.WriteAllText(path, JsonSerializer.Serialize(new
+            {
+                management = new { publicUrl, dataDirectory = relativeData ? "data" : directory, adminPasswordFile = relativePassword ? "secret.txt" : Path.Combine(directory, "secret.txt") }
+            }));
+            Assert.ThrowsExactly<InvalidOperationException>(() => RelaySettings.Load(path));
+        }
+        finally { File.Delete(path); }
+    }
 }

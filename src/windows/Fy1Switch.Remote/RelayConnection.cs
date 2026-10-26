@@ -34,6 +34,16 @@ public sealed class RelayConnection(RemoteGateway gateway, string relayUrl, stri
                     var envelope = WireJson.Parse<RelayEnvelope>(text);
                     RelayResponse result;
                     if (envelope.Id == Guid.Empty) result = new(envelope.Id, 400, ErrorCode: "invalid_request");
+                    else if (envelope.Kind == "relay-pair" && envelope.Pair is not null && envelope.Request is null && envelope.Authorize is null && envelope.DeviceToken is null)
+                    {
+                        var reply = await gateway.PairRelayAsync(envelope.Pair, cancellationToken);
+                        result = new(envelope.Id, reply is null ? 401 : 200, ErrorCode: reply is null ? "pairing_rejected" : null, Bootstrap: reply);
+                    }
+                    else if (envelope.Kind == "authorize" && envelope.Authorize is not null && envelope.Pair is null && envelope.Request is null)
+                    {
+                        var reply = gateway.AuthorizeRelay(envelope.DeviceToken, envelope.Authorize);
+                        result = new(envelope.Id, reply is null ? 401 : 200, ErrorCode: reply is null ? "unauthorized" : null, Bootstrap: reply);
+                    }
                     else if (envelope.Kind == "pair" && envelope.Pair is not null)
                     {
                         var reply = gateway.Pair(envelope.Pair);

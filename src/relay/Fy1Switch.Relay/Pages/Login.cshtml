@@ -1,0 +1,18 @@
+@page "/login"
+@{
+    ViewData["Title"] = "管理员登录";
+}
+<main class="login-main" data-page="login">
+    <section class="login-panel" aria-labelledby="login-heading">
+        <h1 id="login-heading">登录 Relay 管理</h1>
+        <p class="muted">使用管理员密码或 Passkey 登录.</p>
+        <form id="login-form">
+            <label for="login-password">管理员密码</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="1024" autofocus />
+            <button class="primary full-width" type="submit">使用密码登录</button>
+        </form>
+        <div class="divider"><span>或</span></div>
+        <button id="passkey-login" class="secondary full-width" type="button">使用 Passkey 登录</button>
+        <p id="notice" class="notice" role="status" aria-live="polite"></p>
+    </section>
+</main>

@@ -2,7 +2,7 @@
 
 ## 边界与信任
 
-- .NET 10，单进程、单实例、纯内存设备路由；不使用 Redis、数据库或离线命令队列。禁止多副本/滚动重叠运行，也不能靠反代轮询多个 Relay 实例。
+- .NET 10, 单进程, 单实例, 内存设备路由, 无离线命令队列. 可选管理模式使用 Razor Pages/原生 JavaScript, ASP.NET Core Identity 和 SQLite 保存账户, Passkey 与设备注册. 不使用 Redis. 禁止多副本/滚动重叠运行, 不能轮询多个 Relay 实例.
 - Windows 主动建立出站 WebSocket，手机使用 HTTPS。Relay 只鉴别中继凭据、限制协议并转发，不能代替 Windows 验证每手机 deviceToken、配对码、显示器状态或业务授权。
 - 生产入口必须为 HTTPS/WSS，TLS 在受控反向代理终止。默认进程只监听 `http://127.0.0.1:5080`；`ASPNETCORE_URLS` 可覆盖。不得将带 Bearer/deviceToken 的明文 HTTP/WS 暴露公网或不可信局域网。
 - **这是可信应用层中继，不是端到端加密隧道**：Relay 与 TLS 终止代理可见命令、配对码、回复和每手机 token。运行者必须可信。配置里的中继凭据以明文文件保存，仅运行时认证索引使用 SHA-256 哈希及常量时间比较。
@@ -11,10 +11,37 @@
 ## 文件与构建隔离
 
 - 服务：`src/relay/Fy1Switch.Relay/`；测试：`tests/Fy1Switch.Relay.Tests/`。
-- 直接链接编译现有 `src/shared/Fy1Switch.Contracts/Messages.cs` 和 `RemoteMessages.cs`，不复制/修改共享协议，不构建 Windows/Android 项目，也不在共享目录生成输出。
+- 引用 `src/shared/Fy1Switch.Contracts` 项目中的共享消息契约, 不复制协议类型, 不构建 Windows/Android 项目. 设备注册与手机授权使用共享 DTO, 保留原有控制/配对消息的可选字段兼容.
 - Relay 和测试 csproj 均显式清空父 `Directory.Build.props` 的 `RuntimeIdentifiers`。Docker 只复制所需源码和 Relay csproj，**不复制父 Directory.Build.props、global.json 或本机 bin/obj**；镜像独立使用 .NET 10 SDK 发布 self-contained Linux 程序。
 
 ## 配置和凭据
+
+### WebUI 管理模式
+
+推荐新部署使用 `src/relay/relay.management.config.example.json`. `management.publicUrl` 必须是规范的 HTTPS 根地址和固定 DNS 主机名, 不含末尾 `/`, 路径, 查询或片段. 它同时限定 WebUI Host/端口, Passkey RP ID 和精确 Origin. 不根据任意 Host 或 X-Forwarded-* 自动推断, 更换域名后需要重新注册该域名的 Passkey.
+
+`management.dataDirectory` 为绝对私有可写目录, 保存 `identity.db`, `registry.db` 及 `keys/`. 数据库只保存 Windows 凭据哈希; 手机 Relay 凭据同时保存认证哈希和通过 ASP.NET Core Data Protection 加密的可恢复副本, 用于同一手机重复授权. 必须将两个数据库和 `keys/` 作为一套备份, 停止单实例后备份或使用 SQLite 一致性备份方式, 禁止上传 Git 或诊断包.
+
+管理员固定为 `admin`, 不开放公网注册. 第一次启动从 `management.adminPasswordFile` 指定的绝对私有文件读取密码, 至少 12 个字符并包含大小写字母, 数字和符号. 不通过命令行或日志输出密码. 初始化后修改该文件不会重置账户, 可移除该配置项和秘密挂载. 登录后可以修改密码及添加/移除最多 8 个 Passkey. 修改密码需要当前密码; 删除最后一种登录方式被拒绝. 丢失所有登录方式时需通过受控服务器管理流程恢复, 没有公开重置接口.
+
+管理会话为固定 30 分钟, Cookie 为 Secure, HttpOnly, SameSite=Strict. 所有浏览器变更请求需要 CSRF token; Passkey 挑战还校验一次性服务端会话和有效期. 密码错误会触发账户锁定, 登录和配对入口另有限流. WebUI Cookie 不能用于 Windows 或手机设备 API.
+
+| 场景 | 操作 |
+| --- | --- |
+| Windows 接入 Relay | 浏览器登录 WebUI 后生成六位接入码. Windows 设置中填写同一 Relay 地址和接入码, 注册后自动保存 DPAPI 加密的 Windows 凭据并建立 WSS. |
+| Android 首次配对 | Windows 设置中生成独立的手机 Relay 六位码. Android 添加电脑时输入 Relay 地址和该码, 通过 Relay 请求 Windows 签发手机身份, 证书 pin 和控制授权. |
+| 已配对手机, 局域网内 | 已固定证书且携带手机授权的 Direct 请求获得 Relay 地址提示, 再通过 Windows 专用 HTTPS 接口自动取得该手机 Relay 凭据并加密保存. |
+| 已配对手机, 非局域网 | 在该电脑连接设置中输入 Relay 地址并保存/重新连接, 自动用已有 deviceToken/ClientId 请求 Windows 验证, 无需六位码或 WebUI 登录. |
+
+两类六位码分开保存和验证, 有效期最多 5 分钟, 保留前导零且只能使用一次. 手机码由 Windows 的 CSPRNG 生成, 在 Windows 独立验证后才签发手机授权, 不替换原有 LAN SRP 或 192-bit HTTPS 配对码. 离开显示配对码的界面, 锁屏, 关闭或切换配置会取消 Windows 手机 Relay 码. 配对请求超时或回复丢失时不自动重试, 应检查是否已保存设备或显式生成新码.
+
+Relay 最多保存 256 个设备身份(包括撤销记录), 每设备最多 32 个手机凭据. Windows 在生成手机码及局域网授权前同步当前有效手机列表, 清理已经撤销的 Relay 凭据. 服务端同时最多 8 个手机短码会话, 六位码兑换入口全实例每 5 分钟最多 10 次尝试, 每来源另限制每分钟 10 次 bootstrap 请求; 刷新码不重置预算. 反代后的用户共享来源额度. 已有手机自动授权不消耗短码预算, 但 Windows 必须在线且仍保留该手机授权.
+
+管理页可查看设备连接情况和撤销注册. 撤销立即禁用该设备的全部 Relay 凭据并断开 WSS. Windows 本地撤销手机仍立即阻止所有路径的控制, 不依赖服务端同步成功. 自动配置失败不阻断正常 LAN 状态读取; Android 对同一地址失败退避 60 秒. 用户清空 Relay 时关闭自动配置, 可通过设置开关重新启用.
+
+没有 `management` 时保留旧静态配置模式, 不开放 WebUI/动态注册. 管理模式可以暂时保留 `devices` 数组, 旧凭据继续工作; 只有管理员点击管理页的 "导入旧配置" 或显式执行 `POST /api/admin/import-legacy` 才将其哈希导入数据库. 导入不覆盖已有或已撤销记录. 导入后同一设备由数据库鉴权, 撤销不会被重启或旧配置重新启用. 旧 Windows-Android 绑定保持有效, 也可以先在管理页撤销旧注册, 再用新接入码注册同一设备.
+
+### 旧静态配置模式
 
 `FY1SWITCH_RELAY_CONFIG` 必须是可读取 JSON 文件的**绝对路径**，缺失、相对路径、错误 JSON、空/重复设备、重复凭据或弱长度均拒绝启动。启动加载一次，更新/轮换需协调停止旧实例后重启；不会热重载。
 
@@ -49,6 +76,24 @@ dotnet run --project ./src/relay/Fy1Switch.Relay/Fy1Switch.Relay.csproj --config
 生成文件仅为 `src/relay/relay.config.local.json`，已局部 gitignore；生成后仍需保护权限并通过可信渠道分发。仓库示例始终不含真实凭据。
 
 ## HTTP / WebSocket 协议
+
+### 管理模式注册与授权接口
+
+| 接口 | 认证 | 结果 |
+| --- | --- | --- |
+| `POST /api/admin/registration-code` | 管理 Cookie + CSRF | `{code,expiresAt}`, 新码取消旧接入码 |
+| `GET /api/admin/devices` | 管理 Cookie | 设备列表与连接状态 |
+| `DELETE /api/admin/devices/{deviceId}` | 管理 Cookie + CSRF | 撤销注册并断开 WSS |
+| `POST /api/admin/import-legacy` | 管理 Cookie + CSRF | 显式导入旧配置凭据哈希, `{imported}` |
+| `POST /v1/relay/register` | WebUI 六位码, body `{deviceId,code,deviceName}` | `{deviceId,windowsToken}` |
+| `POST /v1/devices/{deviceId}/pairing-code` | Windows Bearer | 登记 Windows 生成的 `{code,expiresAt}` |
+| `DELETE /v1/devices/{deviceId}/pairing-code` | Windows Bearer | 取消手机短码 |
+| `POST /v1/devices/{deviceId}/controllers/synchronize` | Windows Bearer | 用 `{clientIds}` 清理已撤销手机的 Relay 凭据 |
+| `POST /v1/devices/{deviceId}/controllers` | Windows Bearer | 用 `{clientId}` 获取该手机专属 Relay 凭据 |
+| `POST /v1/relay/pair` | Windows 手机六位码, body `{code,clientName}` | Windows 签发的身份和手机 token, 加上专属 controllerToken |
+| `POST /v1/devices/{deviceId}/authorize` | `X-Device-Token` + body `{clientId}` | Windows 验证后返回专属 controllerToken, 不签发新手机身份 |
+
+最后两个接口通过在线 WSS 转发 `relay-pair` 和 `authorize` 信封, Windows 用 `RelayResponse.bootstrap` 回复. Relay 严格检查设备, ClientId 和回复种类, 不在 Windows 验证前发放手机凭据. `/authorize` 成功回复中的 `deviceToken`, `endpoint`, `certificatePin`, `tailscaleEndpoint` 均为 null, Android 保留已有身份. 首次配对才包含完整身份. Windows 局域网 `POST /v1/relay` 使用原手机 Bearer 和 `{clientId}`, 返回 `{deviceId,clientId,endpoint,controllerToken}`.
 
 所有 JSON 属性为 camelCase，枚举按共享跨端契约使用 PascalCase 字符串（例如 `"Off"`、`"On"`、`"Confirmed"`），不接受整数枚举。直接使用共享 RemoteMessages 类型，未知属性和缺少必需构造参数拒绝解析；RemoteCommand/RemoteReply 的 Version 省略时沿用契约默认 1。
 
@@ -128,12 +173,23 @@ docker compose -f src/relay/compose.yaml up -d --build
 ```
 
 - 多阶段 Dockerfile 自包含构建 linux-x64/linux-arm64（TARGETARCH amd64/arm64），runtime-deps 最终镜像以非 root APP_UID 运行。没有依赖宿主 dotnet、Windows runtime 或父构建配置。
+- 管理模式的命名卷 `relay-data` 挂载到 `/var/lib/fy1switch-relay`, 镜像为非 root APP_UID 创建可写目录; 其他根文件系统继续只读. 不删除该卷来进行普通升级.
 - 现代 Docker/BuildKit 实际读取邻接的 **Dockerfile.dockerignore**，与提供的 `src/relay/.dockerignore` 使用相同白名单。仓库根 context 不会自动采用子目录 .dockerignore，所以不能省略前者。仅传入 Relay 源文件与共享契约源文件及其项目文件；排除配置、.git、凭据、bin/obj、Windows/Android 和整个父构建文件。
 - Compose 单实例、宿主仅映射 `127.0.0.1:5080`；容器内部监听 8080 不代表可公开此端口。根文件系统只读，/tmp 为有界 tmpfs，配置只读挂载，不自动创建缺失宿主文件。
 - 配置宿主路径必须绝对且确实为文件。为镜像非 root 用户授予只读访问；官方镜像 app UID 通常为 1654，正式部署应核实具体镜像 UID/宿主权限，不要为图省事改成全员可读。应按运维策略固定镜像 digest 并定期更新补丁。
 - 不执行 scale，不启动两个实例共享同一设备凭据。凭据轮换会断开连接，须协调 Windows/手机配置后重新连接。
 
 ### HTTPS 反代示例
+
+管理模式使用首次密码文件时, 在上述 Compose 命令中追加覆盖文件:
+
+```sh
+export FY1SWITCH_RELAY_ADMIN_PASSWORD_FILE=/absolute/private/relay-admin-password
+docker compose -f src/relay/compose.yaml -f src/relay/compose.management.yaml config --quiet
+docker compose -f src/relay/compose.yaml -f src/relay/compose.management.yaml up -d --build
+```
+
+设置 `FY1SWITCH_RELAY_CONFIG` 指向基于管理示例准备的私有配置, `publicUrl` 必须等于最终浏览器 HTTPS Origin. 初始化密码文件需可被容器非 root 用户读取. 管理页只能从该 HTTPS Origin 打开; 直接浏览 loopback HTTP 不能完成 Secure Cookie/Passkey 登录. 服务仍不接受任意转发头, 反代必须保留正确 Host. 本次源码改动不自动部署, 更新已有线上实例需另行授权.
 
 可在同一 Linux 宿主的 Caddy 使用受你控制的域名（DNS 指向宿主，按 Caddy 要求开放证书签发/HTTPS 端口）：
 

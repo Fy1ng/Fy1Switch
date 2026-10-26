@@ -209,7 +209,7 @@ public sealed class RemoteGatewayTests
         foreach (var secret in new[] { FakeDesktopController.PrivateFingerprint, FakeDesktopController.PrivateTargetKey, FakeDesktopController.PrivateProfile, "private-local-failure" })
             Assert.IsFalse(serialized.Contains(secret, StringComparison.Ordinal), "Remote status leaked local-only data.");
         using var document = JsonDocument.Parse(serialized);
-        CollectionAssert.AreEquivalent(new[] { "deviceId", "targetId", "displayName", "observation", "available", "busy", "tailscaleEndpoint" },
+        CollectionAssert.AreEquivalent(new[] { "deviceId", "targetId", "displayName", "observation", "available", "busy", "tailscaleEndpoint", "relayEndpoint" },
             document.RootElement.GetProperty("status").EnumerateObject().Select(property => property.Name).ToArray());
     }
 

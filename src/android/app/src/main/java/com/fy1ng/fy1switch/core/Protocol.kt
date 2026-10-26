@@ -75,6 +75,43 @@ object Protocol {
         return PairReply(deviceId, uuid(json.getString("clientId")), token(json.getString("token")))
     }
 
+    fun relayCode(value: String): String = value.also {
+        require(it.length == 6 && it.all { digit -> digit in '0'..'9' })
+    }
+
+    fun relayPairReply(text: String): RelayPairReply {
+        require(text.length <= MAX_BODY)
+        val json = JSONObject(text)
+        val result = RelayPairReply(uuid(json.getString("deviceId")), uuid(json.getString("clientId")),
+            token(json.getString("controllerToken")), token(json.getString("deviceToken")),
+            endpoint(json.getString("endpoint")), pin(json.getString("certificatePin")),
+            json.stringOrNull("tailscaleEndpoint")?.let(::endpoint))
+        require(result.controllerToken != result.deviceToken)
+        return result
+    }
+
+    fun relayAuthorization(text: String, device: DeviceProfile, endpoint: String): RelayConfig {
+        require(text.length <= MAX_BODY)
+        val json = JSONObject(text)
+        require(uuid(json.getString("deviceId")) == device.deviceId && uuid(json.getString("clientId")) == device.clientId)
+        // Existing pairing identity cannot be replaced by a Relay authorization response.
+        require(listOf("deviceToken", "endpoint", "certificatePin", "tailscaleEndpoint").all { json.isNull(it) })
+        val controller = token(json.getString("controllerToken"))
+        require(controller != device.deviceToken)
+        return RelayConfig(endpoint(endpoint), controller)
+    }
+
+    fun relayConfiguration(text: String, device: DeviceProfile, expectedEndpoint: String): RelayConfig {
+        require(text.length <= MAX_BODY)
+        val json = JSONObject(text)
+        require(uuid(json.getString("deviceId")) == device.deviceId && uuid(json.getString("clientId")) == device.clientId)
+        val endpoint = endpoint(json.getString("endpoint"))
+        require(sameEndpoint(endpoint, expectedEndpoint))
+        val controller = token(json.getString("controllerToken"))
+        require(controller != device.deviceToken)
+        return RelayConfig(endpoint, controller)
+    }
+
     fun command(request: RemoteCommand): String {
         require(request.version == 1 && request.command in setOf("status", "refresh", "set", "operation"))
         require(request.command != "set" || (request.targetId != null && request.operationId != null && request.intent != null))
@@ -115,6 +152,7 @@ object Protocol {
         json.stringOrNull("displayName"), observation(json.getJSONObject("observation")),
         json.boolean("available"), json.boolean("busy"),
         json.stringOrNull("tailscaleEndpoint")?.let(::endpoint),
+        json.stringOrNull("relayEndpoint")?.let(::endpoint),
     )
 
     fun operation(json: JSONObject) = OperationRecord(
@@ -134,6 +172,7 @@ object Protocol {
         .put("displayName", value.displayName ?: JSONObject.NULL)
         .put("observation", observationJson(value.observation)).put("available", value.available).put("busy", value.busy)
         .put("tailscaleEndpoint", value.tailscaleEndpoint ?: JSONObject.NULL)
+        .put("relayEndpoint", value.relayEndpoint ?: JSONObject.NULL)
 
     fun operationJson(value: OperationRecord) = JSONObject().put("operationId", value.operationId.toString())
         .put("targetId", value.targetId.toString()).put("requested", value.requested.name)

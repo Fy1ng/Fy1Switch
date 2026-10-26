@@ -50,9 +50,9 @@ OriginOS 6 的后台回收、系统面板缓存、解锁取消、强行停止后
 
 Relay 是可信服务，手机到 Relay、Windows 到 Relay 各自使用 TLS。Relay 可读取转发请求与手机设备 token；这不是 Relay 不可读的端到端加密。不要把这套模型描述为服务器被攻陷也不能控制设备。
 
-服务器给每台 Windows 配置两个独立 Relay 凭据：Windows 连接凭据和手机控制通道凭据。Windows 远程设置填写 Relay HTTPS 地址及 Windows 凭据；手机在设备设置中填写同一 Relay 地址和控制通道凭据。Windows 出站 WSS 连接，无需家庭公网入站。两种 Relay 凭据都不同于每台手机在 Windows 配对后获得的 device token。
+推荐使用带 WebUI 的 Relay 管理模式. 管理员用密码或 Passkey 登录, 生成一次性六位 Windows 接入码; Windows 设置填写 Relay HTTPS 地址和码, 自动保存加密凭据并建立出站 WSS, 无需家庭公网入站. Android 不登录 WebUI. 已配对手机在局域网自动获取 Relay 地址和专属通道凭据, 异地只需输入 Relay 地址并保存/重新连接, 由 Windows 验证原手机授权后发放通道凭据. 首次手机配对可在 Windows 生成独立六位 Relay 码, Android 输入 Relay 地址和码完成. 每手机 deviceToken 始终由 Windows 签发和撤销, 与 Relay 通道凭据不同. 旧静态配置和高级手填 Windows 凭据保留兼容, 显式导入方式见 Relay.md.
 
-部署说明在 Relay.md。默认首次配对走已固定证书的直连；完成后可启用 Relay 作为连接途径。Relay 不长期排队离线显示命令，不在设备重连后补发旧 OFF。
+部署说明在 Relay.md. 直连配对仍使用固定证书; Relay 首次配对依赖用户指定的可信 HTTPS 服务, Windows 经已注册的 WSS 签发手机身份和证书 pin. 两类 Relay 六位码最多 5 分钟且单次有效. 已配对自动授权要求 Windows 在线且授权未撤销. Relay 不长期排队离线命令, 不在重连后补发旧 OFF.
 
 ## 协议与不确定结果
 

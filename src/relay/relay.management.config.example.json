@@ -1,0 +1,9 @@
+{
+  "management": {
+    "publicUrl": "https://relay.example.com",
+    "dataDirectory": "/var/lib/fy1switch-relay",
+    "adminPasswordFile": "/run/secrets/relay-admin-password"
+  },
+  "requestTimeoutSeconds": 30,
+  "requestsPerMinute": 120
+}

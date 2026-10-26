@@ -12,6 +12,7 @@ RUN case "$TARGETARCH" in amd64) rid=linux-x64 ;; arm64) rid=linux-arm64 ;; *) e
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0 AS final
 WORKDIR /app
 COPY --from=build /out/ ./
+RUN mkdir -p /var/lib/fy1switch-relay && chown "$APP_UID:$APP_UID" /var/lib/fy1switch-relay && chmod 700 /var/lib/fy1switch-relay
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
     FY1SWITCH_RELAY_CONFIG=/run/relay/config.json \

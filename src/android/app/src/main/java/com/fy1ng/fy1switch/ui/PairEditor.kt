@@ -27,6 +27,7 @@ import com.fy1ng.fy1switch.pairing.LanPairing
 import com.fy1ng.fy1switch.pairing.NearbyComputer
 import com.fy1ng.fy1switch.pairing.ShortCodeProtocol
 import com.fy1ng.fy1switch.core.DeviceRepository
+import com.fy1ng.fy1switch.core.Feedback
 import com.fy1ng.fy1switch.core.Protocol
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
@@ -65,6 +66,11 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
     var message by remember { mutableStateOf<String?>(null) }
     var scanning by remember { mutableStateOf(false) }
     var qrPairing by remember { mutableStateOf(false) }
+    var relayExpanded by remember { mutableStateOf(false) }
+    var relayEndpoint by remember { mutableStateOf("") }
+    var relayCode by remember { mutableStateOf("") }
+    var relayPairing by remember { mutableStateOf(false) }
+    var relayMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val latestPaired by rememberUpdatedState(onPaired)
     val lan = remember(repository, context) { LanPairing(context, repository) { latestPaired() } }
@@ -74,7 +80,14 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
     val submissions = remember { ShortCodeSubmission() }
     fun targetKey(computer: NearbyComputer) = "${computer.sessionId}/${computer.host.hostAddress}/${computer.port}"
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val lanEnabled = nearby && bundle.isBlank() && !scanning && !qrPairing && (!busy || lanState.busy)
+    val lanEnabled = nearby && !relayExpanded && bundle.isBlank() && !scanning && !qrPairing && !relayPairing && (!busy || lanState.busy)
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) relayCode = ""
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer); relayCode = "" }
+    }
     DisposableEffect(lan, lifecycle, lanEnabled) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && lanEnabled) lan.start()
@@ -93,7 +106,7 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
             selected = null
         }
     }
-    val blocked = busy || scanning || qrPairing || lanState.busy
+    val blocked = busy || scanning || qrPairing || relayPairing || lanState.busy
     LaunchedEffect(lanState.computers) {
         val current = selected
         if (current != null && lanState.computers.none { targetKey(it) == targetKey(current) }) {
@@ -128,6 +141,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
         selected = null
         bundle = ""
         advanced = false
+        relayExpanded = false
+        relayCode = ""
         message = null
         scanning = true
         try {
@@ -215,6 +230,8 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
                 TextButton(onClick = {
                     nearby = !nearby
                     advanced = false
+                    relayExpanded = false
+                    relayCode = ""
                     bundle = ""
                     message = null
                     shortCode = ""
@@ -290,7 +307,60 @@ fun PairEditor(repository: DeviceRepository, scope: CoroutineScope, busy: Boolea
         OutlinedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = {
+                    relayExpanded = !relayExpanded
+                    nearby = false
+                    advanced = false
+                    bundle = ""
+                    shortCode = ""
+                    selected = null
+                    relayCode = ""
+                    relayMessage = null
+                    lan.stop()
+                }, enabled = !blocked, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    AppIcon(AppIconType.Monitor)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (relayExpanded) "收起 Relay 配对" else "通过 Relay 添加电脑")
+                }
+                if (relayExpanded) {
+                    Text("电脑先连接 Relay, 再在 Windows 上生成手机配对码. 两端可以不在同一局域网.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(value = relayEndpoint, onValueChange = {
+                        if (it.length <= 2048) { relayEndpoint = it; relayMessage = null }
+                    }, label = { Text("Relay HTTPS 地址") }, singleLine = true, enabled = !blocked,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = clientName, onValueChange = { if (it.length <= 80) clientName = it },
+                        label = { Text("本手机名称") }, enabled = !blocked, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = relayCode, onValueChange = {
+                        if (it.length <= 6 && it.all { digit -> digit in '0'..'9' }) { relayCode = it; relayMessage = null }
+                    }, label = { Text("Windows 上的 6 位 Relay 配对码") }, singleLine = true, enabled = !blocked,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    relayMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+                    if (relayPairing) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Button(onClick = {
+                        val endpoint = relayEndpoint
+                        val code = relayCode
+                        val name = clientName
+                        relayCode = ""
+                        relayMessage = null
+                        relayPairing = true
+                        scope.launch {
+                            try {
+                                val result = repository.pairRelay(endpoint, code, name)
+                                if (result == Feedback.Paired) latestPaired() else relayMessage = result.text
+                            } finally { relayPairing = false }
+                        }
+                    }, enabled = !blocked && relayEndpoint.isNotBlank() && relayCode.length == 6 && clientName.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(if (relayPairing) "正在配对" else "配对电脑") }
+                }
+            }
+        }
+
+        OutlinedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = {
                     advanced = !advanced
+                    relayExpanded = false
+                    relayCode = ""
                     nearby = false
                     bundle = ""
                     message = null

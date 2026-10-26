@@ -20,6 +20,7 @@ public sealed class HttpsControlServer(RemoteGateway gateway, DeviceSecurity sec
     {
         settings.Validate();
         if (_application is not null) throw new InvalidOperationException("already_running");
+        gateway.PublicEndpoint = settings.PublicEndpoint.TrimEnd('/');
         gateway.TailscaleEndpoint = null;
         TailscaleStatus = "disabled";
         _application = await StartListenerAsync(settings.ListenAddress, settings.Port, cancellationToken);
@@ -78,6 +79,24 @@ public sealed class HttpsControlServer(RemoteGateway gateway, DeviceSecurity sec
             catch (Exception exception) when (exception is JsonException or BadHttpRequestException) { context.Response.StatusCode = 400; }
             catch (OperationCanceledException) { context.Response.StatusCode = 408; }
         }).RequireRateLimiting("pair");
+        app.MapPost("/v1/relay", async context =>
+        {
+            try
+            {
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+                deadline.CancelAfter(TimeSpan.FromSeconds(20));
+                var authorization = context.Request.Headers.Authorization.ToString();
+                var token = authorization.StartsWith("Bearer ", StringComparison.Ordinal) ? authorization[7..] : null;
+                if (!security.Authenticate(token)) { context.Response.StatusCode = 401; return; }
+                var request = await ReadBoundedAsync<RelayAuthorizeRequest>(context.Request, deadline.Token);
+                if (request is null) { context.Response.StatusCode = 400; return; }
+                var result = await gateway.RelayConfigurationAsync(token, request, deadline.Token);
+                context.Response.StatusCode = result.StatusCode;
+                if (result.Reply is not null) await context.Response.WriteAsJsonAsync(result.Reply, WireJson.Options, deadline.Token);
+            }
+            catch (Exception exception) when (exception is JsonException or BadHttpRequestException) { context.Response.StatusCode = 400; }
+            catch (OperationCanceledException) { context.Response.StatusCode = 504; }
+        }).RequireRateLimiting("control");
         app.MapPost("/v1/control", async context =>
         {
             try

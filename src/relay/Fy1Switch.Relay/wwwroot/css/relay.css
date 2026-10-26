@@ -1,0 +1,92 @@
+:root { color-scheme: light; --page: #f5f7fb; --surface: #fff; --ink: #172335; --muted: #65718b; --blue: #315db3; --blue-dark: #254d9a; --border: #d6dfed; --red: #bb323d; --green: #358348; --radius: 12px; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 28px; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+button, input { font: inherit; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+a { color: var(--blue); }
+button { cursor: pointer; font-size: 14px; font-weight: 600; border: 1px solid transparent; border-radius: 6px; padding: 10px 20px; min-height: 42px; transition: background-color .15s, border-color .15s; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #95b5f0; outline-offset: 3px; }
+button.primary { background: var(--blue); color: white; }
+button.primary:hover:not(:disabled) { background: var(--blue-dark); }
+button.secondary { background: var(--surface); border-color: var(--blue); color: var(--blue); }
+button.secondary:hover:not(:disabled) { background: #edf3ff; }
+button.text-button { background: transparent; color: var(--blue); padding: 8px 6px; }
+button.text-button:hover:not(:disabled) { background: #edf3ff; }
+button.danger { background: var(--surface); color: var(--red); border-color: #e5a3a9; padding: 6px 16px; min-height: 36px; }
+button.danger:hover { background: #fff1f2; }
+.site-header { min-height: 76px; padding: 0 4%; display: flex; align-items: center; gap: 44px; background: var(--surface); border-bottom: 1px solid #e6ebf4; }
+.brand { display: flex; align-items: center; gap: 14px; font-size: 25px; font-weight: 650; text-decoration: none; color: #111c30; white-space: nowrap; }
+.brand svg { width: 34px; height: 34px; fill: none; stroke: var(--blue); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+nav { display: flex; align-self: stretch; gap: 30px; }
+nav a { display: flex; align-items: center; border-bottom: 2px solid transparent; padding: 0 5px; color: var(--muted); font-size: 16px; font-weight: 600; text-decoration: none; }
+nav a.active, nav a:hover { color: var(--blue); border-color: var(--blue); }
+.logout { margin-left: auto; }
+.dashboard { max-width: 1216px; margin: 46px auto 64px; padding: 0 28px; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { font-size: 36px; line-height: 1.35; letter-spacing: -.5px; margin-bottom: 9px; font-weight: 650; }
+h2 { font-size: 22px; line-height: 1.4; margin-bottom: 15px; font-weight: 650; }
+h3 { font-size: 17px; line-height: 1.4; margin-bottom: 14px; font-weight: 650; }
+.muted { color: var(--muted); }
+.intro { font-size: 18px; margin-bottom: 30px; }
+.connection-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+.enrollment-panel { background: var(--surface); border: 1px solid #94afe2; border-radius: var(--radius); padding: 24px 28px 19px; }
+.enrollment-panel h2 { font-size: 20px; margin-bottom: 12px; }
+.registration-code { font: 600 62px/1.15 "Cascadia Mono", Consolas, monospace; color: var(--blue); text-align: center; letter-spacing: 1px; margin: 18px 0 4px; }
+.code-expiry { text-align: center; font-size: 14px; margin-bottom: 21px; min-height: 22px; }
+.code-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.relay-address { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 10px; border-top: 1px solid #e7edf6; color: var(--muted); font-size: 12px; }
+.relay-address code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--ink); }
+.relay-address button { font-size: 12px; padding: 4px 6px; min-height: 28px; }
+.phone-guide { padding-top: 8px; }
+.phone-guide ol { list-style: none; padding: 0; margin: 26px 0 0; counter-reset: steps; }
+.phone-guide li { position: relative; padding-left: 58px; margin-bottom: 29px; counter-increment: steps; }
+.phone-guide li::before { content: counter(steps); position: absolute; left: 0; top: 0; width: 39px; height: 39px; border-radius: 50%; display: grid; place-items: center; background: #e3ecfc; color: var(--blue); font-size: 21px; font-weight: 600; }
+.phone-guide strong { display: block; font-size: 18px; margin-bottom: 3px; }
+.phone-guide p { font-size: 16px; color: var(--muted); margin-bottom: 0; }
+.notice { min-height: 0; font-size: 14px; margin: 12px 0 0; color: var(--red); overflow-wrap: anywhere; }
+.notice:empty { display: none; }
+.notice.success { color: var(--green); }
+.device-section { margin-top: 30px; }
+.section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.section-title h2 { margin: 0; }
+.table-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.table-wrap { border: 1px solid var(--border); border-radius: 9px; overflow: auto; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; text-align: left; }
+table.has-devices { min-width: 620px; }
+table.has-devices td:first-child { min-width: 130px; }
+.table-scroll-hint { display: none; margin: 8px 0 0; font-size: 12px; }
+td button { white-space: nowrap; }
+@media (max-width: 760px) { .table-scroll-hint:not([hidden]) { display: block; } }
+th { padding: 14px 25px; background: #f7f9fc; color: #5c6981; font-size: 13px; font-weight: 600; white-space: nowrap; }
+td { padding: 17px 25px; border-top: 1px solid #e5ebf3; }
+td:first-child { font-weight: 600; overflow-wrap: anywhere; }
+.device-id { font-family: Consolas, monospace; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.connection-state { white-space: nowrap; }
+.connection-state::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 9px; border-radius: 50%; background: #9ba6b7; }
+.connection-state.online::before { background: #4aaa62; }
+.empty-state { text-align: center; color: var(--muted); font-weight: 400 !important; padding: 27px; }
+.helper { margin-top: 10px; font-size: 14px; }
+.security-section { margin-top: 31px; }
+.security-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.security-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 20px 25px; min-width: 0; }
+.security-panel p { font-size: 14px; }
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+input { display: block; width: 100%; border: 1px solid #cbd6e7; border-radius: 5px; background: white; padding: 9px 11px; margin: 0 0 12px; color: var(--ink); font-size: 14px; min-height: 41px; }
+input::placeholder { color: #7c879a; font-size: 12px; }
+.full-width { width: 100%; }
+.passkey-list { list-style: none; padding: 0; margin: 16px 0 22px; }
+.passkey-list li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid #edf0f7; font-size: 14px; overflow-wrap: anywhere; }
+.passkey-list li:only-child.muted { border: 0; }
+.login-main { max-width: 444px; margin: 104px auto 48px; padding: 0 22px; }
+.login-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 31px; }
+.login-panel h1 { font-size: 26px; }
+.login-panel > p { font-size: 14px; margin-bottom: 25px; }
+.login-panel form { margin-top: 24px; }
+.login-panel label { margin-bottom: 8px; }
+.login-panel input { margin-bottom: 18px; }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; margin: 19px 0; }
+.divider::before, .divider::after { content: ""; height: 1px; background: #e2e8f2; flex: 1; }
+@media (max-width: 760px) { .site-header { gap: 20px; padding: 14px 20px; flex-wrap: wrap; } .brand { font-size: 19px; gap: 9px; } .brand svg { width: 28px; height: 28px; } nav { order: 3; width: 100%; gap: 24px; height: 38px; } .logout { font-size: 12px; } .dashboard { margin-top: 28px; padding: 0 20px; } h1 { font-size: 26px; } h2 { font-size: 20px; } .intro { font-size: 14px; margin-bottom: 23px; } .connection-grid, .security-grid { grid-template-columns: 1fr; gap: 23px; } .enrollment-panel { padding: 21px; } .registration-code { font-size: 53px; } .phone-guide { padding-top: 0; } .phone-guide ol { margin-top: 15px; } .phone-guide li { margin-bottom: 19px; } .device-section { margin-top: 26px; } th, td { padding: 12px 15px; } .device-id { max-width: 190px; min-width: 160px; } .security-section { margin-top: 27px; } .login-main { margin-top: 55px; } .login-panel { padding: 25px; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } button { transition: none; } }

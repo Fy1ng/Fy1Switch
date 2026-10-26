@@ -1,0 +1,10 @@
+# Add this override only when using relay.management.config.example.json.
+services:
+  relay:
+    volumes:
+      - type: bind
+        source: ${FY1SWITCH_RELAY_ADMIN_PASSWORD_FILE:?Set an absolute private bootstrap password file path}
+        target: /run/secrets/relay-admin-password
+        read_only: true
+        bind:
+          create_host_path: false

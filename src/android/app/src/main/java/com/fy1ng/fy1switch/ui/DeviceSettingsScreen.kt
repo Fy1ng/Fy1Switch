@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.fy1ng.fy1switch.core.*
 import com.fy1ng.fy1switch.background.BackgroundSyncState
@@ -29,16 +28,28 @@ internal fun DeviceSettingsScreen(
     val profile = device.profile
     var name by remember(profile.name) { mutableStateOf(profile.name) }
     var endpoint by remember(profile.relay?.endpoint) { mutableStateOf(profile.relay?.endpoint.orEmpty()) }
-    var token by remember { mutableStateOf("") }
     var tailscale by remember(profile.tailscaleEndpoint) { mutableStateOf(profile.tailscaleEndpoint.orEmpty()) }
     var autoLearn by remember(profile.autoLearnTailscale) { mutableStateOf(profile.autoLearnTailscale) }
+    var autoRelay by remember(profile.autoLearnRelay) { mutableStateOf(profile.autoLearnRelay) }
     var advanced by rememberSaveable { mutableStateOf(false) }
     var confirmRemoval by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    val dirty = name != profile.name || endpoint != profile.relay?.endpoint.orEmpty() || token.isNotEmpty() ||
-        tailscale != profile.tailscaleEndpoint.orEmpty() || autoLearn != profile.autoLearnTailscale
+    val dirty = name != profile.name || endpoint != profile.relay?.endpoint.orEmpty() ||
+        tailscale != profile.tailscaleEndpoint.orEmpty() || autoLearn != profile.autoLearnTailscale || autoRelay != profile.autoLearnRelay
     SideEffect { onDirtyChanged(dirty) }
     DisposableEffect(Unit) { onDispose { onDirtyChanged(false) } }
+    fun saveConnection(refreshRelay: Boolean = false) {
+        val submittedName = name
+        val submittedEndpoint = endpoint
+        val submittedTailscale = tailscale
+        val submittedAutoLearn = autoLearn
+        val submittedAutoRelay = autoRelay
+        scope.launch {
+            val result = repository.configureConnection(profile.deviceId, submittedName, submittedEndpoint,
+                submittedTailscale, submittedAutoLearn, submittedAutoRelay, refreshRelay)
+            if (result == Feedback.Saved) message = null else message = result.text
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         OutlinedTextField(value = name, onValueChange = { if (it.length <= 80) { name = it; message = null } },
             isError = message == Feedback.InvalidName.text,
@@ -90,14 +101,19 @@ internal fun DeviceSettingsScreen(
                         isError = message == Feedback.InvalidRelayEndpoint.text,
                         label = { Text("Relay HTTPS 地址（可选）") }, singleLine = true, enabled = !state.busy,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = token, onValueChange = { if (it.length <= 4096) { token = it; message = null } },
-                        isError = message in setOf(Feedback.RelayTokenRequired.text, Feedback.InvalidRelayToken.text, Feedback.RelayDeviceTokenConflict.text),
-                        label = { Text("控制端凭据") },
-                        placeholder = { Text(if (profile.relay != null) "留空保留已存凭据" else "填写 Relay 的控制端凭据") },
-                        visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !state.busy,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
-                    Text("只配置可信中继。更换地址需重新填写凭据，清空地址并保存会停用中继。",
+                    Text("填写地址后保存, 使用本手机已有的电脑授权连接 Relay, 无需再次输入配对码.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("从电脑自动配置 Relay", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Switch(checked = autoRelay, onCheckedChange = { autoRelay = it }, enabled = !state.busy,
+                            modifier = Modifier.semantics { contentDescription = "从电脑自动配置 Relay" })
+                    }
+                    Text("局域网连接成功后自动保存电脑的 Relay 地址. 清空地址并保存会停用中继和自动配置.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (profile.relay != null) TextButton(onClick = { saveConnection(refreshRelay = true) },
+                        enabled = !state.busy && endpoint.isNotBlank() && name.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                        AppIcon(AppIconType.Refresh); Spacer(Modifier.width(8.dp)); Text("重新连接 Relay")
+                    }
                 } else {
                     Text(if (profile.relay != null) "已配置中继" else "使用已配对的连接地址",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -105,18 +121,7 @@ internal fun DeviceSettingsScreen(
             }
         }
         message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-        Button(onClick = {
-            val submittedName = name
-            val submittedEndpoint = endpoint
-            val submittedToken = token
-            val submittedTailscale = tailscale
-            val submittedAutoLearn = autoLearn
-            scope.launch {
-                val result = repository.configure(profile.deviceId, submittedName, submittedEndpoint, submittedToken,
-                    clearRelay = false, tailscaleEndpoint = submittedTailscale, autoLearnTailscale = submittedAutoLearn)
-                if (result == Feedback.Saved) { token = ""; message = null } else message = result.text
-            }
-        }, enabled = !state.busy && dirty && name.isNotBlank(),
+        Button(onClick = { saveConnection() }, enabled = !state.busy && dirty && name.isNotBlank(),
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
             AppIcon(if (dirty) AppIconType.Save else AppIconType.Check)
             Spacer(Modifier.width(8.dp))

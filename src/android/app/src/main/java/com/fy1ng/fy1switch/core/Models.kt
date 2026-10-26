@@ -16,6 +16,7 @@ data class RemoteStatus(
     val available: Boolean,
     val busy: Boolean,
     val tailscaleEndpoint: String? = null,
+    val relayEndpoint: String? = null,
 )
 data class OperationRecord(
     val operationId: UUID,
@@ -61,6 +62,17 @@ data class PairReply(val deviceId: UUID, val clientId: UUID, val token: String) 
 data class RelayConfig(val endpoint: String, val controllerToken: String) {
     override fun toString() = "RelayConfig(redacted)"
 }
+data class RelayPairReply(
+    val deviceId: UUID,
+    val clientId: UUID,
+    val controllerToken: String,
+    val deviceToken: String,
+    val endpoint: String,
+    val certificatePin: String,
+    val tailscaleEndpoint: String? = null,
+) {
+    override fun toString() = "RelayPairReply(redacted)"
+}
 data class DeviceProfile(
     val deviceId: UUID,
     val clientId: UUID,
@@ -71,6 +83,7 @@ data class DeviceProfile(
     val relay: RelayConfig? = null,
     val tailscaleEndpoint: String? = null,
     val autoLearnTailscale: Boolean = true,
+    val autoLearnRelay: Boolean = true,
 ) {
     override fun toString() = "DeviceProfile(redacted)"
 }
@@ -97,6 +110,7 @@ enum class Feedback(val text: String) {
     RelayTokenRequired("首次配置或更换 Relay 地址时，请填写手机使用的控制端凭据"),
     InvalidRelayToken("Relay 控制端凭据包含无效字符，请只粘贴凭据本身，不包含说明文字或换行"),
     RelayDeviceTokenConflict("Relay 控制端凭据不能使用设备配对 token，请填写中继的控制端凭据"),
+    InvalidRelayCode("请输入 Windows 上显示的 6 位 Relay 配对码"),
     InvalidTailscaleEndpoint("Tailscale 地址无效，请填写 HTTPS 地址或留空"),
     Storage("安全存储不可用，已停止发送命令；请重启或清除应用数据后重新配对"),
     Busy("已有请求正在进行，请稍候"),

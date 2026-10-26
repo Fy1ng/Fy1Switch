@@ -35,6 +35,12 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private readonly ComboBox _networks = new() { DisplayMemberPath = "Label", MinHeight = 34 };
     private readonly TextBox _listen = new(), _port = new(), _endpoint = new(), _tailscaleListen = new(), _tailscaleEndpoint = new(), _relay = new();
     private readonly PasswordBox _relayToken = new();
+    private readonly PasswordBox _relayRegistrationCode = new() { MaxLength = 6 };
+    private readonly TextBlock _relayCodeText = Text("", 24, true), _relayCodeInfo = Text("", 12);
+    private readonly Button _generateRelayCode, _cancelRelayCode;
+    private RelayCode? _currentRelayCode;
+    private CancellationTokenSource? _relayCodeCancellation;
+    private Task _relayCleanup = Task.CompletedTask;
     private readonly TextBlock _status = Text("");
     private readonly TextBlock _networkSummary = Text("");
     private readonly TextBlock _tailscaleStatus = Text("", 12);
@@ -95,12 +101,21 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _configuration.Children.Add(_tailscaleFields);
         _configuration.Children.Add(_relayEnabled);
         Field(_relayFields, "中继 HTTPS 地址", _relay);
-        Field(_relayFields, "电脑端中继凭据 (留空保留)", _relayToken);
+        Field(_relayFields, "WebUI 生成的六位电脑注册码", _relayRegistrationCode);
+        _relayFields.Children.Add(Text("先在中继 WebUI 使用密码或 Passkey 登录并生成注册码, 再在此输入. 手机不需要登录 WebUI.", 12));
+        AddButton(_relayFields, "注册到中继", RegisterRelayAsync, AppIconKind.Link);
+        var relayPairingActions = new WrapPanel();
+        _generateRelayCode = AddButton(relayPairingActions, "生成手机 Relay 配对码", GenerateRelayCodeAsync, AppIconKind.Phone);
+        _cancelRelayCode = AddButton(relayPairingActions, "取消 Relay 配对", CancelRelayCodeAsync, AppIconKind.Close);
+        _relayFields.Children.Add(relayPairingActions);
+        _relayFields.Children.Add(_relayCodeText); _relayFields.Children.Add(_relayCodeInfo);
+        _relayFields.Children.Add(Text("已配对手机在局域网中自动获取中继配置. 首次跨网配对时, 在手机输入中继地址与此处的六位手机配对码. 离开设置或锁屏即取消配对码.", 12));
         _relayFields.Children.Add(Text("中继服务可以读取转发内容, 请只使用你信任的服务.", 12));
         _configuration.Children.Add(_relayFields);
 
         var advanced = new StackPanel { Margin = new Thickness(12, 4, 0, 0) };
         advanced.Children.Add(_automaticNetwork);
+        Field(advanced, "旧版电脑端中继凭据 (留空保留)", _relayToken);
         Field(advanced, "自定义局域网", _networks);
         var networkButtons = new WrapPanel();
         AddButton(networkButtons, "刷新网络列表", () => { LoadNetworks(); return Task.CompletedTask; }, AppIconKind.Refresh);
@@ -153,7 +168,8 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _tailscaleEnabled.Checked += (_, _) => { FillTailscale(); UpdateOptionalForms(); };
         _tailscaleEnabled.Unchecked += (_, _) => UpdateOptionalForms();
         _relayEnabled.Checked += (_, _) => UpdateOptionalForms();
-        _relayEnabled.Unchecked += (_, _) => UpdateOptionalForms();
+        _relayEnabled.Unchecked += (_, _) => { CancelRelayCodeInView(); UpdateOptionalForms(); };
+        _relay.TextChanged += (_, _) => { if (_currentRelayCode is not null && _relay.Text.Trim().TrimEnd('/') != _manager.Settings.RelayUrl?.TrimEnd('/')) CancelRelayCodeInView(); };
         UpdateOptionalForms();
         _clients.SelectionChanged += (_, _) => RefreshActions();
         RenderPairing();
@@ -200,6 +216,8 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         else
         {
             _relayToken.Clear();
+            _relayRegistrationCode.Clear();
+            CancelRelayCodeInView();
             if (!_pairingVisible)
             {
                 _timer.Stop(); _manager.Security.CancelPairing(); ClearPairing();
@@ -225,7 +243,9 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         if (_closed) return;
         _closed = true; _pairingVisible = false; _sessionOpen = false; Interlocked.Increment(ref _pairGeneration); _timer.Stop();
         SystemEvents.SessionSwitch -= SessionSwitched; _lan.Changed -= LanChanged;
-        _lan.Cancel(); _manager.Security.CancelPairing(); ClearPairing(); _relayToken.Clear();
+        _lan.Cancel(); _manager.Security.CancelPairing(); ClearPairing(); _relayToken.Clear(); _relayRegistrationCode.Clear();
+        CancelRelayCodeInView();
+        await _relayCleanup;
         await _closeTask;
         await _activeAction;
         await _lan.DisposeAsync();
@@ -265,7 +285,11 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
                 "invalid_port" or "invalid_listener" => "请检查连接设置中的 IP 地址和端口（1024—65535）。",
                 "invalid_endpoint" => "请填写有效的 HTTPS 连接地址。",
                 "invalid_tailscale_listener" or "invalid_tailscale_endpoint" => "请检查 Tailscale IP 地址, 或关闭 Tailscale 后保存.",
-                "relay_token_missing" => "请填写有效的电脑端中继凭据, 或关闭中继后保存.",
+                "relay_token_missing" => "请先使用 WebUI 六位注册码注册中继, 或关闭中继后保存.",
+                "invalid_relay_code" => "请输入 WebUI 生成的六位数字注册码.",
+                "relay_not_registered" => "请先注册中继并启用手机控制.",
+                "relay_pairing_limited" => "生成配对码过于频繁, 请稍后再试.",
+                _ when exception is RelayApiException => "中继请求未成功, 请检查注册码是否有效以及中继连接状态.",
                 _ when exception is OperationCanceledException => "配对已停止，可重新开始连接。",
                 _ => "操作未完成，请检查网络和连接设置后重试。"
             });
@@ -340,7 +364,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
             ? "未识别到可用局域网. 请连接 Wi-Fi 或以太网后刷新, 或在高级设置中手动配置."
             : $"{(automatic ? "自动选择" : "自定义网络")}: {choice?.Name ?? _listen.Text.Trim()}\n访问地址: {_endpoint.Text.Trim()}";
     }
-    private async Task SaveAsync()
+    private RemoteSettings ReadSettings()
     {
         if (_enabled.IsChecked == true && _automaticNetwork.IsChecked == true)
         {
@@ -348,14 +372,23 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
             if (_detectedLan is null) throw new InvalidOperationException("no_lan_network");
         }
         if (!int.TryParse(_port.Text, out var port)) throw new ArgumentException("invalid_port");
-        var secret = string.IsNullOrWhiteSpace(_relayToken.Password) ? _manager.Settings.ProtectedRelayToken : _manager.ProtectedRelayToken(_relayToken.Password);
+        var unchangedRelay = _relay.Text.Trim().TrimEnd('/') == _manager.Settings.RelayUrl?.TrimEnd('/');
+        var secret = string.IsNullOrWhiteSpace(_relayToken.Password) ? unchangedRelay ? _manager.Settings.ProtectedRelayToken : null : _manager.ProtectedRelayToken(_relayToken.Password);
         var settings = new RemoteSettings(_enabled.IsChecked == true, _listen.Text.Trim(), port, _endpoint.Text.Trim(),
             string.IsNullOrWhiteSpace(_relay.Text) ? null : _relay.Text.Trim(), secret,
             string.IsNullOrWhiteSpace(_tailscaleEndpoint.Text) ? null : _tailscaleEndpoint.Text.Trim(),
             string.IsNullOrWhiteSpace(_tailscaleListen.Text) ? null : _tailscaleListen.Text.Trim(),
             AutomaticNetwork: _automaticNetwork.IsChecked == true,
             TailscaleEnabled: _tailscaleEnabled.IsChecked == true, RelayEnabled: _relayEnabled.IsChecked == true);
-        settings.Validate(); _sessionOpen = false;
+        settings.Validate();
+        return settings;
+    }
+    private async Task SaveAsync()
+    {
+        var settings = ReadSettings();
+        CancelRelayCodeInView();
+        await _relayCleanup;
+        _sessionOpen = false;
         var generation = Interlocked.Increment(ref _pairGeneration);
         await _lan.StopAsync(); ClearPairing();
         if (_closed || generation != Interlocked.Read(ref _pairGeneration)) return;
@@ -365,6 +398,74 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         if (_manager.Running && _pairingVisible) await StartPairingAsync();
         else if (_manager.Running) Notice("连接设置已保存，点击“连接手机”显示配对码。", transient: true);
         else Notice("手机控制已关闭，已授权的手机仍保留。", transient: true);
+    }
+    private async Task RegisterRelayAsync()
+    {
+        var code = _relayRegistrationCode.Password;
+        if (!DeviceSecurity.IsSixDigitCode(code)) throw new ArgumentException("invalid_relay_code");
+        var settings = ReadSettings() with { RelayEnabled = true };
+        CancelRelayCodeInView(); await _relayCleanup;
+        await _lan.StopAsync(); ClearPairing();
+        try { await _manager.RegisterRelayAsync(settings, code); }
+        finally { _relayRegistrationCode.Clear(); }
+        if (!_closed)
+        {
+            LoadSavedSettings(); _relayToken.Clear();
+            Notice("已注册到中继. 已配对手机可在局域网自动获取中继配置.", transient: true);
+        }
+    }
+    private async Task GenerateRelayCodeAsync()
+    {
+        CancelRelayCodeInView(); await _relayCleanup;
+        if (_closed || !_settingsVisible) return;
+        var cancellation = new CancellationTokenSource();
+        _relayCodeCancellation = cancellation;
+        try
+        {
+            var code = await _manager.BeginRelayPairingAsync(cancellation.Token);
+            if (_closed || !_settingsVisible || cancellation.IsCancellationRequested)
+            {
+                await _manager.CancelRelayPairingAsync(); return;
+            }
+            _currentRelayCode = code;
+            RenderRelayCode();
+        }
+        finally
+        {
+            if (ReferenceEquals(_relayCodeCancellation, cancellation)) _relayCodeCancellation = null;
+            cancellation.Dispose();
+        }
+    }
+    private async Task CancelRelayCodeAsync()
+    {
+        CancelRelayCodeInView(); await _relayCleanup;
+        if (!_closed) Notice("Relay 配对已取消.", transient: true);
+    }
+    private void CancelRelayCodeInView()
+    {
+        var active = _relayCodeCancellation is not null || _currentRelayCode is not null || _manager.Security.RelayPairingActive;
+        _relayCodeCancellation?.Cancel();
+        _currentRelayCode = null;
+        _relayCodeText.Text = ""; _relayCodeInfo.Text = "";
+        if (active) _relayCleanup = _manager.CancelRelayPairingAsync();
+    }
+    private void RenderRelayCode()
+    {
+        if (_currentRelayCode is { } code && _settingsVisible && _manager.Security.RelayPairingActive)
+        {
+            var seconds = Math.Max(0, (int)(code.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds);
+            _relayCodeText.Text = code.Code[..3] + " " + code.Code[3..];
+            _relayCodeInfo.Text = $"手机 Relay 配对码, 剩余 {seconds / 60}:{seconds % 60:00}. 仅使用一次.";
+        }
+        else
+        {
+            _relayCodeText.Text = "";
+            if (_currentRelayCode is not null)
+            {
+                _currentRelayCode = null; _relayCodeInfo.Text = "配对码已使用或已失效, 可重新生成.";
+                RefreshClients();
+            }
+        }
     }
     private bool IsLanConfiguration() => IPAddress.TryParse(new Uri(_manager.Settings.PublicEndpoint).Host, out var address) && LocalNetworkChoices.Eligible(address, false);
     private bool Handshake => _lan.Status is "authenticating" or "sending-bundle" or "awaiting-android" or "connecting";
@@ -415,6 +516,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private void RenderPairing()
     {
         if (_closed) return;
+        RenderRelayCode();
         if (!_successCleanup && (_sessionOpen || _currentBundle is not null) && _manager.Security.Clients.Count > _knownClients)
         {
             _successCleanup = true; _sessionOpen = false; ClearPairing(); RefreshClients();
@@ -463,15 +565,18 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _configuration.IsEnabled = ready;
         _primary.IsEnabled = ready && _manager.Running;
         _copy.IsEnabled = ready && _manager.Running;
+        _generateRelayCode.IsEnabled = ready && _manager.Running && _manager.Settings.UseRelay;
+        _cancelRelayCode.IsEnabled = ready && _currentRelayCode is not null;
         _revoke.IsEnabled = ready && _clients.SelectedItem is ClientItem;
     }
     private void SessionSwitched(object sender, SessionSwitchEventArgs args)
     {
         if (args.Reason != SessionSwitchReason.SessionLock) return;
+        _relayCleanup = _manager.CancelRelayPairingAsync();
         _sessionOpen = false; Interlocked.Increment(ref _pairGeneration); _lan.Cancel(); _manager.Security.CancelPairing();
         if (!_closed && !_owner.Dispatcher.HasShutdownStarted) _owner.Dispatcher.BeginInvoke(new Action(async () =>
         {
-            _relayToken.Clear(); await ClosePairingAsync();
+            CancelRelayCodeInView(); _relayToken.Clear(); _relayRegistrationCode.Clear(); await ClosePairingAsync();
         }));
     }
     private async Task FinishQrPairingAsync()

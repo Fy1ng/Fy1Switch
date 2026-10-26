@@ -19,6 +19,7 @@ object StateCodec {
                     .put("endpoint", profile.endpoint).put("certificatePin", profile.certificatePin)
                     .put("tailscaleEndpoint", profile.tailscaleEndpoint ?: JSONObject.NULL)
                     .put("autoLearnTailscale", profile.autoLearnTailscale)
+                    .put("autoLearnRelay", profile.autoLearnRelay)
                     .put("deviceToken", profile.deviceToken)
                     .put("relay", profile.relay?.let {
                         JSONObject().put("endpoint", it.endpoint).put("controllerToken", it.controllerToken)
@@ -45,6 +46,7 @@ object StateCodec {
                 },
                 device.stringOrNull("tailscaleEndpoint")?.let(Protocol::endpoint),
                 if (device.has("autoLearnTailscale")) device.get("autoLearnTailscale").also { require(it is Boolean) } as Boolean else true,
+                if (device.has("autoLearnRelay")) device.get("autoLearnRelay").also { require(it is Boolean) } as Boolean else true,
             )
             val status = device.objectOrNull("status")?.let(Protocol::status)
             require(status == null || status.deviceId == profile.deviceId)
