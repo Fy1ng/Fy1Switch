@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -30,7 +29,6 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private Task _activeAction = Task.CompletedTask;
     private long _visibilityGeneration;
     private readonly LanPairingCoordinator _lan;
-    private readonly CheckBox _enabled = new() { Content = "启用手机控制", Margin = new Thickness(0, 8, 0, 8) };
     private readonly CheckBox _automaticNetwork = new() { Content = "自动选择局域网", Margin = new Thickness(0, 8, 0, 8) };
     private readonly CheckBox _tailscaleEnabled = new() { Content = "启用 Tailscale", Margin = new Thickness(0, 8, 0, 8) };
     private readonly CheckBox _relayEnabled = new() { Content = "启用中继", Margin = new Thickness(0, 8, 0, 8) };
@@ -50,19 +48,24 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private readonly TextBlock _codeLabel = Text("配对码", 12);
     private readonly TextBlock _code = new() { FontSize = 30, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
     private readonly ListBox _clients = new() { MinHeight = 54, MaxHeight = 170, ToolTip = "显示授权时间, 不表示手机当前在线." };
-    private readonly TextBlock _clientsEmpty = SettingsUi.Hint("尚未绑定手机. 点击连接手机开始配对.");
+    private readonly TextBlock _clientsEmpty = SettingsUi.Hint("尚未绑定手机. 请返回主页面点击连接手机.");
     private readonly StackPanel _configuration = new();
     private readonly StackPanel _tailscaleFields = new() { Margin = new Thickness(26, 8, 0, 0) };
     private readonly StackPanel _relayFields = new() { Margin = new Thickness(26, 8, 0, 0) };
     private readonly Expander _advanced = new();
     private readonly List<Button> _actionButtons = new();
-    private readonly Button _primary, _copy, _revoke;
+    private readonly Button _copy, _revoke;
     private IReadOnlyList<LocalNetworkChoice> _networkChoices = Array.Empty<LocalNetworkChoice>();
     private LocalNetworkChoice? _detectedLan;
     private bool _updatingNetwork, _endpointGenerated;
     private readonly Image _qr = new() { Width = 220, Height = 220, Visibility = Visibility.Collapsed };
     private readonly Border _qrFrame;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(650) };
+    private bool _loadingSettings = true, _savePending, _autoSaving;
+    private long _settingsRevision;
+    private string? _settingsFeedback;
+    private Task _settingsHideTask = Task.CompletedTask;
     private PairBundle? _currentBundle;
     private bool _busy, _stopping, _closed, _sessionOpen, _successCleanup;
     private int _knownClients;
@@ -91,9 +94,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         PairingContent = pairing;
 
         var remote = new StackPanel();
-        _enabled.Margin = new Thickness(8, 0, 0, 0);
-        _enabled.FontSize = 12;
-        remote.Children.Add(SettingsUi.Heading("远程控制", AppIconKind.Phone, _enabled));
+        remote.Children.Add(SettingsUi.Heading("远程控制", AppIconKind.Phone));
         var devicesLabel = SettingsUi.Label("已绑定设备", 12, secondary: true);
         devicesLabel.Margin = new Thickness(0, 14, 0, 10);
         remote.Children.Add(devicesLabel);
@@ -142,17 +143,6 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _relayFields.Children.Add(_relayCodeText); _relayFields.Children.Add(_relayCodeInfo);
         _relayFields.Children.Add(SettingsUi.Hint("接入码由中继 WebUI 生成. 请只连接可信的中继服务."));
         remote.Children.Add(_relayFields);
-        remote.Children.Add(SettingsUi.Separator());
-        var actions = new WrapPanel();
-        var save = AddButton(actions, "保存连接设置", SaveAsync, AppIconKind.Save);
-        SettingsUi.Button(save, primary: true);
-        save.Margin = new Thickness(0, 0, 8, 6);
-        _primary = AddButton(actions, "连接手机", () =>
-        {
-            _owner.Dispatcher.BeginInvoke(new Action(() => { if (!_closed) PairingRequested?.Invoke(); }));
-            return Task.CompletedTask;
-        }, AppIconKind.Phone);
-        remote.Children.Add(actions);
         _status.FontSize = 12;
         _status.Margin = new Thickness(0, 6, 0, 0);
         _status.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.SecondaryBrush);
@@ -178,12 +168,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _copy = AddButton(advanced, "复制备用配对信息", CopyPairingAsync, AppIconKind.Copy);
         _copy.Margin = new Thickness(0, 12, 0, 0);
         _copy.ToolTip = "用于手机添加电脑时粘贴. 配对信息包含一次性凭据, 请勿公开分享.";
-        var advancedHeading = new StackPanel { Orientation = Orientation.Horizontal };
-        var expanded = new CheckBox { IsHitTestVisible = false, Focusable = false, Margin = new Thickness(0, 0, 9, 0), VerticalAlignment = VerticalAlignment.Center };
-        expanded.SetBinding(ToggleButton.IsCheckedProperty, new Binding(nameof(Expander.IsExpanded)) { Source = _advanced });
-        advancedHeading.Children.Add(expanded);
-        advancedHeading.Children.Add(SettingsUi.Label("高级设置", 16, bold: true));
-        _advanced.Header = advancedHeading;
+        _advanced.Header = SettingsUi.Label("高级设置", 16, bold: true);
         _advanced.Content = advanced;
         _advanced.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.Expander");
         System.Windows.Automation.AutomationProperties.SetName(_advanced, "高级设置");
@@ -198,6 +183,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
             {
                 _endpointGenerated = true;
                 SetLanAddress(choice.Address);
+                QueueSettingsSave();
             }
         };
         _listen.TextChanged += (_, _) => { if (!_updatingNetwork) { UpdateGeneratedEndpoints(); UpdateNetworkSummary(); } };
@@ -209,6 +195,16 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _relayEnabled.Checked += (_, _) => UpdateOptionalForms();
         _relayEnabled.Unchecked += (_, _) => { CancelRelayCodeInView(); UpdateOptionalForms(); };
         _relay.TextChanged += (_, _) => { if (_currentRelayCode is not null && _relay.Text.Trim().TrimEnd('/') != _manager.Settings.RelayUrl?.TrimEnd('/')) CancelRelayCodeInView(); };
+        foreach (var input in new[] { _listen, _port, _endpoint, _tailscaleListen, _relay })
+            input.TextChanged += (_, _) => QueueSettingsSave();
+        foreach (var option in new[] { _automaticNetwork, _tailscaleEnabled, _relayEnabled })
+        {
+            option.Checked += (_, _) => QueueSettingsSave();
+            option.Unchecked += (_, _) => QueueSettingsSave();
+        }
+        _relayToken.PasswordChanged += (_, _) => QueueSettingsSave();
+        _saveTimer.Tick += async (_, _) => await FlushSettingsAsync();
+        _loadingSettings = false;
         UpdateOptionalForms();
         _clients.SelectionChanged += (_, _) => RefreshActions();
         RenderPairing();
@@ -219,18 +215,19 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     internal FrameworkElement PairingContent { get; }
     internal FrameworkElement SettingsContent { get; }
     internal event Action? SettingsRequested;
-    internal event Action? PairingRequested;
 
     internal async Task OpenPairingAsync()
     {
         if (_closed || _pairingVisible) return;
         var generation = Interlocked.Increment(ref _visibilityGeneration);
         await _closeTask;
+        await _settingsHideTask;
+        await FlushSettingsAsync();
         await _activeAction;
         if (_closed || _pairingVisible || generation != Interlocked.Read(ref _visibilityGeneration)) return;
         if (!_manager.Running)
         {
-            Notice("请先启用手机控制并保存连接设置，然后点击“连接手机”。");
+            Notice("手机控制未能启动, 请检查连接地址和端口.");
             RenderPairing(); SettingsRequested?.Invoke(); return;
         }
         _pairingVisible = true; _notice = null; _timer.Start(); RenderPairing();
@@ -254,9 +251,9 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         if (visible) { LoadNetworks(); RefreshClients(); _timer.Start(); }
         else
         {
-            _relayToken.Clear();
             _relayRegistrationCode.Clear();
             CancelRelayCodeInView();
+            _settingsHideTask = FinishSettingsHideAsync();
             if (!_pairingVisible)
             {
                 _timer.Stop(); _manager.Security.CancelPairing(); ClearPairing();
@@ -267,19 +264,29 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
 
     private void LoadSavedSettings()
     {
-        var saved = _manager.Settings;
-        _enabled.IsChecked = saved.Enabled; _listen.Text = saved.ListenAddress; _port.Text = saved.Port.ToString();
-        _endpoint.Text = saved.PublicEndpoint; _relay.Text = saved.RelayUrl ?? "";
-        _tailscaleListen.Text = saved.TailscaleListenAddress ?? ""; _tailscaleEndpoint.Text = saved.TailscaleEndpoint ?? "";
-        _automaticNetwork.IsChecked = saved.AutomaticNetwork ??
-            (saved.ListenAddress == "127.0.0.1" && saved.PublicEndpoint == Endpoint(saved.ListenAddress, saved.Port));
-        _endpointGenerated = saved.PublicEndpoint == Endpoint(saved.ListenAddress, saved.Port);
-        _tailscaleEnabled.IsChecked = saved.UseTailscale; _relayEnabled.IsChecked = saved.UseRelay;
+        var loading = _loadingSettings;
+        _loadingSettings = true;
+        try
+        {
+            var saved = _manager.Settings;
+            _listen.Text = saved.ListenAddress; _port.Text = saved.Port.ToString();
+            _endpoint.Text = saved.PublicEndpoint; _relay.Text = saved.RelayUrl ?? "";
+            _tailscaleListen.Text = saved.TailscaleListenAddress ?? ""; _tailscaleEndpoint.Text = saved.TailscaleEndpoint ?? "";
+            _automaticNetwork.IsChecked = saved.AutomaticNetwork ??
+                (saved.ListenAddress == "127.0.0.1" && saved.PublicEndpoint == Endpoint(saved.ListenAddress, saved.Port));
+            _endpointGenerated = saved.PublicEndpoint == Endpoint(saved.ListenAddress, saved.Port);
+            _tailscaleEnabled.IsChecked = saved.UseTailscale; _relayEnabled.IsChecked = saved.UseRelay;
+        }
+        finally { _loadingSettings = loading; }
     }
 
     public async ValueTask DisposeAsync()
     {
         if (_closed) return;
+        _saveTimer.Stop();
+        await _closeTask;
+        await FlushSettingsAsync();
+        _saveTimer.Stop();
         _closed = true; _pairingVisible = false; _sessionOpen = false; Interlocked.Increment(ref _pairGeneration); _timer.Stop();
         SystemEvents.SessionSwitch -= SessionSwitched; _lan.Changed -= LanChanged;
         _lan.Cancel(); _manager.Security.CancelPairing(); ClearPairing(); _relayToken.Clear(); _relayRegistrationCode.Clear();
@@ -287,6 +294,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         await _relayCleanup;
         await _closeTask;
         await _activeAction;
+        await _settingsHideTask;
         await _lan.DisposeAsync();
     }
     private static TextBlock Text(string value, double size = 14, bool bold = false) => new()
@@ -327,13 +335,13 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
             if (!_closed) Notice(exception.Message switch
             {
                 "select_lan_address" or "no_lan_network" => "未识别到可用的局域网, 请连接 Wi-Fi 或以太网后刷新, 或在高级设置中手动配置.",
-                "remote_disabled" => "请先启用手机控制。",
+                "remote_disabled" => "手机控制未能启动, 请检查连接地址和端口.",
                 "invalid_port" or "invalid_listener" => "请检查连接设置中的 IP 地址和端口（1024—65535）。",
                 "invalid_endpoint" => "请填写有效的 HTTPS 连接地址。",
-                "invalid_tailscale_listener" or "invalid_tailscale_endpoint" => "请检查 Tailscale IP 地址, 或关闭 Tailscale 后保存.",
-                "relay_token_missing" => "请先使用 WebUI 六位注册码注册中继, 或关闭中继后保存.",
+                "invalid_tailscale_listener" or "invalid_tailscale_endpoint" => "请检查 Tailscale IP 地址, 或关闭 Tailscale.",
+                "relay_token_missing" => "请填写接入码并注册到中继, 或关闭中继.",
                 "invalid_relay_code" => "请输入 WebUI 生成的六位数字注册码.",
-                "relay_not_registered" => "请先注册中继并启用手机控制.",
+                "relay_not_registered" => "请先注册到中继.",
                 "relay_pairing_limited" => "生成配对码过于频繁, 请稍后再试.",
                 _ when exception is RelayApiException => "中继请求未成功, 请检查注册码是否有效以及中继连接状态.",
                 _ when exception is OperationCanceledException => "配对已停止，可重新开始连接。",
@@ -361,6 +369,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         }
         FillTailscale();
         UpdateNetworkSummary();
+        QueueSettingsSave();
     }
     private static string Endpoint(string address, int port) => new UriBuilder("https", address, port).Uri.GetLeftPart(UriPartial.Authority);
     private void SetLanAddress(string address)
@@ -394,7 +403,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         UpdateGeneratedEndpoints();
         _tailscaleStatus.Text = choice is null
             ? "未检测到 Tailscale 网络. 请连接 Tailscale 后重新检测, 或手动填写 IP."
-            : $"已检测到: {choice.Name} / {choice.Address}. 保存后应用.";
+            : $"已检测到: {choice.Name} / {choice.Address}.";
     }
     private void UpdateOptionalForms()
     {
@@ -412,15 +421,10 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     }
     private RemoteSettings ReadSettings()
     {
-        if (_enabled.IsChecked == true && _automaticNetwork.IsChecked == true)
-        {
-            LoadNetworks();
-            if (_detectedLan is null) throw new InvalidOperationException("no_lan_network");
-        }
         if (!int.TryParse(_port.Text, out var port)) throw new ArgumentException("invalid_port");
         var unchangedRelay = _relay.Text.Trim().TrimEnd('/') == _manager.Settings.RelayUrl?.TrimEnd('/');
         var secret = string.IsNullOrWhiteSpace(_relayToken.Password) ? unchangedRelay ? _manager.Settings.ProtectedRelayToken : null : _manager.ProtectedRelayToken(_relayToken.Password);
-        var settings = new RemoteSettings(_enabled.IsChecked == true, _listen.Text.Trim(), port, _endpoint.Text.Trim(),
+        var settings = new RemoteSettings(true, _listen.Text.Trim(), port, _endpoint.Text.Trim(),
             string.IsNullOrWhiteSpace(_relay.Text) ? null : _relay.Text.Trim(), secret,
             string.IsNullOrWhiteSpace(_tailscaleEndpoint.Text) ? null : _tailscaleEndpoint.Text.Trim(),
             string.IsNullOrWhiteSpace(_tailscaleListen.Text) ? null : _tailscaleListen.Text.Trim(),
@@ -429,21 +433,104 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         settings.Validate();
         return settings;
     }
-    private async Task SaveAsync()
+    private void QueueSettingsSave()
     {
-        var settings = ReadSettings();
-        CancelRelayCodeInView();
-        await _relayCleanup;
-        _sessionOpen = false;
-        var generation = Interlocked.Increment(ref _pairGeneration);
-        await _lan.StopAsync(); ClearPairing();
-        if (_closed || generation != Interlocked.Read(ref _pairGeneration)) return;
-        await _manager.ApplyAsync(settings);
-        if (_closed || generation != Interlocked.Read(ref _pairGeneration)) return;
-        _relayToken.Clear();
-        if (_manager.Running && _pairingVisible) await StartPairingAsync();
-        else if (_manager.Running) Notice("连接设置已保存，点击“连接手机”显示配对码。", transient: true);
-        else Notice("手机控制已关闭，已授权的手机仍保留。", transient: true);
+        if (_closed || _loadingSettings || _updatingNetwork) return;
+        _savePending = true;
+        _settingsRevision++;
+        _notice = null; _noticeUntil = null;
+        _settingsFeedback = "连接设置将在停止输入后自动保存.";
+        _saveTimer.Stop(); _saveTimer.Start();
+        RenderPairing();
+    }
+    internal async Task FlushSettingsAsync()
+    {
+        _saveTimer.Stop();
+        await _activeAction;
+        if (_closed || !_savePending) return;
+        if (_busy || _stopping) { _saveTimer.Start(); return; }
+        RemoteSettings settings;
+        try
+        {
+            settings = ReadSettings();
+            if (settings.UseRelay && string.IsNullOrWhiteSpace(settings.ProtectedRelayToken))
+                throw new ArgumentException("relay_token_missing");
+        }
+        catch (Exception exception)
+        {
+            _settingsFeedback = exception.Message switch
+            {
+                "invalid_port" or "invalid_listener" => "尚未保存: 请填写有效 IP 地址及 1024-65535 范围内的端口.",
+                "invalid_tailscale_listener" or "invalid_tailscale_endpoint" => "尚未保存: 请填写有效的 Tailscale IP 地址.",
+                "relay_token_missing" => "请填写接入码并点击注册到中继. 已有连接保持运行.",
+                _ => "尚未保存: 请填写完整有效的 HTTPS 地址. 已有连接保持运行."
+            };
+            RenderPairing(); return;
+        }
+        if (settings == _manager.Settings && _manager.Running)
+        {
+            _savePending = false; _settingsFeedback = "连接设置已自动保存.";
+            RenderPairing(); return;
+        }
+        var revision = _settingsRevision;
+        _activeAction = AutoSaveSettingsAsync(settings, revision);
+        await _activeAction;
+    }
+    private async Task AutoSaveSettingsAsync(RemoteSettings settings, long revision)
+    {
+        _autoSaving = _busy = true;
+        _settingsFeedback = "正在自动保存连接设置...";
+        RenderPairing();
+        var previous = _manager.Settings;
+        var previouslyRunning = _manager.Running;
+        var legacyToken = _relayToken.Password;
+        try
+        {
+            CancelRelayCodeInView(); await _relayCleanup;
+            await _lan.StopAsync(); ClearPairing(); _sessionOpen = false;
+            try { await _manager.ApplyAsync(settings); }
+            catch
+            {
+                // Failed listener changes must not take a working connection away.
+                if (_manager.Settings != previous || (previouslyRunning && !_manager.Running))
+                {
+                    try { await _manager.ApplyAsync(previous, persist: false); }
+                    catch { _settingsFeedback = "自动保存失败, 恢复连接也未成功. 请检查地址和端口."; }
+                }
+                throw;
+            }
+            if (revision == _settingsRevision) _savePending = false;
+            if (_relayToken.Password == legacyToken) ClearLegacyToken();
+            _settingsFeedback = "连接设置已自动保存.";
+            if (_pairingVisible) await StartPairingAsync();
+        }
+        catch
+        {
+            _settingsFeedback = _manager.Running
+                ? "自动保存失败, 已保留原有连接. 请检查地址和端口后修改重试."
+                : "自动保存失败, 手机控制未能启动. 请检查地址和端口后修改重试.";
+        }
+        finally
+        {
+            _autoSaving = _busy = false;
+            if (!_closed)
+            {
+                if (revision != _settingsRevision) { _saveTimer.Stop(); _saveTimer.Start(); }
+                RenderPairing();
+            }
+        }
+    }
+    private void ClearLegacyToken()
+    {
+        var loading = _loadingSettings;
+        _loadingSettings = true;
+        try { _relayToken.Clear(); }
+        finally { _loadingSettings = loading; }
+    }
+    private async Task FinishSettingsHideAsync()
+    {
+        await FlushSettingsAsync();
+        if (!_settingsVisible) ClearLegacyToken();
     }
     private async Task RegisterRelayAsync()
     {
@@ -456,7 +543,9 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         finally { _relayRegistrationCode.Clear(); }
         if (!_closed)
         {
-            LoadSavedSettings(); _relayToken.Clear();
+            _saveTimer.Stop(); _savePending = false;
+            LoadSavedSettings(); ClearLegacyToken();
+            _settingsFeedback = "连接设置已自动保存.";
             Notice("已注册到中继. 已配对手机可在局域网自动获取中继配置.", transient: true);
         }
     }
@@ -596,9 +685,10 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
             _ => hasBundle ? $"请在手机扫描二维码，剩余 {remaining / 60}:{remaining % 60:00}。"
                 : _busy ? "正在生成配对码……"
                 : _manager.Running ? "关闭后可重新点击“连接手机”配对。"
-                : "请先在设置中启用手机控制。"
+                : "手机控制未能启动, 请检查连接地址和端口."
         });
-        _status.Text = _busy ? "正在处理，请稍候……" : _notice ?? (_manager.Running ? "手机控制已启用。" : "手机控制未启用. 启用并保存后即可连接手机.");
+        _status.Text = _busy && !_autoSaving ? "正在处理, 请稍候..." : _notice ?? _settingsFeedback ??
+            (_manager.Running ? "手机控制已运行. 连接参数修改后自动保存." : "手机控制未能启动, 请检查连接地址和端口.");
         var tailscale = _manager.TailscaleStatus switch { "listening" => "已启用", "unavailable" => "暂不可用", _ => "未启用" };
         _status.ToolTip = $"当前地址: {_manager.Settings.PublicEndpoint}\nTailscale: {tailscale}";
         _relayCodeText.Visibility = string.IsNullOrEmpty(_relayCodeText.Text) ? Visibility.Collapsed : Visibility.Visible;
@@ -610,10 +700,9 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         if (_closed) return;
         var ready = !_busy && !_stopping && !Handshake;
         foreach (var button in _actionButtons) button.IsEnabled = ready;
-        _configuration.IsEnabled = ready;
-        _primary.IsEnabled = ready && _manager.Running;
-        _copy.IsEnabled = ready && _manager.Running;
-        _generateRelayCode.IsEnabled = ready && _manager.Running && _manager.Settings.UseRelay;
+        _configuration.IsEnabled = (!_busy || _autoSaving) && !_stopping && !Handshake;
+        _copy.IsEnabled = ready && _manager.Running && !_savePending;
+        _generateRelayCode.IsEnabled = ready && _manager.Running && _manager.Settings.UseRelay && !_savePending;
         _cancelRelayCode.IsEnabled = ready && _currentRelayCode is not null;
         _cancelRelayCode.Visibility = _currentRelayCode is not null ? Visibility.Visible : Visibility.Collapsed;
         _revoke.IsEnabled = ready && _clients.SelectedItem is ClientItem;

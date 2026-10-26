@@ -139,7 +139,25 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             try
             {
                 _remote = new RemoteManager(_controller, (await _controller.GetSnapshotAsync()).DeviceId, Path.Combine(options.DataDirectory, "remote"));
-                if (_remote.Settings.Enabled) await _remote.ApplyAsync(_remote.Settings, persist: false);
+                RemoteSettings settings;
+                if (options.Simulation)
+                {
+                    // Simulation never binds the user's LAN or contacts saved optional services.
+                    var reservation = new TcpListener(IPAddress.Loopback, 0);
+                    reservation.Start();
+                    var port = ((IPEndPoint)reservation.LocalEndpoint).Port;
+                    reservation.Stop();
+                    settings = new RemoteSettings(true, "127.0.0.1", port, $"https://127.0.0.1:{port}",
+                        AutomaticNetwork: false, TailscaleEnabled: false, RelayEnabled: false);
+                }
+                else
+                {
+                    IReadOnlyList<LocalNetworkChoice> networks;
+                    try { networks = LocalNetworkChoices.Get(); }
+                    catch (System.Net.NetworkInformation.NetworkInformationException) { networks = Array.Empty<LocalNetworkChoice>(); }
+                    settings = RemoteStartupSettings.Prepare(_remote.Settings, networks);
+                }
+                await _remote.ApplyAsync(settings);
             }
             catch (Exception exception) { SaveHostError(exception); }
             try { AttachRemoteView(); }

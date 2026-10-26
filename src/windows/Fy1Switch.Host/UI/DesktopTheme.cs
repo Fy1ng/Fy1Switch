@@ -141,11 +141,13 @@ internal static class DesktopTheme
             <Setter Property="Padding" Value="10,6,34,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
               <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
-                  <Grid x:Name="Root">
-                    <ToggleButton x:Name="DropDownToggle" Focusable="False" ClickMode="Press"
+                  <Grid x:Name="Root" Background="Transparent">
+                    <ToggleButton x:Name="DropDownToggle" Focusable="False" FocusVisualStyle="{x:Null}" ClickMode="Press"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                   Background="{TemplateBinding Background}" Foreground="{TemplateBinding Foreground}"
                                   BorderBrush="{TemplateBinding BorderBrush}"
                                   IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
@@ -170,8 +172,9 @@ internal static class DesktopTheme
                               BorderThickness="1" CornerRadius="6" Padding="4"
                               MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                               MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                        <ScrollViewer CanContentScroll="True" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                          <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                        <ScrollViewer CanContentScroll="True" Background="Transparent" HorizontalContentAlignment="Stretch"
+                                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                          <ItemsPresenter HorizontalAlignment="Stretch" KeyboardNavigation.DirectionalNavigation="Contained"/>
                         </ScrollViewer>
                       </Border>
                     </Popup>
@@ -193,12 +196,16 @@ internal static class DesktopTheme
           </Style>
           <Style TargetType="ComboBoxItem">
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Padding" Value="8,7"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
               <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
-                  <Border x:Name="Surface" Background="Transparent" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                  <Border x:Name="Surface" Background="{TemplateBinding Background}" HorizontalAlignment="Stretch"
+                          CornerRadius="3" Padding="{TemplateBinding Padding}">
                     <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
                   </Border>
                   <ControlTemplate.Triggers>
@@ -363,9 +370,6 @@ internal static class DesktopTheme
                       <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.SettingsSelectionForegroundBrush}"/>
                       <Setter TargetName="SelectionMark" Property="Visibility" Value="Visible"/>
                     </Trigger>
-                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                      <Setter TargetName="FocusBorder" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                    </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
                       <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
                     </Trigger>
@@ -406,13 +410,14 @@ internal static class DesktopTheme
           <Style x:Key="Fy1Switch.Settings.Expander" TargetType="Expander">
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
               <Setter.Value>
                 <ControlTemplate TargetType="Expander">
                   <StackPanel>
                     <ToggleButton x:Name="HeaderToggle" FocusVisualStyle="{x:Null}"
                                   Foreground="{TemplateBinding Foreground}" Background="Transparent"
-                                  HorizontalContentAlignment="Stretch" MinHeight="32" Padding="0"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MinHeight="32" Padding="0"
                                   Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}"
                                   ContentTemplateSelector="{TemplateBinding HeaderTemplateSelector}"
                                   ContentStringFormat="{TemplateBinding HeaderStringFormat}"
@@ -438,9 +443,6 @@ internal static class DesktopTheme
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                               <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource Fy1Switch.SubtleBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                              <Setter TargetName="HeaderBorder" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
                             </Trigger>
                           </ControlTemplate.Triggers>
                         </ControlTemplate>

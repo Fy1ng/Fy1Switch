@@ -102,7 +102,6 @@ public sealed partial class MainWindow
         _pairingHost.Content = view.PairingContent;
         _remoteSettingsHost.Content = view.SettingsContent;
         view.SettingsRequested += HandleRemoteSettingsRequested;
-        view.PairingRequested += HandleRemotePairingRequested;
         UpdateRemoteSettingsVisibility();
     }
 
@@ -115,7 +114,6 @@ public sealed partial class MainWindow
         _pairingOverlay.Visibility = Visibility.Collapsed;
         _pages.IsEnabled = true;
         view.SettingsRequested -= HandleRemoteSettingsRequested;
-        view.PairingRequested -= HandleRemotePairingRequested;
         view.SetSettingsVisible(false);
         _pairingHost.Content = null;
         _remoteSettingsHost.Content = null;
@@ -224,7 +222,6 @@ public sealed partial class MainWindow
     }
 
     private void HandleRemoteSettingsRequested() => _ = ShowSettingsPageAsync();
-    private void HandleRemotePairingRequested() => _ = ShowPairingAsync();
 
     private void UpdateRemoteSettingsVisibility() => _remoteView?.SetSettingsVisible(
         !_closed && _settingsShowing && !_pairingShowing && IsVisible && WindowState != WindowState.Minimized);

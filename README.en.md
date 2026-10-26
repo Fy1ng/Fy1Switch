@@ -76,7 +76,7 @@ Keep the entire directory, including `worker/`, `cli/`, and dependency files. Th
 
 ### 2. Pair your phone
 
-1. On Windows, open Settings ("设置"), enable Phone control ("手机控制"), check the detected LAN address, and save the connection settings.
+1. Phone control starts automatically with the Windows app. Open Settings ("设置") to check the detected LAN address. Connection changes are saved automatically.
 2. Select Connect phone ("连接手机") and keep the QR code overlay open.
 3. In the Android app, open Add computer ("添加电脑"), scan the computer's QR code, then review and confirm the pairing.
 4. On the same LAN, you can also expand the nearby-computer entry, select the computer, and enter the six-digit code shown on its screen.
@@ -96,7 +96,7 @@ Pairing details expire after a short time and can only be used once. Each phone 
 
 | Route | Use case | Requirements |
 | --- | --- | --- |
-| LAN HTTPS | Phone and computer are on the same network | Enable phone control on the computer and make sure the phone can reach the selected address and port. |
+| LAN HTTPS | Phone and computer are on the same network | Keep the Windows app running and make sure the phone can reach the selected address and port. |
 | Tailscale HTTPS | Connect while away from your home network | Install and configure Tailscale separately on both devices, then enable the corresponding route in Fy1Switch. |
 | Self-hosted Relay | Use a relay as a connection route | Deploy a trusted Relay, sign in to its WebUI, and register Windows with a six-digit code. Phones authorize automatically or use a separate code for initial pairing. |
 
