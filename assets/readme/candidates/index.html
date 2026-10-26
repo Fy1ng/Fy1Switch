@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Fy1Switch | README 首屏候选</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172334;
+      --muted: #607083;
+      --line: #dce3eb;
+      --accent: #285cc5;
+      --paper: #ffffff;
+      --background: #f3f5f8;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 28px; }
+    body { margin: 0; background: var(--background); color: var(--ink); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    button { font: inherit; cursor: pointer; }
+    a:focus-visible, button:focus-visible { outline: 3px solid #7da5ff; outline-offset: 5px; }
+    .page { max-width: 1050px; margin: 0 auto; padding: 56px 26px 32px; }
+    .eyebrow { margin: 0 0 12px; color: var(--accent); font-size: 12px; font-weight: 750; letter-spacing: .14em; }
+    h1 { margin: 0; font-size: clamp(31px, 5vw, 48px); letter-spacing: -.045em; line-height: 1.2; }
+    .intro { max-width: 700px; margin: 18px 0 0; color: var(--muted); }
+    .notice { display: inline-block; margin: 18px 0 0; padding: 6px 11px; border: 1px solid #d8e3f6; border-radius: 6px; background: #edf3ff; color: #365582; font-size: 13px; }
+    .controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 30px 0 28px; }
+    .jump { display: flex; gap: 8px; }
+    .jump a { min-width: 73px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font-size: 14px; font-weight: 650; text-align: center; text-decoration: none; }
+    .jump a:hover { border-color: #9bb4d9; background: #f8fbff; }
+    .language { display: flex; align-items: center; gap: 12px; }
+    .language-label { color: var(--muted); font-size: 13px; }
+    .switch { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: #eaf0f6; }
+    .switch button { border: 0; border-radius: 6px; padding: 6px 13px; background: transparent; color: #5f6e80; font-size: 13px; }
+    .switch button[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px #1423341a; font-weight: 650; }
+    .card { margin: 0 0 26px; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); box-shadow: 0 4px 18px #17233404; }
+    .card-heading { display: flex; align-items: center; gap: 14px; padding: 22px 24px 18px; }
+    .letter { display: grid; place-items: center; flex: 0 0 42px; height: 42px; border: 1px solid #dce5f3; border-radius: 11px; background: #f0f5fd; color: #315b9c; font-size: 20px; font-weight: 750; }
+    .heading-copy { flex: 1; }
+    h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; line-height: 1.35; }
+    .subtitle { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+    .license { align-self: flex-start; padding: 3px 8px; border: 1px solid var(--line); border-radius: 5px; color: #536477; font-size: 11px; font-weight: 650; }
+    figure { margin: 0; }
+    .image-button { display: block; width: calc(100% - 32px); margin: 0 16px; padding: 0; overflow: hidden; border: 0; border-radius: 9px; background: #eff3f8; }
+    .image-button img { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 440; object-fit: contain; }
+    .image-button:hover { box-shadow: 0 0 0 2px #9cb8eb; }
+    .card-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 20px; padding: 16px 24px 21px; }
+    figcaption { color: var(--muted); font-size: 13px; }
+    .links { display: flex; gap: 16px; font-size: 12px; }
+    .footnote { margin: 30px 0 0; color: var(--muted); font-size: 13px; }
+    .footnote strong { color: #35475d; }
+    dialog { width: min(1320px, calc(100vw - 40px)); max-width: none; max-height: calc(100vh - 40px); padding: 0; overflow: auto; border: 1px solid #d9e2ec; border-radius: 15px; background: var(--paper); color: var(--ink); box-shadow: 0 20px 100px #0a152633; }
+    dialog::backdrop { background: #111d31b8; }
+    .dialog-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 18px; }
+    .dialog-top p { margin: 0; font-size: 14px; font-weight: 650; }
+    .dialog-top button { padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; background: #f7f9fc; color: var(--ink); font-size: 13px; }
+    dialog img { display: block; width: 100%; height: auto; }
+    .dialog-hint { margin: 0; padding: 9px 18px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 600px) {
+      .page { padding: 32px 14px 24px; }
+      .intro { font-size: 14px; }
+      .controls { align-items: flex-start; margin-top: 23px; }
+      .language-label { display: none; }
+      .jump a { min-width: 53px; padding: 7px 11px; }
+      .card-heading { gap: 11px; padding: 18px 16px 15px; }
+      .letter { flex-basis: 35px; height: 35px; border-radius: 9px; font-size: 18px; }
+      h2 { font-size: 17px; }
+      .subtitle { font-size: 12px; }
+      .image-button { width: calc(100% - 16px); margin: 0 8px; border-radius: 7px; }
+      .card-bottom { align-items: flex-start; flex-direction: column; padding: 13px 16px 17px; gap: 7px; }
+      .license { font-size: 10px; }
+      dialog { width: calc(100vw - 16px); max-height: calc(100vh - 32px); }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <p class="eyebrow">FY1SWITCH / README ART DIRECTION</p>
+      <h1>三套首屏, 选你喜欢的一版.</h1>
+      <p class="intro">相同的文案和画布, 三种开源素材风格. 从设备质感, 配色和项目气质来比较, 点击图片可放大查看.</p>
+      <p class="notice">候选预览, 正式 README 尚未替换.</p>
+    </header>
+
+    <div class="controls">
+      <nav class="jump" aria-label="候选导航">
+        <a href="#candidate-a">A 方案</a>
+        <a href="#candidate-b">B 方案</a>
+        <a href="#candidate-c">C 方案</a>
+      </nav>
+      <div class="language">
+        <span class="language-label">首屏文案</span>
+        <div class="switch" role="group" aria-label="首屏图片语言">
+          <button type="button" data-language="zh-CN" aria-pressed="true">中文</button>
+          <button type="button" data-language="en" aria-pressed="false">English</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="card" id="candidate-a" aria-labelledby="title-a">
+      <div class="card-heading">
+        <span class="letter" aria-hidden="true">A</span>
+        <div class="heading-copy">
+          <h2 id="title-a">3dicons v1</h2>
+          <p class="subtitle">渐变设备 / 立体材质 / 成套电脑与手机</p>
+        </div>
+        <span class="license">CC0</span>
+      </div>
+      <figure>
+        <button class="image-button" type="button" data-candidate="a" data-title="A / 3dicons v1" aria-label="放大 A 方案, 3dicons v1 中文首屏">
+          <img src="hero-a.zh-CN.png" width="1200" height="440" alt="A 方案: 采用 3dicons v1 渐变设备素材的中文首屏">
+        </button>
+        <div class="card-bottom">
+          <figcaption>重点看电脑与手机的立体质感, 以及渐变色的存在感.</figcaption>
+          <div class="links">
+            <a href="https://github.com/realvjy/3dicons" target="_blank" rel="noopener noreferrer">素材仓库</a>
+            <a href="https://github.com/realvjy/3dicons/blob/develop/LICENSE" target="_blank" rel="noopener noreferrer">CC0 许可</a>
+          </div>
+        </div>
+      </figure>
+    </section>
+
+    <section class="card" id="candidate-b" aria-labelledby="title-b">
+      <div class="card-heading">
+        <span class="letter" aria-hidden="true">B</span>
+        <div class="heading-copy">
+          <h2 id="title-b">Microsoft Fluent Emoji</h2>
+          <p class="subtitle">微软设备风格 / 柔和立体感 / 清晰轮廓</p>
+        </div>
+        <span class="license">MIT</span>
+      </div>
+      <figure>
+        <button class="image-button" type="button" data-candidate="b" data-title="B / Microsoft Fluent Emoji" aria-label="放大 B 方案, Microsoft Fluent Emoji 中文首屏">
+          <img src="hero-b.zh-CN.png" width="1200" height="440" loading="lazy" alt="B 方案: 采用 Microsoft Fluent Emoji 3D 设备素材的中文首屏">
+        </button>
+        <div class="card-bottom">
+          <figcaption>重点看与 Windows 应用及现有图标的协调程度.</figcaption>
+          <div class="links">
+            <a href="https://github.com/microsoft/fluentui-emoji" target="_blank" rel="noopener noreferrer">素材仓库</a>
+            <a href="https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT 许可</a>
+          </div>
+        </div>
+      </figure>
+    </section>
+
+    <section class="card" id="candidate-c" aria-labelledby="title-c">
+      <div class="card-heading">
+        <span class="letter" aria-hidden="true">C</span>
+        <div class="heading-copy">
+          <h2 id="title-c">illlustrations</h2>
+          <p class="subtitle">卡通桌面 / 场景氛围 / 插画感</p>
+        </div>
+        <span class="license">MIT</span>
+      </div>
+      <figure>
+        <button class="image-button" type="button" data-candidate="c" data-title="C / illlustrations" aria-label="放大 C 方案, illlustrations 中文首屏">
+          <img src="hero-c.zh-CN.png" width="1200" height="440" loading="lazy" alt="C 方案: 采用 illlustrations 卡通桌面场景的中文首屏">
+        </button>
+        <div class="card-bottom">
+          <figcaption>重点看完整桌面场景带来的氛围和插画表现.</figcaption>
+          <div class="links">
+            <a href="https://github.com/realvjy/illlustrations" target="_blank" rel="noopener noreferrer">素材仓库</a>
+            <a href="https://github.com/realvjy/illlustrations/blob/develop/LICENSE" target="_blank" rel="noopener noreferrer">MIT 许可</a>
+          </div>
+        </div>
+      </figure>
+    </section>
+
+    <p class="footnote"><strong>选择方式:</strong> 回到聊天告诉我 A, B 或 C, 也可以指定喜欢的配色或排版细节. 切换语言只改变首屏图片, 应用图标和 README 正文不参与本轮比较.</p>
+  </main>
+
+  <dialog aria-labelledby="dialog-title">
+    <div class="dialog-top">
+      <p id="dialog-title"></p>
+      <button type="button" id="close-dialog">关闭</button>
+    </div>
+    <img id="enlarged-image" width="1200" height="440" alt="">
+    <p class="dialog-hint">按 Esc 或点击遮罩关闭.</p>
+  </dialog>
+
+  <script>
+    (() => {
+      const languageButtons = Array.from(document.querySelectorAll('[data-language]'));
+      const previews = Array.from(document.querySelectorAll('[data-candidate]'));
+      const dialog = document.querySelector('dialog');
+      const enlargedImage = document.getElementById('enlarged-image');
+      const dialogTitle = document.getElementById('dialog-title');
+      let language = 'zh-CN';
+
+      function updateLanguage(nextLanguage) {
+        language = nextLanguage;
+        const label = language === 'zh-CN' ? '中文' : '英文';
+        languageButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.language === language)));
+        previews.forEach((button) => {
+          const image = button.querySelector('img');
+          const candidate = button.dataset.candidate;
+          image.src = 'hero-' + candidate + '.' + language + '.png';
+          image.alt = button.dataset.title + ', ' + label + '首屏候选';
+          button.setAttribute('aria-label', '放大 ' + image.alt);
+        });
+      }
+
+      languageButtons.forEach((button) => button.addEventListener('click', () => updateLanguage(button.dataset.language)));
+      previews.forEach((button) => button.addEventListener('click', () => {
+        const image = button.querySelector('img');
+        enlargedImage.src = image.getAttribute('src');
+        enlargedImage.alt = image.alt;
+        dialogTitle.textContent = button.dataset.title + ' / ' + (language === 'zh-CN' ? '中文' : 'English');
+        dialog.showModal();
+      }));
+      document.getElementById('close-dialog').addEventListener('click', () => dialog.close());
+      dialog.addEventListener('click', (event) => {
+        if (event.target !== dialog) return;
+        const bounds = dialog.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+      });
+    })();
+  </script>
+</body>
+</html>

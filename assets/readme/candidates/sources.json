@@ -1,0 +1,68 @@
+{
+  "retrieved": "2026-10-26",
+  "assets": [
+    {
+      "file": "sources/3dicons-computer.png",
+      "library": "3dicons v1",
+      "license": "CC0-1.0",
+      "url": "https://3dicons.sgp1.cdn.digitaloceanspaces.com/v1/dynamic/gradient/computer-dynamic-gradient.png",
+      "sha256": "d75e01f872f4cab332f92d22acb345e547facbd08cd455751d0ad4bbdbd5a5b9"
+    },
+    {
+      "file": "sources/3dicons-mobile.png",
+      "library": "3dicons v1",
+      "license": "CC0-1.0",
+      "url": "https://3dicons.sgp1.cdn.digitaloceanspaces.com/v1/dynamic/gradient/mobile-dynamic-gradient.png",
+      "sha256": "0daccd71f98a68613afb1981900e7436ab14907ce65abd56745aa2a781d06fd9"
+    },
+    {
+      "file": "sources/3dicons.LICENSE",
+      "library": "3dicons v1",
+      "license": "CC0-1.0",
+      "url": "https://raw.githubusercontent.com/realvjy/3dicons/8884d59e68a7bae0e0e2163af5b6c2ad992c01c8/LICENSE",
+      "sha256": "36ffd9dc085d529a7e60e1276d73ae5a030b020313e6c5408593a6ae2af39673"
+    },
+    {
+      "file": "sources/fluent-computer.png",
+      "library": "Fluent Emoji",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-emoji/1ffb34c752ecf5d402f04cfb4b392c77f57c54bc/assets/Desktop%20computer/3D/desktop_computer_3d.png",
+      "sha256": "f0ec12ccf1e9a2ff83f95cd8ba85e357e401d8dcdbc6bae596d23d77be7f74da"
+    },
+    {
+      "file": "sources/fluent-mobile.png",
+      "library": "Fluent Emoji",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-emoji/1ffb34c752ecf5d402f04cfb4b392c77f57c54bc/assets/Mobile%20phone/3D/mobile_phone_3d.png",
+      "sha256": "c72cf9f888cb74cb8852679184e0dac945ed0340839c98a86c653f51e1e3504d"
+    },
+    {
+      "file": "sources/Fluent-Emoji.LICENSE",
+      "library": "Fluent Emoji",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-emoji/1ffb34c752ecf5d402f04cfb4b392c77f57c54bc/LICENSE",
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "file": "sources/illlustrations-workstation.svg",
+      "library": "illlustrations",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/realvjy/illlustrations/b6d6f3286995e6efbbf397eff21b572245c336fd/content/illlustrations/113/113-workstation.svg",
+      "sha256": "52ad230e117823dab2ee6d8131f0010636ee198b778620ec9ce0d9f11768775d"
+    },
+    {
+      "file": "sources/illlustrations-workstation.png",
+      "library": "illlustrations",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/realvjy/illlustrations/b6d6f3286995e6efbbf397eff21b572245c336fd/content/illlustrations/113/113-workstation.png",
+      "sha256": "76f65d62bbfcb5e0188938855c84672f7c20a6ddbf83cfc82503106b3ed35c0d"
+    },
+    {
+      "file": "sources/illlustrations.LICENSE",
+      "library": "illlustrations",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/realvjy/illlustrations/b6d6f3286995e6efbbf397eff21b572245c336fd/LICENSE",
+      "sha256": "b1418458e6ea8c65567ce82af3c724fb16eeaa1b29e39c7074bc4751a8d9194b"
+    }
+  ]
+}

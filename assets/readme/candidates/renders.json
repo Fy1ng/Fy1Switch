@@ -1,0 +1,26 @@
+[
+  {
+    "file": "hero-a.zh-CN.png",
+    "sha256": "b18168e4b323c9ba2375f5231736c1932c62964d1f95c928fc3bfb040bd0e461"
+  },
+  {
+    "file": "hero-a.en.png",
+    "sha256": "26df08601a521226186caf58151532296065cd6691e48edf2ff7f53bf1ea06a4"
+  },
+  {
+    "file": "hero-b.zh-CN.png",
+    "sha256": "81389b007598750c1812a10fee918f12d897ae2bf71da8baec0b6215f25f55ff"
+  },
+  {
+    "file": "hero-b.en.png",
+    "sha256": "75a4a3fad07cd5c7b415d751cd7a1e18cd93db14edaf781f039ed251215a2bcb"
+  },
+  {
+    "file": "hero-c.zh-CN.png",
+    "sha256": "2668cc62117fa6c7440e2d5c0259975fdc18b56f2b8f547b3580bd545ebc066d"
+  },
+  {
+    "file": "hero-c.en.png",
+    "sha256": "50927a17b228d4e9305b06f9b6b5ad9b975819413dde90658d19ac50e5ae5a95"
+  }
+]

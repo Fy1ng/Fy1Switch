@@ -1,0 +1,3 @@
+*.png -text
+*.svg -text
+*.LICENSE -text
