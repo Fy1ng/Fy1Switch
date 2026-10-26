@@ -1,5 +1,12 @@
 Fy1Switch Android third-party components
 
+Bouncy Castle Java 1.86 (bcprov-jdk18on) - The Legion of the Bouncy Castle Inc.
+https://www.bouncycastle.org/
+https://github.com/bcgit/bc-java
+Bouncy Castle Licence (MIT); see BouncyCastle.LICENSE.txt.
+Used for LAN short-code SRP-6a, SHA-256 and HKDF. The Android platform provides
+TLS and AES-GCM; this application does not install BC as a global JCA provider.
+
 Fluent System Icons - Microsoft Corporation, MIT
 https://github.com/microsoft/fluentui-system-icons
 Pinned source commit: 83b26348c811f072429427ff48362238656524fe

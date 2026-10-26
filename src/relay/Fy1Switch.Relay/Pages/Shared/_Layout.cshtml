@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content="@Antiforgery.GetAndStoreTokens(Context).RequestToken" />
     <title>@ViewData["Title"] - Fy1Switch Relay</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/app-icon.png" asp-append-version="true" />
     <link rel="stylesheet" href="/css/relay.css" />
     <script type="module" src="/js/relay.js"></script>
 </head>
 <body>
     <header class="site-header">
         <a class="brand" href="/" aria-label="Fy1Switch Relay 首页">
-            <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="4" width="26" height="19" rx="2" /><path d="M16 23v5m-6 0h12" /></svg>
+            <img class="brand-logo" src="/app-icon.png" asp-append-version="true" width="34" height="34" alt="" />
             <span>Fy1Switch Relay</span>
         </a>
         @if (User.Identity?.IsAuthenticated == true)

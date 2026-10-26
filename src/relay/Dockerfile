@@ -2,6 +2,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG TARGETARCH=amd64
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 WORKDIR /source
+COPY THIRD-PARTY-NOTICES.md ./
+COPY licenses/ licenses/
 COPY src/relay/Fy1Switch.Relay/ src/relay/Fy1Switch.Relay/
 COPY src/shared/Fy1Switch.Contracts/ src/shared/Fy1Switch.Contracts/
 RUN case "$TARGETARCH" in amd64) rid=linux-x64 ;; arm64) rid=linux-arm64 ;; *) exit 1 ;; esac \

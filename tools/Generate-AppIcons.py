@@ -4,6 +4,7 @@ Requires Pillow. Run from any directory with Python; all paths are repository-re
 """
 
 from pathlib import Path
+from shutil import copyfile
 
 from PIL import Image, ImageChops, ImageDraw, ImageOps
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "assets/branding/app-icon-source.png"
 WINDOWS = ROOT / "src/windows/Fy1Switch.Host/Assets"
 ANDROID = ROOT / "src/android/app/src/main/res"
+WEBUI = ROOT / "src/relay/Fy1Switch.Relay/wwwroot"
 
 
 def fitted(art: Image.Image, canvas_size: int, extent: int) -> Image.Image:
@@ -33,6 +35,8 @@ def main() -> None:
     icon = fitted(art, 256, 240)
     icon.save(WINDOWS / "App.png")
     icon.save(WINDOWS / "App.ico", sizes=[(n, n) for n in (16, 20, 24, 32, 40, 48, 64, 128, 256)])
+    WEBUI.mkdir(parents=True, exist_ok=True)
+    copyfile(WINDOWS / "App.png", WEBUI / "app-icon.png")
 
     # Keep the entire monitor inside Android's 66dp adaptive-icon safe circle.
     # Foreground canvas is 108dp at xxxhdpi. This accounts for the actual silhouette,
@@ -74,7 +78,7 @@ def main() -> None:
     output = ROOT / "artifacts/fluent-ui-20261021"
     output.mkdir(parents=True, exist_ok=True)
     preview.save(output / "application-icons.png")
-    print("Generated Windows ICO/PNG and Android density/adaptive foreground resources.")
+    print("Generated Windows ICO/PNG, WebUI logo/favicon and Android density/adaptive foreground resources.")
 
 
 if __name__ == "__main__":

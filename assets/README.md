@@ -3,7 +3,9 @@
 `branding/app-icon-source.png` is the user-approved application artwork, copied
 verbatim from the supplied PNG. It is separate from the licensed Fluent UI icons.
 Run `python tools/Generate-AppIcons.py` with Pillow to regenerate Windows ICO/PNG,
-Android density variants, adaptive foreground and Android 13 themed silhouette.
+the matching WebUI logo/favicon, Android density variants, adaptive foreground and
+Android 13 themed silhouette. WebUI `wwwroot/app-icon.png` is a byte-for-byte copy
+of the Windows `Assets/App.png`; the header and browser tab use the same artwork.
 The generated icons only fit/resize the original artwork; the adaptive foreground
 keeps the entire monitor inside the safe circle. The source retains its original
 pixels and transparency. The themed silhouette uses luminance and alpha from that

@@ -12,6 +12,8 @@ mDNS DNS-SD service type _fy1switch-pair._tcp; TXT v=1, role=windows|android, si
 
 ## Cryptography and exact wire
 
+Android uses Bouncy Castle Java `bcprov-jdk18on:1.86`, upgraded from 1.83 on 2026-10-26 for upstream security fixes. The Windows dependency is unchanged. The SRP group, evidence calculation, transcript, HKDF parameters and message schema remain unchanged; the dependency upgrade does not require pairing again. See the [1.86 release notes](https://github.com/bcgit/bc-java/blob/r1rv86/docs/releasenotes.md).
+
 Bouncy Castle SRP6Client/SRP6Server, RFC5054 3072 group, SHA256 only, no negotiation. New salt 32 bytes and ephemeral exponent for every admitted handshake. UTF8 password = exactly six ASCII digits. SRP identity = UTF8("Fy1Switch-Pair-v1/" + serverSession). A and B are unsigned big-endian exactly 384 bytes, Base64 canonical; reject zero or >=N. Salt=32 bytes; evidence M1/M2 are unsigned big-endian exactly 32 bytes, canonical Base64. Session IDs lowercase canonical UUIDs. JSON lower camel names. Unknown message types/role changes/IDs/version errors fail closed. Server session is from advertisement or manual entry; never silently replace the selected session.
 
 1. client -> server: {type:"hello",version:1,clientSession,serverSession,clientRole,A} (wire field is lowercase a).
@@ -41,3 +43,7 @@ Both platform roles cross-language, wrong six digits, leading zero, invalid A/B,
 ## 2026-10-06 verification
 
 .NET pairing tests 50/50; native discovery metadata/lifecycle tests 30/30; remote compatibility/address-choice tests 103/103; Android unit tests 76/76. Both directions of actual C# to Android JVM TCP SRP and pinned HTTPS bootstrap passed using tools/Test-ShortCode-Live.ps1. Native Windows DnsService register/browse/deregister start-stop succeeded on the selected local LAN interface; this does not prove Android OEM discovery or router multicast behavior. Android build/lint succeeded with retained dependency/deprecation warnings. No APK install, firewall changes, existing credential migration or physical display writes were performed.
+
+## 2026-10-26 dependency upgrade verification
+
+Android `bcprov-jdk18on:1.86` resolved exactly as declared, and its downloaded jar matched Maven Central's SHA-512. The Android build completed with 188/188 JVM tests, lint 0 errors/11 warnings and a debug APK containing the BC notice/license. `tools/Test-ShortCode-Live.ps1` passed both forward (Windows SRP server) and reverse (Android JVM SRP server) flows with the unchanged Windows BouncyCastle.Cryptography 2.7.0 dependency. Each flow performed actual loopback TCP SRP, authenticated bootstrap decryption and pinned HTTPS pairing against a simulated Windows controller. No protocol implementation changes, new pairing identity, real display access, production traffic or APK installation were needed.

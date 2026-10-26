@@ -11,4 +11,9 @@
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../../licenses/Microsoft.AspNetCore.LICENSE;../../../licenses/Microsoft.EntityFrameworkCore.LICENSE;../../../licenses/Microsoft.Extensions.DependencyModel.LICENSE;../../../licenses/Microsoft.Data.Sqlite.LICENSE;../../../licenses/SQLitePCLRaw.LICENSE;../../../licenses/SQLitePCLRaw.NOTICE"
+             Link="licenses/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

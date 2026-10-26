@@ -1,5 +1,14 @@
 # Reset children after reopening each parent: Docker includes descendants of allowed directories.
 **
+!THIRD-PARTY-NOTICES.md
+!licenses/
+licenses/**
+!licenses/Microsoft.AspNetCore.LICENSE
+!licenses/Microsoft.EntityFrameworkCore.LICENSE
+!licenses/Microsoft.Extensions.DependencyModel.LICENSE
+!licenses/Microsoft.Data.Sqlite.LICENSE
+!licenses/SQLitePCLRaw.LICENSE
+!licenses/SQLitePCLRaw.NOTICE
 !src/
 src/**
 !src/relay/
@@ -19,7 +28,7 @@ src/relay/Fy1Switch.Relay/Pages/Shared/**
 !src/relay/Fy1Switch.Relay/Pages/Shared/*.cshtml
 !src/relay/Fy1Switch.Relay/wwwroot/
 src/relay/Fy1Switch.Relay/wwwroot/**
-!src/relay/Fy1Switch.Relay/wwwroot/favicon.svg
+!src/relay/Fy1Switch.Relay/wwwroot/app-icon.png
 !src/relay/Fy1Switch.Relay/wwwroot/css/
 src/relay/Fy1Switch.Relay/wwwroot/css/**
 !src/relay/Fy1Switch.Relay/wwwroot/css/*.css

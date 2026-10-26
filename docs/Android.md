@@ -6,7 +6,7 @@
 
 Android“添加电脑”支持原生 `NsdManager` 发现/广播 `_fy1switch-pair._tcp.`，TXT 仅 `v=1`、`role=android`、`sid=<小写 UUID>`。电脑列表自动随发现/丢失更新，只有一台时自动选中；名称不是可信身份。界面统一输入电脑屏幕上的六位短码（Android SRP client），明文保留前导零，输入六位后仅自动提交一次，失败后需要修改或手动重试。底层 Android SRP server 保留协议兼容，手机不再显示反向配对短码。保留离线扫码和高级 JSON 粘贴；未提供手填 IP/session 的假入口。本手机名称默认采用设备型号，可手动修改。
 
-Wire 严格依据 [Pairing-v1.md](Pairing-v1.md)：BC `bcprov-jdk18on:1.83`、RFC5054 3072/SHA256、BC evidence/session key、384 字节 A/B、32 字节 M1/M2/key、transcript HKDF-SHA256、AES256GCM。Client hello 在 salt 到达前发送 A，因此 SRP6Client 子类仅在收到 challenge 后设置 BC calculateX，保留同一随机 a/A；不重新生成 A、不另造 proof。TCP JSON 行最大 16KiB；短码不明文上 wire、不写磁盘、不输出日志。
+Wire 严格依据 [Pairing-v1.md](Pairing-v1.md)：BC `bcprov-jdk18on:1.86`、RFC5054 3072/SHA256、BC evidence/session key、384 字节 A/B、32 字节 M1/M2/key、transcript HKDF-SHA256、AES256GCM。Client hello 在 salt 到达前发送 A，因此 SRP6Client 子类仅在收到 challenge 后设置 BC calculateX，保留同一随机 a/A；不重新生成 A、不另造 proof。TCP JSON 行最大 16KiB；短码不明文上 wire、不写磁盘、不输出日志。
 
 只有页面处于 RESUMED 且未扫码/进行其他配对时开启临时 `ServerSocket(0)`。离页、pause、后台、SCREEN_OFF、锁屏或完成关闭监听/握手 socket、NSD 和 multicast lock；扫码启动前先清理，返回可重新开始。会话 generation 丢弃过时回调。每码最多 5 分钟/5 次 admission；进程共享 10 次/10 分钟和单握手 gate，刷新/页面重建不能重置进程限流。连接和 PAKE 总计 15 秒、配对总计 45 秒，有独立 socket 截止计时器防慢速分片；成功 proof 消费短码，后续 HTTPS 失败也须重新开始。
 
@@ -44,6 +44,7 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 - 稳定 Tile 组件：`com.fy1ng.fy1switch/.DisplayTileService`。升级时不要重命名或替换组件。
 - Android 10 / API 29 起；compileSdk / targetSdk 36。
 - Kotlin 2.3.10、Compose BOM 2025.08.01、AGP 8.13.2、Gradle 8.13；Java 字节码目标 17。本机使用 JDK 21.0.11，为已有缓存的稳定兼容组合。
+- Android 的 Bouncy Castle Java 固定为 `bcprov-jdk18on:1.86`. 2026-10-26 从 1.83 升级以包含 GOST CTR, LDAP, FrodoKEM, 名称约束和 ASN.1 深度防护的安全修复, 见 [1.86 官方发布说明](https://github.com/bcgit/bc-java/blob/r1rv86/docs/releasenotes.md). 本项目仅直接使用其 SRP6/SHA-256/HKDF, 不将 BC 注册为全局 JCA Provider; TLS 与 AES-GCM 由 Android 平台提供. 此依赖升级不改变短码协议或已有手机授权格式.
 - 无常驻前台服务、WebSocket、开机广播接收器或后台轮询。仅需要网络权限，不申请通知权限。
 
 仓库根目录下，用 PowerShell 7 运行：
@@ -60,6 +61,8 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 - JUnit XML：`src/android/app/build/test-results/testDebugUnitTest/`
 - 测试 HTML：`src/android/app/build/reports/tests/testDebugUnitTest/index.html`
 - lint：`src/android/app/build/reports/lint-results-debug.html`
+
+2026-10-26 的 BC 1.86 升级验证: `tools/Build-Android.ps1` 在线运行成功, 188 项 JVM 单测通过, lint 0 errors/11 warnings, debug APK 构建成功并包含更新后的 BC 1.86 notice 与完整许可证. 原有 8 项警告保留, 在线依赖元数据检查另提示 3 项 `NewerVersionAvailable`, 未改动其他依赖. Gradle `dependencyInsight` 确认解析为 `bcprov-jdk18on:1.86`, 缓存 jar 的 SHA-512 与 Maven Central 校验值一致; 当日 OSV 精确版本查询无已收录公告. `tools/Test-ShortCode-Live.ps1` 的 C#/JVM 正反两向 SRP 和固定证书 HTTPS bootstrap 均通过, 仅使用 loopback, 模拟显示器和临时凭据. 未安装 APK, 未控制真实硬件, 未验证 OEM 真机行为.
 
 ## 使用
 
