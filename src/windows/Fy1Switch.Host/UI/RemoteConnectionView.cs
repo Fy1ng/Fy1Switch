@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -255,7 +256,28 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         Text = value, FontSize = size, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
         TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 6)
     };
-    private static void Field(Panel panel, string label, Control input) { panel.Children.Add(Text(label)); input.MinHeight = 32; panel.Children.Add(input); }
+    private static void Field(Panel panel, string label, Control input)
+    {
+        panel.Children.Add(Text(label));
+        input.MinHeight = 32;
+        if (input is TextBox or PasswordBox)
+            input.PreviewMouseWheel += ScrollSettingsPage;
+        panel.Children.Add(input);
+    }
+    private static void ScrollSettingsPage(object sender, MouseWheelEventArgs args)
+    {
+        // Single-line fields must not trap the page's mouse wheel in their internal scroll viewer.
+        for (var parent = VisualTreeHelper.GetParent((Control)sender); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is not ScrollViewer page) continue;
+            args.Handled = true;
+            page.RaiseEvent(new MouseWheelEventArgs(args.MouseDevice, args.Timestamp, args.Delta)
+            {
+                RoutedEvent = Mouse.MouseWheelEvent
+            });
+            return;
+        }
+    }
     private Button AddButton(Panel panel, string label, Func<Task> action, AppIconKind icon)
     {
         var button = new Button { Content = label, Padding = new Thickness(13, 8, 13, 8), Margin = new Thickness(0, 8, 8, 8) };
