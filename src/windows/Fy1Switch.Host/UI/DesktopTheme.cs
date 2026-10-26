@@ -22,6 +22,10 @@ internal static class DesktopTheme
     internal const string WarningForegroundBrush = "Fy1Switch.WarningForegroundBrush";
     internal const string SuccessBrush = "Fy1Switch.SuccessBrush";
     internal const string OffBrush = "Fy1Switch.OffBrush";
+    internal const string SettingsInputBrush = "Fy1Switch.SettingsInputBrush";
+    internal const string SettingsBorderBrush = "Fy1Switch.SettingsBorderBrush";
+    internal const string SettingsSelectionBrush = "Fy1Switch.SettingsSelectionBrush";
+    internal const string SettingsSelectionForegroundBrush = "Fy1Switch.SettingsSelectionForegroundBrush";
 
     internal static ResourceDictionary CreateResources()
     {
@@ -220,6 +224,243 @@ internal static class DesktopTheme
               </Trigger>
             </Style.Triggers>
           </Style>
+          <Style x:Key="Fy1Switch.Settings.TextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SettingsInputBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.SettingsBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                  <Border x:Name="Surface" Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="6" SnapsToDevicePixels="True">
+                    <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  HorizontalAlignment="Stretch" Focusable="False"/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsReadOnly" Value="True">
+                      <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.SecondaryBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.SecondaryBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="Fy1Switch.Settings.PasswordBox" TargetType="PasswordBox">
+            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SettingsInputBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.SettingsBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                  <Border x:Name="Surface" Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="6" SnapsToDevicePixels="True">
+                    <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  HorizontalAlignment="Stretch" Focusable="False"/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.SecondaryBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="Fy1Switch.Settings.Button" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.SettingsBorderBrush}"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="MinWidth" Value="72"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                  <Border x:Name="Surface" Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True"/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.85"/>
+                    </Trigger>
+                    <Trigger Property="IsPressed" Value="True">
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.65"/>
+                    </Trigger>
+                    <Trigger Property="IsKeyboardFocused" Value="True">
+                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
+                      <Setter TargetName="Surface" Property="BorderThickness" Value="2"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.45"/>
+                      <Setter Property="Cursor" Value="Arrow"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="Fy1Switch.Settings.ListBoxItem" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="13,9"/>
+            <Setter Property="MinHeight" Value="54"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                  <Grid x:Name="Root" Background="{TemplateBinding Background}">
+                    <Border BorderBrush="{DynamicResource Fy1Switch.SettingsBorderBrush}" BorderThickness="0,0,0,1"/>
+                    <Border x:Name="SelectionMark" Width="3" HorizontalAlignment="Left"
+                            Background="{DynamicResource Fy1Switch.AccentBrush}" Visibility="Collapsed"/>
+                    <Border x:Name="FocusBorder" BorderBrush="Transparent" BorderThickness="1" Padding="{TemplateBinding Padding}">
+                      <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                        VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Border>
+                  </Grid>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Root" Property="Background" Value="{DynamicResource Fy1Switch.SubtleBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                      <Setter TargetName="Root" Property="Background" Value="{DynamicResource Fy1Switch.SettingsSelectionBrush}"/>
+                      <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.SettingsSelectionForegroundBrush}"/>
+                      <Setter TargetName="SelectionMark" Property="Visibility" Value="Visible"/>
+                    </Trigger>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                      <Setter TargetName="FocusBorder" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="Fy1Switch.Settings.ListBox" TargetType="ListBox">
+            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.SettingsBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource Fy1Switch.Settings.ListBoxItem}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                  <Border x:Name="Surface" Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="7" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                    <ScrollViewer x:Name="PART_ScrollViewer" Focusable="False" CanContentScroll="True">
+                      <ItemsPresenter/>
+                    </ScrollViewer>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+          <Style x:Key="Fy1Switch.Settings.Expander" TargetType="Expander">
+            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                  <StackPanel>
+                    <ToggleButton x:Name="HeaderToggle" FocusVisualStyle="{x:Null}"
+                                  Foreground="{TemplateBinding Foreground}" Background="Transparent"
+                                  HorizontalContentAlignment="Stretch" MinHeight="32" Padding="0"
+                                  Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                  ContentTemplateSelector="{TemplateBinding HeaderTemplateSelector}"
+                                  ContentStringFormat="{TemplateBinding HeaderStringFormat}"
+                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                      <ToggleButton.Template>
+                        <ControlTemplate TargetType="ToggleButton">
+                          <Border x:Name="HeaderBorder" Background="{TemplateBinding Background}" BorderBrush="Transparent"
+                                  BorderThickness="1" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <Grid>
+                              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                              <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                Margin="0,0,16,0" RecognizesAccessKey="True"/>
+                              <Path x:Name="Chevron" Grid.Column="1" Data="M 0,0 L 5,5 L 0,10" Width="10" Height="10"
+                                    Stroke="{DynamicResource Fy1Switch.SecondaryBrush}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                <Path.RenderTransform><RotateTransform Angle="0"/></Path.RenderTransform>
+                              </Path>
+                            </Grid>
+                          </Border>
+                          <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                              <Setter TargetName="Chevron" Property="RenderTransform"><Setter.Value><RotateTransform Angle="90"/></Setter.Value></Setter>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                              <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource Fy1Switch.SubtleBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                              <Setter TargetName="HeaderBorder" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
+                            </Trigger>
+                          </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                      </ToggleButton.Template>
+                    </ToggleButton>
+                    <ContentPresenter x:Name="ExpandSite" Visibility="Collapsed" ContentSource="Content"
+                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="0,14,0,0"/>
+                  </StackPanel>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsExpanded" Value="True">
+                      <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter Property="Opacity" Value="0.5"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
           <Style TargetType="ToolTip">
             <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
@@ -264,6 +505,10 @@ internal static class DesktopTheme
             resources[AccentBrush] = SystemColors.HighlightBrush;
             resources[AccentForegroundBrush] = SystemColors.HighlightTextBrush;
             resources[WarningBrush] = SystemColors.WindowBrush;
+            resources[SettingsInputBrush] = SystemColors.WindowBrush;
+            resources[SettingsBorderBrush] = SystemColors.WindowTextBrush;
+            resources[SettingsSelectionBrush] = SystemColors.HighlightBrush;
+            resources[SettingsSelectionForegroundBrush] = SystemColors.HighlightTextBrush;
             return;
         }
         var dark = false;
@@ -286,6 +531,10 @@ internal static class DesktopTheme
         Set(WarningForegroundBrush, dark ? "#FFD98B" : "#83560F");
         Set(SuccessBrush, dark ? "#79D5B9" : "#1B755D");
         Set(OffBrush, dark ? "#ACBFFF" : "#425589");
+        Set(SettingsInputBrush, dark ? "#252D39" : "#FAFBFE");
+        Set(SettingsBorderBrush, dark ? "#475365" : "#DFE4ED");
+        Set(SettingsSelectionBrush, dark ? "#293C60" : "#F0F4FF");
+        Set(SettingsSelectionForegroundBrush, dark ? "#F1F4F8" : "#1F2937");
 
         void Set(string key, string value)
         {

@@ -13,6 +13,8 @@ public sealed partial class MainWindow : Window
 {
     private readonly IDesktopController _controller;
     private readonly Func<bool>? _requestStartupReplacement;
+    private readonly Func<bool>? _getSilentStartup;
+    private readonly Action<bool>? _setSilentStartup;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _lifetimeToken;
     private HostSnapshot? _snapshot;
@@ -42,10 +44,13 @@ public sealed partial class MainWindow : Window
 
     public MainWindow(IDesktopController controller) : this(controller, null) { }
 
-    internal MainWindow(IDesktopController controller, Func<bool>? requestStartupReplacement)
+    internal MainWindow(IDesktopController controller, Func<bool>? requestStartupReplacement,
+        Func<bool>? getSilentStartup = null, Action<bool>? setSilentStartup = null)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _requestStartupReplacement = requestStartupReplacement;
+        _getSilentStartup = getSilentStartup;
+        _setSilentStartup = setSilentStartup;
         _lifetimeToken = _lifetime.Token;
         InitializeView();
         _automaticRefreshTimer.Tick += async (_, _) => await AutomaticallyRefreshAsync();
@@ -228,8 +233,6 @@ public sealed partial class MainWindow : Window
             _actionWarning = false;
             ClearDiscovery();
         }
-        if (_snapshot is null || bindingChanged || newlyInvalidated)
-            _bindingSection.IsExpanded = snapshot.Binding is null || snapshot.Binding.NeedsConfirmation || newlyInvalidated;
         _snapshot = snapshot;
         _snapshotAvailable = true;
         _snapshotError = null;
@@ -544,6 +547,32 @@ public sealed partial class MainWindow : Window
                     SetMessage(snapshot.StartupEnabled == enabled
                         ? (enabled ? "已开启登录自动启动。" : "已关闭登录自动启动。")
                         : "自动启动设置未生效，请重试。", warning: snapshot.StartupEnabled != enabled);
+            });
+        }
+        finally
+        {
+            _startupSaving = false;
+            Render();
+        }
+    }
+
+    private async void SilentStartupClicked(object sender, RoutedEventArgs eventArgs)
+    {
+        if (_rendering || _closed) return;
+        var silent = _silentStartup.IsChecked == true;
+        if (!_snapshotAvailable || IsBusy || _snapshot?.StartupEnabled != true || _setSilentStartup is null)
+        {
+            Render();
+            return;
+        }
+        _startupSaving = true;
+        try
+        {
+            await RunActionAsync("正在保存启动设置...", _ =>
+            {
+                _setSilentStartup(silent);
+                SetMessage(silent ? "已开启静默启动." : "已关闭静默启动, 登录后将打开主窗口.");
+                return Task.CompletedTask;
             });
         }
         finally

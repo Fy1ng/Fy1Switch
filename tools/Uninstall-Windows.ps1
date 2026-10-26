@@ -16,9 +16,10 @@ if (@(Get-Process -Name 'Fy1Switch.Host','Fy1Switch.Worker','Fy1Switch.Cli' -Err
 if ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing a reparse-point target.' }
 if (@(Get-ChildItem -LiteralPath $target -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Refusing an installation containing reparse points.' }
 $registry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-$expected = '"' + (Join-Path $target 'Fy1Switch.Host.exe') + '" --background'
+$executableCommand = '"' + (Join-Path $target 'Fy1Switch.Host.exe') + '"'
+$expected = @($executableCommand, ($executableCommand + ' --background'))
 $current = (Get-ItemProperty -LiteralPath $registry -Name Fy1Switch -ErrorAction SilentlyContinue).Fy1Switch
-if ($current -eq $expected) { Remove-ItemProperty -LiteralPath $registry -Name Fy1Switch }
+if ($current -in $expected) { Remove-ItemProperty -LiteralPath $registry -Name Fy1Switch }
 $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'Fy1Switch.lnk'
 if ($marker.shortcut -eq $shortcut -and (Test-Path -LiteralPath $shortcut)) {
     $shell = New-Object -ComObject WScript.Shell

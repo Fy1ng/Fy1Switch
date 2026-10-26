@@ -34,6 +34,82 @@ public sealed class StartupRegistrationTests
     [DataTestMethod]
     [DataRow(true)]
     [DataRow(false)]
+    public void StartupModeCanBeChangedReloadedAndDisabledWithoutLosingOtherValues(bool silent)
+    {
+        using var fixture = new RegistryFixture();
+        using var key = Registry.CurrentUser.CreateSubKey(fixture.Path);
+        key.SetValue("Unrelated", "preserve");
+        var startup = new StartupRegistration(Executable, false, fixture.Path);
+        Assert.IsTrue(startup.Silent);
+        startup.SetSilent(silent);
+        Assert.IsFalse(startup.Enabled);
+        Assert.IsNull(key.GetValue(Name));
+        startup.SetEnabled(true);
+        Assert.AreEqual(StartupCommand(silent), key.GetValue(Name));
+
+        var reopened = new StartupRegistration(Executable, false, fixture.Path);
+        Assert.IsTrue(reopened.Enabled);
+        Assert.AreEqual(silent, reopened.Silent);
+        Assert.AreEqual(StartupCommand(silent), reopened.Command);
+        Assert.IsNull(reopened.ConflictingCommand);
+        reopened.SetEnabled(true);
+        Assert.AreEqual(StartupCommand(silent), key.GetValue(Name));
+
+        reopened.SetSilent(!silent);
+        Assert.AreEqual(StartupCommand(!silent), key.GetValue(Name));
+        Assert.AreEqual(!silent, new StartupRegistration(Executable, false, fixture.Path).Silent);
+        reopened.SetEnabled(false);
+        Assert.IsFalse(reopened.Enabled);
+        Assert.IsNull(key.GetValue(Name));
+        reopened.SetEnabled(true);
+        Assert.AreEqual(StartupCommand(!silent), key.GetValue(Name));
+        Assert.AreEqual("preserve", key.GetValue("Unrelated"));
+    }
+
+    [TestMethod]
+    public void DisabledModePreferenceDoesNotCreateARegistryKeyOrEnableStartup()
+    {
+        using var fixture = new RegistryFixture();
+        var startup = new StartupRegistration(Executable, false, fixture.Path);
+        startup.SetSilent(false);
+        Assert.IsFalse(startup.Enabled);
+        Assert.IsFalse(startup.Silent);
+        using var key = Registry.CurrentUser.OpenSubKey(fixture.Path);
+        Assert.IsNull(key);
+    }
+
+    [TestMethod]
+    public void SilentModeChangeCannotReplaceAnotherInstall()
+    {
+        using var fixture = new RegistryFixture();
+        using var key = Registry.CurrentUser.CreateSubKey(fixture.Path);
+        var startup = new StartupRegistration(Executable, false, fixture.Path);
+        startup.SetEnabled(true);
+        key.SetValue(Name, OldCommand);
+        var error = Assert.ThrowsException<ControlException>(() => startup.SetSilent(false));
+        Assert.AreEqual("startup_owned_by_another_install", error.Code);
+        Assert.AreEqual(OldCommand, key.GetValue(Name));
+    }
+
+    [DataTestMethod]
+    [DataRow(" --background --unexpected")]
+    [DataRow(" --unknown")]
+    public void AdditionalArgumentsAreNotConsideredOwnedStartupCommands(string arguments)
+    {
+        using var fixture = new RegistryFixture();
+        using var key = Registry.CurrentUser.CreateSubKey(fixture.Path);
+        var command = StartupCommand(false) + arguments;
+        key.SetValue(Name, command);
+        var startup = new StartupRegistration(Executable, false, fixture.Path);
+        Assert.IsFalse(startup.Enabled);
+        Assert.AreEqual(command, startup.ConflictingCommand);
+        Assert.AreEqual("startup_owned_by_another_install", Assert.ThrowsException<ControlException>(() => startup.SetSilent(true)).Code);
+        Assert.AreEqual(command, key.GetValue(Name));
+    }
+
+    [DataTestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
     public void OrdinaryToggleNeverReplacesOrRemovesAnotherInstall(bool enabled)
     {
         using var fixture = new RegistryFixture();
@@ -102,6 +178,7 @@ public sealed class StartupRegistrationTests
         var startup = new StartupRegistration(Executable, false, fixture.Path);
         Assert.IsNull(startup.ConflictingCommand);
         Assert.AreEqual("startup_owned_by_another_install", Assert.ThrowsException<ControlException>(() => startup.SetEnabled(true)).Code);
+        Assert.AreEqual("startup_owned_by_another_install", Assert.ThrowsException<ControlException>(() => startup.SetSilent(false)).Code);
         Assert.AreEqual(42, key.GetValue(Name));
     }
 
@@ -113,6 +190,7 @@ public sealed class StartupRegistrationTests
         key.SetValue(Name, OldCommand);
         var startup = new StartupRegistration(Path.Combine(Path.GetTempPath(), "dotnet.exe"), false, fixture.Path);
         Assert.AreEqual("startup_requires_executable", Assert.ThrowsException<ControlException>(() => startup.SetEnabled(true)).Code);
+        Assert.AreEqual("startup_requires_executable", Assert.ThrowsException<ControlException>(() => startup.SetSilent(false)).Code);
         Assert.AreEqual("startup_requires_executable", Assert.ThrowsException<ControlException>(() => startup.ReplaceAfterConfirmation(OldCommand)).Code);
         Assert.AreEqual(OldCommand, key.GetValue(Name));
     }
@@ -126,6 +204,9 @@ public sealed class StartupRegistrationTests
         var startup = new StartupRegistration(Executable, true, fixture.Path);
         startup.SetEnabled(true);
         Assert.IsTrue(startup.Enabled);
+        startup.SetSilent(false);
+        Assert.IsFalse(startup.Silent);
+        Assert.AreEqual(StartupCommand(false), startup.Command);
         startup.SetEnabled(false);
         Assert.IsFalse(startup.Enabled);
         Assert.IsNull(startup.ConflictingCommand);
@@ -143,6 +224,8 @@ public sealed class StartupRegistrationTests
         Assert.AreNotEqual(UiText.BriefError("unexpected_error"), UiText.BriefError(code));
         Assert.AreNotEqual(UiText.Error("unexpected_error"), UiText.Error(code));
     }
+
+    private static string StartupCommand(bool silent) => $"\"{Path.GetFullPath(Executable)}\"" + (silent ? " --background" : string.Empty);
 
     private sealed class RegistryFixture : IDisposable
     {

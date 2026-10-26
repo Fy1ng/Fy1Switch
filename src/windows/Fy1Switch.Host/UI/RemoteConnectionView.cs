@@ -7,7 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -34,7 +35,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private readonly CheckBox _tailscaleEnabled = new() { Content = "启用 Tailscale", Margin = new Thickness(0, 8, 0, 8) };
     private readonly CheckBox _relayEnabled = new() { Content = "启用中继", Margin = new Thickness(0, 8, 0, 8) };
     private readonly ComboBox _networks = new() { DisplayMemberPath = "Label", MinHeight = 34 };
-    private readonly TextBox _listen = new(), _port = new(), _endpoint = new(), _tailscaleListen = new(), _tailscaleEndpoint = new(), _relay = new();
+    private readonly TextBox _listen = new(), _port = new(), _endpoint = new(), _tailscaleListen = new(), _tailscalePort = new(), _tailscaleEndpoint = new(), _relay = new();
     private readonly PasswordBox _relayToken = new();
     private readonly PasswordBox _relayRegistrationCode = new() { MaxLength = 6 };
     private readonly TextBlock _relayCodeText = Text("", 24, true), _relayCodeInfo = Text("", 12);
@@ -48,11 +49,12 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private readonly TextBlock _pairStatus = Text("");
     private readonly TextBlock _codeLabel = Text("配对码", 12);
     private readonly TextBlock _code = new() { FontSize = 30, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
-    private readonly ListBox _clients = new() { DisplayMemberPath = "Label", MinHeight = 60, MaxHeight = 160, ToolTip = "显示授权时间，不表示手机当前在线。" };
+    private readonly ListBox _clients = new() { MinHeight = 54, MaxHeight = 170, ToolTip = "显示授权时间, 不表示手机当前在线." };
+    private readonly TextBlock _clientsEmpty = SettingsUi.Hint("尚未绑定手机. 点击连接手机开始配对.");
     private readonly StackPanel _configuration = new();
-    private readonly StackPanel _tailscaleFields = new() { Margin = new Thickness(16, 0, 0, 8) };
-    private readonly StackPanel _relayFields = new() { Margin = new Thickness(16, 0, 0, 8) };
-    private readonly Expander _advanced = new() { Header = "高级设置", Margin = new Thickness(0, 12, 0, 8) };
+    private readonly StackPanel _tailscaleFields = new() { Margin = new Thickness(26, 8, 0, 0) };
+    private readonly StackPanel _relayFields = new() { Margin = new Thickness(26, 8, 0, 0) };
+    private readonly Expander _advanced = new();
     private readonly List<Button> _actionButtons = new();
     private readonly Button _primary, _copy, _revoke;
     private IReadOnlyList<LocalNetworkChoice> _networkChoices = Array.Empty<LocalNetworkChoice>();
@@ -88,69 +90,105 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         pairing.Children.Add(_pairStatus);
         PairingContent = pairing;
 
-        var page = new StackPanel();
-        page.Children.Add(Text("手机控制", 18, true)); page.Children.Add(_status);
-        _configuration.Children.Add(_enabled);
-        _configuration.Children.Add(_networkSummary);
-        _configuration.Children.Add(_tailscaleEnabled);
-        _tailscaleFields.Children.Add(_tailscaleStatus);
-        Field(_tailscaleFields, "Tailscale IP 地址", _tailscaleListen);
-        Field(_tailscaleFields, "Tailscale HTTPS 地址", _tailscaleEndpoint);
+        var remote = new StackPanel();
+        _enabled.Margin = new Thickness(8, 0, 0, 0);
+        _enabled.FontSize = 12;
+        remote.Children.Add(SettingsUi.Heading("远程控制", AppIconKind.Phone, _enabled));
+        var devicesLabel = SettingsUi.Label("已绑定设备", 12, secondary: true);
+        devicesLabel.Margin = new Thickness(0, 14, 0, 10);
+        remote.Children.Add(devicesLabel);
+        SettingsUi.List(_clients);
+        System.Windows.Automation.AutomationProperties.SetName(_clients, "已绑定设备");
+        remote.Children.Add(_clients);
+        remote.Children.Add(_clientsEmpty);
+        var clientActions = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
+        AddButton(clientActions, "刷新设备", () => { RefreshClients(); return Task.CompletedTask; }, AppIconKind.Refresh);
+        _revoke = AddButton(clientActions, "撤销授权", () =>
+        {
+            if (_clients.SelectedItem is ClientItem item && MessageBox.Show(_owner,
+                "撤销后该手机将不能控制显示器, 确认继续?", "撤销授权", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            {
+                _manager.Security.Revoke(item.Client.ClientId); Notice("已撤销该手机的授权.", transient: true);
+            }
+            RefreshClients(); return Task.CompletedTask;
+        }, AppIconKind.Revoke);
+        remote.Children.Add(clientActions);
+        remote.Children.Add(SettingsUi.Separator());
+        _tailscaleEnabled.Margin = new Thickness(0);
+        remote.Children.Add(_tailscaleEnabled);
+        _tailscalePort.SetBinding(TextBox.TextProperty, new Binding(nameof(TextBox.Text))
+        {
+            Source = _port, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+        });
+        _tailscaleFields.Children.Add(SettingsUi.Fields("Tailscale IP 地址", _tailscaleListen, "端口号", _tailscalePort));
         _tailscaleEndpoint.IsReadOnly = true;
-        _tailscaleFields.Children.Add(Text("自动检测本机 Tailscale 地址, 也可手动修改 IP. 需要电脑和手机均已连接 Tailscale.", 12));
-        AddButton(_tailscaleFields, "重新检测 Tailscale", () => { LoadNetworks(); FillTailscale(force: true); return Task.CompletedTask; }, AppIconKind.Refresh);
-        _configuration.Children.Add(_tailscaleFields);
-        _configuration.Children.Add(_relayEnabled);
-        Field(_relayFields, "中继 HTTPS 地址", _relay);
-        Field(_relayFields, "WebUI 生成的六位电脑注册码", _relayRegistrationCode);
-        _relayFields.Children.Add(Text("先在中继 WebUI 使用密码或 Passkey 登录并生成注册码, 再在此输入. 手机不需要登录 WebUI.", 12));
-        AddButton(_relayFields, "注册到中继", RegisterRelayAsync, AppIconKind.Link);
+        _tailscaleStatus.Margin = new Thickness(0, 7, 0, 0);
+        _tailscaleStatus.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.SecondaryBrush);
+        _tailscaleFields.Children.Add(_tailscaleStatus);
+        remote.Children.Add(_tailscaleFields);
+        remote.Children.Add(SettingsUi.Separator());
+        _relayEnabled.Margin = new Thickness(0);
+        remote.Children.Add(_relayEnabled);
+        _relayFields.Children.Add(SettingsUi.Fields("中继 HTTPS 地址", _relay, "接入码", _relayRegistrationCode, 150));
+        _relayRegistrationCode.ToolTip = "在中继 WebUI 生成的六位电脑注册码";
         var relayPairingActions = new WrapPanel();
-        _generateRelayCode = AddButton(relayPairingActions, "生成手机 Relay 配对码", GenerateRelayCodeAsync, AppIconKind.Phone);
-        _cancelRelayCode = AddButton(relayPairingActions, "取消 Relay 配对", CancelRelayCodeAsync, AppIconKind.Close);
+        var register = AddButton(relayPairingActions, "注册到中继", RegisterRelayAsync, AppIconKind.Link);
+        SettingsUi.Button(register, primary: true);
+        register.Margin = new Thickness(0, 0, 8, 6);
+        _generateRelayCode = AddButton(relayPairingActions, "生成手机中继配对码", GenerateRelayCodeAsync, AppIconKind.Phone);
+        _cancelRelayCode = AddButton(relayPairingActions, "取消配对", CancelRelayCodeAsync, AppIconKind.Close);
+        relayPairingActions.Margin = new Thickness(0, 12, 0, 0);
         _relayFields.Children.Add(relayPairingActions);
         _relayFields.Children.Add(_relayCodeText); _relayFields.Children.Add(_relayCodeInfo);
-        _relayFields.Children.Add(Text("已配对手机在局域网中自动获取中继配置. 首次跨网配对时, 在手机输入中继地址与此处的六位手机配对码. 离开设置或锁屏即取消配对码.", 12));
-        _relayFields.Children.Add(Text("中继服务可以读取转发内容, 请只使用你信任的服务.", 12));
-        _configuration.Children.Add(_relayFields);
-
-        var advanced = new StackPanel { Margin = new Thickness(12, 4, 0, 0) };
-        advanced.Children.Add(_automaticNetwork);
-        Field(advanced, "旧版电脑端中继凭据 (留空保留)", _relayToken);
-        Field(advanced, "自定义局域网", _networks);
-        var networkButtons = new WrapPanel();
-        AddButton(networkButtons, "刷新网络列表", () => { LoadNetworks(); return Task.CompletedTask; }, AppIconKind.Refresh);
-        advanced.Children.Add(networkButtons);
-        Field(advanced, "局域网 IP 地址", _listen); Field(advanced, "HTTPS 端口", _port);
-        Field(advanced, "手机访问电脑的 HTTPS 地址", _endpoint);
-        advanced.Children.Add(Text("自动选择时填写 IP 和访问地址, 端口默认 48152. 多网卡或连接失败时可关闭自动选择并手动调整.", 12));
-        _copy = AddButton(advanced, "复制备用配对信息", CopyPairingAsync, AppIconKind.Copy);
-        _copy.ToolTip = "用于手机添加电脑时粘贴. 配对信息包含一次性凭据, 请勿公开分享.";
-        _advanced.Content = advanced;
-        _configuration.Children.Add(_advanced);
-        _configuration.Children.Add(Text("点击保存后应用连接设置. 不会自动修改防火墙或路由器.", 12));
+        _relayFields.Children.Add(SettingsUi.Hint("接入码由中继 WebUI 生成. 请只连接可信的中继服务."));
+        remote.Children.Add(_relayFields);
+        remote.Children.Add(SettingsUi.Separator());
         var actions = new WrapPanel();
-        AddButton(actions, "保存连接设置", SaveAsync, AppIconKind.Save);
+        var save = AddButton(actions, "保存连接设置", SaveAsync, AppIconKind.Save);
+        SettingsUi.Button(save, primary: true);
+        save.Margin = new Thickness(0, 0, 8, 6);
         _primary = AddButton(actions, "连接手机", () =>
         {
             _owner.Dispatcher.BeginInvoke(new Action(() => { if (!_closed) PairingRequested?.Invoke(); }));
             return Task.CompletedTask;
         }, AppIconKind.Phone);
-        _configuration.Children.Add(actions); page.Children.Add(_configuration);
+        remote.Children.Add(actions);
+        _status.FontSize = 12;
+        _status.Margin = new Thickness(0, 6, 0, 0);
+        _status.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.SecondaryBrush);
+        remote.Children.Add(_status);
+        _configuration.Children.Add(SettingsUi.Card(remote));
 
-        page.Children.Add(Text("已授权手机", 18, true)); page.Children.Add(_clients);
-        var clientActions = new WrapPanel();
-        AddButton(clientActions, "刷新手机列表", () => { RefreshClients(); return Task.CompletedTask; }, AppIconKind.Refresh);
-        _revoke = AddButton(clientActions, "撤销手机授权", () =>
-        {
-            if (_clients.SelectedItem is ClientItem item && MessageBox.Show(_owner,
-                "撤销后该手机将不能控制显示器，确认继续？", "撤销授权", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-            {
-                _manager.Security.Revoke(item.Client.ClientId); Notice("已撤销该手机的授权。", transient: true);
-            }
-            RefreshClients(); return Task.CompletedTask;
-        }, AppIconKind.Revoke);
-        page.Children.Add(clientActions); SettingsContent = page;
+        var advanced = new StackPanel { Margin = new Thickness(26, 12, 0, 0) };
+        _automaticNetwork.Margin = new Thickness(0, 0, 0, 12);
+        advanced.Children.Add(_automaticNetwork);
+        advanced.Children.Add(SettingsUi.Fields("局域网 IP 地址", _listen, "HTTPS 端口", _port));
+        _networkSummary.FontSize = 12;
+        _networkSummary.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.SecondaryBrush);
+        _networkSummary.Margin = new Thickness(0, 8, 0, 12);
+        advanced.Children.Add(_networkSummary);
+        Field(advanced, "自定义局域网", _networks);
+        var networkButtons = new WrapPanel { Margin = new Thickness(0, 10, 0, 4) };
+        AddButton(networkButtons, "刷新网络列表", () => { LoadNetworks(); return Task.CompletedTask; }, AppIconKind.Refresh);
+        AddButton(networkButtons, "重新检测 Tailscale", () => { LoadNetworks(); FillTailscale(force: true); return Task.CompletedTask; }, AppIconKind.Refresh);
+        advanced.Children.Add(networkButtons);
+        Field(advanced, "手机访问电脑的 HTTPS 地址", _endpoint);
+        Field(advanced, "Tailscale HTTPS 地址", _tailscaleEndpoint);
+        Field(advanced, "旧版中继凭据 (留空保留)", _relayToken);
+        _copy = AddButton(advanced, "复制备用配对信息", CopyPairingAsync, AppIconKind.Copy);
+        _copy.Margin = new Thickness(0, 12, 0, 0);
+        _copy.ToolTip = "用于手机添加电脑时粘贴. 配对信息包含一次性凭据, 请勿公开分享.";
+        var advancedHeading = new StackPanel { Orientation = Orientation.Horizontal };
+        var expanded = new CheckBox { IsHitTestVisible = false, Focusable = false, Margin = new Thickness(0, 0, 9, 0), VerticalAlignment = VerticalAlignment.Center };
+        expanded.SetBinding(ToggleButton.IsCheckedProperty, new Binding(nameof(Expander.IsExpanded)) { Source = _advanced });
+        advancedHeading.Children.Add(expanded);
+        advancedHeading.Children.Add(SettingsUi.Label("高级设置", 16, bold: true));
+        _advanced.Header = advancedHeading;
+        _advanced.Content = advanced;
+        _advanced.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.Expander");
+        System.Windows.Automation.AutomationProperties.SetName(_advanced, "高级设置");
+        _configuration.Children.Add(SettingsUi.Card(_advanced));
+        SettingsContent = _configuration;
         LoadSavedSettings(); LoadNetworks(); RefreshClients(); _knownClients = _manager.Security.Clients.Count;
         _automaticNetwork.Checked += (_, _) => { if (!_updatingNetwork) LoadNetworks(preferCurrent: false); UpdateNetworkSummary(); };
         _automaticNetwork.Unchecked += (_, _) => UpdateNetworkSummary();
@@ -258,29 +296,15 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     };
     private static void Field(Panel panel, string label, Control input)
     {
-        panel.Children.Add(Text(label));
-        input.MinHeight = 32;
-        if (input is TextBox or PasswordBox)
-            input.PreviewMouseWheel += ScrollSettingsPage;
-        panel.Children.Add(input);
-    }
-    private static void ScrollSettingsPage(object sender, MouseWheelEventArgs args)
-    {
-        // Single-line fields must not trap the page's mouse wheel in their internal scroll viewer.
-        for (var parent = VisualTreeHelper.GetParent((Control)sender); parent is not null; parent = VisualTreeHelper.GetParent(parent))
-        {
-            if (parent is not ScrollViewer page) continue;
-            args.Handled = true;
-            page.RaiseEvent(new MouseWheelEventArgs(args.MouseDevice, args.Timestamp, args.Delta)
-            {
-                RoutedEvent = Mouse.MouseWheelEvent
-            });
-            return;
-        }
+        var field = SettingsUi.Field(label, input);
+        field.Margin = new Thickness(0, 10, 0, 0);
+        panel.Children.Add(field);
     }
     private Button AddButton(Panel panel, string label, Func<Task> action, AppIconKind icon)
     {
-        var button = new Button { Content = label, Padding = new Thickness(13, 8, 13, 8), Margin = new Thickness(0, 8, 8, 8) };
+        var button = new Button { Content = label };
+        SettingsUi.Button(button);
+        button.Margin = new Thickness(0, 0, 8, 6);
         AppIcons.SetButton(button, label, icon);
         button.Click += async (_, _) => await RunAsync(action); panel.Children.Add(button); _actionButtons.Add(button); return button;
     }
@@ -576,7 +600,9 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         });
         _status.Text = _busy ? "正在处理，请稍候……" : _notice ?? (_manager.Running ? "手机控制已启用。" : "手机控制未启用. 启用并保存后即可连接手机.");
         var tailscale = _manager.TailscaleStatus switch { "listening" => "已启用", "unavailable" => "暂不可用", _ => "未启用" };
-        SettingsContent.ToolTip = $"当前地址：{_manager.Settings.PublicEndpoint}\nTailscale：{tailscale}";
+        _status.ToolTip = $"当前地址: {_manager.Settings.PublicEndpoint}\nTailscale: {tailscale}";
+        _relayCodeText.Visibility = string.IsNullOrEmpty(_relayCodeText.Text) ? Visibility.Collapsed : Visibility.Visible;
+        _relayCodeInfo.Visibility = string.IsNullOrEmpty(_relayCodeInfo.Text) ? Visibility.Collapsed : Visibility.Visible;
         RefreshActions();
     }
     private void RefreshActions()
@@ -589,6 +615,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _copy.IsEnabled = ready && _manager.Running;
         _generateRelayCode.IsEnabled = ready && _manager.Running && _manager.Settings.UseRelay;
         _cancelRelayCode.IsEnabled = ready && _currentRelayCode is not null;
+        _cancelRelayCode.Visibility = _currentRelayCode is not null ? Visibility.Visible : Visibility.Collapsed;
         _revoke.IsEnabled = ready && _clients.SelectedItem is ClientItem;
     }
     private void SessionSwitched(object sender, SessionSwitchEventArgs args)
@@ -619,13 +646,22 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad;
         image.StreamSource = stream; image.EndInit(); image.Freeze(); _qr.Source = image; _qr.Visibility = Visibility.Visible;
     }
-    private sealed record ClientItem(PairedClient Client)
+    private sealed class ClientItem : ListBoxItem
     {
+        internal PairedClient Client { get; }
         public string Label => $"{Client.Name}\n授权于 {Client.PairedAt.ToLocalTime():yyyy/MM/dd HH:mm}";
+        internal ClientItem(PairedClient client)
+        {
+            Client = client;
+            Content = SettingsUi.DeviceRow(client.Name, $"授权于 {client.PairedAt.ToLocalTime():yyyy-MM-dd HH:mm}", AppIconKind.Phone, "已授权");
+            System.Windows.Automation.AutomationProperties.SetName(this, Label);
+        }
     }
     private void RefreshClients()
     {
         var authorized = _manager.Security.Clients;
+        _clients.Visibility = authorized.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        _clientsEmpty.Visibility = authorized.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (_clients.Items.OfType<ClientItem>().Select(item => item.Client).SequenceEqual(authorized)) return;
         var selected = (_clients.SelectedItem as ClientItem)?.Client.ClientId;
         var clients = authorized.Select(client => new ClientItem(client)).ToArray();

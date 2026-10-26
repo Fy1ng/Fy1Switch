@@ -31,9 +31,10 @@ public sealed partial class MainWindow
     private readonly Border _simulationBanner = new();
     private readonly Border _statusBox = new();
     private Border _powerCard = null!;
-    private readonly Expander _bindingSection = new() { Header = "显示器绑定" };
-    private readonly ListBox _candidates = new() { MinHeight = 72, MaxHeight = 174 };
-    private readonly CheckBox _startup = new() { Content = "登录 Windows 时自动启动", MinHeight = 32, VerticalContentAlignment = VerticalAlignment.Center };
+    private readonly ListBox _candidates = new() { MinHeight = 54, MaxHeight = 220 };
+    private readonly TextBlock _candidateEmpty = SettingsUi.Hint("点击重新扫描, 查找可绑定的显示器.");
+    private readonly CheckBox _startup = new() { Content = "开机自动启动", MinHeight = 28, VerticalContentAlignment = VerticalAlignment.Center };
+    private readonly CheckBox _silentStartup = new() { Content = "静默启动", MinHeight = 28, VerticalContentAlignment = VerticalAlignment.Center };
     private readonly Button _on = Button("开启", AppIconKind.Monitor);
     private readonly Button _off = Button("关闭", AppIconKind.MonitorOff);
     private readonly Button _toggle = Button("刷新状态", AppIconKind.Refresh);
@@ -121,7 +122,6 @@ public sealed partial class MainWindow
         _bindingGuide.Click += async (_, _) =>
         {
             await ShowSettingsPageAsync();
-            _bindingSection.IsExpanded = true;
             _scan.Focus();
         };
 
@@ -144,8 +144,14 @@ public sealed partial class MainWindow
         _statusBox.Child = feedback;
         _statusBox.Margin = new Thickness(24, 0, 24, 16);
 
-        var settings = new StackPanel { Margin = new Thickness(24, 12, 24, 20) };
-        var settingsHeading = new DockPanel { Margin = new Thickness(0, 0, 0, 20) };
+        var settings = new StackPanel { Margin = new Thickness(24, 16, 24, 20) };
+        var settingsHeading = new DockPanel { Margin = new Thickness(0, 0, 0, 22) };
+        SettingsUi.Button(_settingsBack);
+        _settingsBack.MinWidth = 32;
+        _settingsBack.Width = 32;
+        _settingsBack.Padding = new Thickness(7);
+        _settingsBack.Content = new VectorIcon { Kind = AppIconKind.Back, Width = 18, Height = 18 };
+        _settingsBack.ToolTip = "返回";
         _settingsBack.Margin = new Thickness(0, 0, 14, 0);
         DockPanel.SetDock(_settingsBack, Dock.Left);
         settingsHeading.Children.Add(_settingsBack);
@@ -153,37 +159,69 @@ public sealed partial class MainWindow
         settings.Children.Add(settingsHeading);
         _settingsBack.Click += (_, _) => ShowHomePage();
 
-        var binding = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-        binding.Children.Add(Text("选择要控制的显示器，确认后绑定。", margin: new Thickness(0, 0, 0, 8)));
-        var bindingCommands = new WrapPanel();
-        foreach (var button in new[] { _scan, _bind, _unbind })
+        var binding = new StackPanel();
+        var bindingCommands = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var button in new[] { _bind, _unbind, _scan })
+        {
+            SettingsUi.Button(button, primary: ReferenceEquals(button, _bind));
             bindingCommands.Children.Add(button);
-        binding.Children.Add(bindingCommands);
-        _discoveryStatus.Margin = new Thickness(0, 4, 0, 8);
+        }
+        _bind.Content = "绑定所选";
+        _unbind.Content = "取消绑定";
+        _scan.Content = "重新扫描";
+        binding.Children.Add(SettingsUi.Heading("绑定显示器", AppIconKind.Monitor, bindingCommands));
+        _discoveryStatus.FontSize = 12;
+        _discoveryStatus.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.SecondaryBrush);
+        _discoveryStatus.Margin = new Thickness(0, 10, 0, 12);
         binding.Children.Add(_discoveryStatus);
-        _candidates.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        ScrollViewer.SetHorizontalScrollBarVisibility(_candidates, ScrollBarVisibility.Disabled);
+        SettingsUi.List(_candidates);
         _candidates.SelectionChanged += (_, _) => { if (!_rendering && !_closed) Render(); };
         System.Windows.Automation.AutomationProperties.SetName(_candidates, "候选显示器，确认选择后点击绑定所选");
         binding.Children.Add(_candidates);
-        _bindingSection.Content = binding;
-        settings.Children.Add(_bindingSection);
+        binding.Children.Add(_candidateEmpty);
+        settings.Children.Add(SettingsUi.Card(binding));
 
-        _startup.Margin = new Thickness(0, 12, 0, 6);
+        var startup = new StackPanel();
+        startup.Children.Add(SettingsUi.Heading("启动选项", AppIconKind.Power));
+        _startup.Margin = new Thickness(0, 12, 0, 0);
         _startup.Click += StartupClicked;
-        settings.Children.Add(_startup);
-        _remoteSettingsHost.Margin = new Thickness(0, 20, 0, 0);
+        startup.Children.Add(_startup);
+        _silentStartup.Click += SilentStartupClicked;
+        var silent = new StackPanel();
+        silent.Children.Add(_silentStartup);
+        var silentHint = SettingsUi.Hint("启动后驻留托盘, 不打开主窗口");
+        silentHint.Margin = new Thickness(26, 3, 0, 0);
+        silent.Children.Add(silentHint);
+        var silentBranch = new Border
+        {
+            Child = silent, BorderThickness = new Thickness(1, 0, 0, 0),
+            Margin = new Thickness(26, 10, 0, 0), Padding = new Thickness(14, 0, 0, 0)
+        };
+        silentBranch.SetResourceReference(Border.BorderBrushProperty, DesktopTheme.BorderBrush);
+        startup.Children.Add(silentBranch);
+        settings.Children.Add(SettingsUi.Card(startup));
         settings.Children.Add(_remoteSettingsHost);
         var diagnostics = new StackPanel();
+        diagnostics.Margin = new Thickness(28, 10, 0, 0);
         diagnostics.Children.Add(_source);
         diagnostics.Children.Add(_updated);
         diagnostics.Children.Add(_worker);
         diagnostics.Children.Add(_operation);
         diagnostics.Children.Add(_details);
-        _identity.FontSize = 12;
-        _identity.Margin = new Thickness(0, 6, 0, 0);
-        diagnostics.Children.Add(_identity);
-        settings.Children.Add(new Expander { Header = "诊断记录", Content = diagnostics, Margin = new Thickness(0, 12, 0, 0) });
+        foreach (var line in new[] { _source, _updated, _worker, _operation, _details, _identity })
+        {
+            line.FontSize = 12;
+            line.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.SecondaryBrush);
+        }
+        var identity = new Expander { Header = "设备标识", Content = _identity, Margin = new Thickness(0, 8, 0, 0) };
+        identity.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.Expander");
+        diagnostics.Children.Add(identity);
+        var diagnosticSection = new Expander
+        {
+            Header = SettingsUi.Heading("诊断记录", AppIconKind.Save), Content = diagnostics, IsExpanded = true
+        };
+        diagnosticSection.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.Expander");
+        settings.Children.Add(SettingsUi.Card(diagnosticSection));
 
         _on.Click += async (_, _) => await ExecuteAsync(PowerIntent.On);
         _off.Click += async (_, _) => await ExecuteAsync(PowerIntent.Off);
@@ -258,16 +296,22 @@ public sealed partial class MainWindow
             _unbind.IsEnabled = _snapshotAvailable && binding is not null && !busy;
             _candidates.IsEnabled = !busy;
             _startup.IsEnabled = _snapshotAvailable && !busy;
-            _startup.Content = _startupSaving ? "正在保存自动启动设置…" : "登录 Windows 时自动启动";
+            _startup.Content = _startupSaving ? "正在保存启动设置..." : "开机自动启动";
             _startup.IsChecked = _startupSaving ? null : snapshot?.StartupEnabled == true;
-            AppIcons.SetButton(_scan, _discovery is null ? "发现显示器" : "重新扫描", AppIconKind.Scan);
-            AppIcons.SetButton(_bind, needsConfirmation ? "重新确认并绑定" : "绑定所选", AppIconKind.Link);
-            _bindingSection.Header = binding is null ? "绑定显示器" : needsConfirmation ? "重新确认显示器绑定" : "更换或取消绑定";
-            _discoveryStatus.Text = _discovery is null ? "点击“发现显示器”查找可用设备。"
-                : $"发现 {_discovery.Candidates.Count} 台显示器 · {UiText.Time(_discovery.CapturedAt)} · " +
-                    (SelectedCandidate is null ? "尚未选择" : $"已选择：{SelectedCandidate.Name}");
+            _silentStartup.IsEnabled = _startup.IsEnabled && snapshot?.StartupEnabled == true && _setSilentStartup is not null;
+            try { _silentStartup.IsChecked = _snapshotAvailable ? _getSilentStartup?.Invoke() ?? true : true; }
+            catch (Fy1Switch.Runtime.ControlException exception)
+            {
+                _silentStartup.IsEnabled = false;
+                _silentStartup.ToolTip = UiText.Error(exception.Code);
+            }
+            _bind.Content = needsConfirmation ? "重新确认" : "绑定所选";
+            _discoveryStatus.Text = $"发现 {_discovery?.Candidates.Count ?? 0} 台显示器 · 已选择: {SelectedCandidate?.Name ?? "无"}";
             _discoveryStatus.ToolTip = _discovery?.CapturedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz");
             _candidates.Visibility = _discovery is { Candidates.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
+            _candidateEmpty.Visibility = _candidates.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+            _candidateEmpty.Text = _discovery is { Candidates.Count: 0 } ? "未发现可绑定的显示器. 请检查连接后重新扫描."
+                : binding is null ? "点击重新扫描, 查找可绑定的显示器." : $"当前绑定: {binding.Name}. 重新扫描可更换显示器.";
             _identity.Text = snapshot is null ? "尚未加载设备标识。" : $"设备 ID：{snapshot.DeviceId}\n" +
                 (binding is null ? "目标 ID：尚未绑定" : $"目标 ID：{binding.TargetId}\n目标键：{binding.TargetKey}");
 
@@ -311,12 +355,12 @@ public sealed partial class MainWindow
         _candidates.Items.Clear();
         foreach (var candidate in discovery.Candidates)
         {
-            var label = new StackPanel { Margin = new Thickness(4) };
-            var name = Text(candidate.Name, weight: FontWeights.SemiBold);
-            name.ClearValue(TextBlock.ForegroundProperty);
-            label.Children.Add(name);
+            var bound = _snapshot?.Binding?.TargetKey == candidate.TargetKey;
+            var label = SettingsUi.DeviceRow(candidate.Name, bound ? "已绑定到当前设备" : "可选择绑定", AppIconKind.Monitor, bound ? "当前绑定" : null);
             label.ToolTip = $"{candidate.Profile}\n目标：{candidate.TargetKey}";
-            _candidates.Items.Add(new ListBoxItem { Content = label, Tag = candidate, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+            var item = new ListBoxItem { Content = label, Tag = candidate, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            System.Windows.Automation.AutomationProperties.SetName(item, candidate.Name);
+            _candidates.Items.Add(item);
         }
         _candidates.SelectedIndex = discovery.Candidates.Count == 1 ? 0 : -1;
     }

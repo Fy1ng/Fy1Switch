@@ -104,7 +104,7 @@ internal sealed class HostApplication(HostOptions options) : System.Windows.Appl
             var worker = new WorkerSupervisor(options.WorkerPath, Path.Combine(options.DataDirectory, "worker"), options.Simulation);
             var startup = new StartupRegistration(Environment.ProcessPath!, options.Simulation);
             _controller = new DesktopController(worker, startup, options.DataDirectory, options.Simulation);
-            _window = new MainWindow(_controller, () => ReplaceStartupRegistration(startup));
+            _window = new MainWindow(_controller, () => ReplaceStartupRegistration(startup), () => startup.Silent, startup.SetSilent);
             _window.PresentationChanged += UpdateTray;
             _window.FirstHiddenToTray += () => _tray?.ShowBalloonTip(5000, "已最小化到托盘", "程序仍在运行。双击托盘图标可打开窗口；如需退出，请使用托盘菜单。", Forms.ToolTipIcon.Info);
             MainWindow = _window;

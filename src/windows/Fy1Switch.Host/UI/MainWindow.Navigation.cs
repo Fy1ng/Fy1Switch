@@ -209,6 +209,8 @@ public sealed partial class MainWindow
         _settingsBack.Focus();
         await closing;
         UpdateRemoteSettingsVisibility();
+        if (_discovery is null && _snapshotAvailable && !IsBusy)
+            await DiscoverAsync();
     }
 
     private void ShowHomePage()
