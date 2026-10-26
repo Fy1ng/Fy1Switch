@@ -1,6 +1,23 @@
 <p align="right"><b>中文</b> · <a href="README.en.md">English</a></p>
 
 <p align="center">
+  <img src="assets/readme/app-icon.png" width="96" height="96" alt="Fy1Switch 图标">
+</p>
+
+<h1 align="center">Fy1Switch</h1>
+
+<p align="center">
+  <b>手机上点一下, 电脑显示器就熄屏或亮起.</b><br>
+  Android 快捷设置开关, 支持局域网, Tailscale 和自建 Relay 三种连接方式.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Windows-x64-315DB3?style=flat-square" alt="Windows x64">
+  <img src="https://img.shields.io/badge/Android-10%2B-157A65?style=flat-square" alt="Android 10 及以上">
+  <img src="https://img.shields.io/badge/Release-v1.0.0-2D5CB4?style=flat-square" alt="当前版本 v1.0.0">
+</p>
+
+<p align="center">
   <img src="assets/readme/cover.zh-CN.svg" width="100%" alt="Fy1Switch: 用手机开关电脑的显示器. 下拉手机快捷设置, 点一下远程显示器, 电脑屏幕就熄灭.">
 </p>
 

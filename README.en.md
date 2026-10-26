@@ -1,6 +1,23 @@
 <p align="right"><a href="README.md">中文</a> · <b>English</b></p>
 
 <p align="center">
+  <img src="assets/readme/app-icon.png" width="96" height="96" alt="Fy1Switch icon">
+</p>
+
+<h1 align="center">Fy1Switch</h1>
+
+<p align="center">
+  <b>One tap on your phone turns your PC monitor off or back on.</b><br>
+  An Android Quick Settings tile that connects over your LAN, Tailscale, or a self-hosted Relay.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Windows-x64-315DB3?style=flat-square" alt="Windows x64">
+  <img src="https://img.shields.io/badge/Android-10%2B-157A65?style=flat-square" alt="Android 10 or later">
+  <img src="https://img.shields.io/badge/Release-v1.0.0-2D5CB4?style=flat-square" alt="Current release v1.0.0">
+</p>
+
+<p align="center">
   <img src="assets/readme/cover.en.svg" width="100%" alt="Fy1Switch: turn your PC monitor on and off from your phone. Open Quick Settings, tap Remote display, and the screen goes dark.">
 </p>
 
