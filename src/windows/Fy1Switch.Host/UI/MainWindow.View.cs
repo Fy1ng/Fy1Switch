@@ -107,8 +107,7 @@ public sealed partial class MainWindow
         _toggle.FontSize = 18;
         _toggle.FontWeight = FontWeights.SemiBold;
         _toggle.Margin = new Thickness(0, 0, 0, 8);
-        _toggle.SetResourceReference(Control.BackgroundProperty, DesktopTheme.AccentBrush);
-        _toggle.SetResourceReference(Control.ForegroundProperty, DesktopTheme.AccentForegroundBrush);
+        _toggle.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.PrimaryButton");
         state.Children.Add(_toggle);
         _powerCard = Card(state);
         page.Children.Add(_powerCard);
@@ -147,7 +146,6 @@ public sealed partial class MainWindow
         var settings = new StackPanel { Margin = new Thickness(24, 16, 24, 20) };
         var settingsHeading = new DockPanel { Margin = new Thickness(0, 0, 0, 22) };
         SettingsUi.Button(_settingsBack);
-        _settingsBack.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.BackButton");
         _settingsBack.MinWidth = 32;
         _settingsBack.Width = 32;
         _settingsBack.Padding = new Thickness(7);

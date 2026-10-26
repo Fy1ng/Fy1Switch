@@ -26,10 +26,12 @@ internal static class DesktopTheme
     internal const string SettingsBorderBrush = "Fy1Switch.SettingsBorderBrush";
     internal const string SettingsSelectionBrush = "Fy1Switch.SettingsSelectionBrush";
     internal const string SettingsSelectionForegroundBrush = "Fy1Switch.SettingsSelectionForegroundBrush";
-    internal const string BackButtonBrush = "Fy1Switch.BackButtonBrush";
-    internal const string BackButtonHoverBrush = "Fy1Switch.BackButtonHoverBrush";
-    internal const string BackButtonPressedBrush = "Fy1Switch.BackButtonPressedBrush";
-    internal const string BackButtonActiveForegroundBrush = "Fy1Switch.BackButtonActiveForegroundBrush";
+    internal const string ButtonBrush = "Fy1Switch.ButtonBrush";
+    internal const string ButtonHoverBrush = "Fy1Switch.ButtonHoverBrush";
+    internal const string ButtonPressedBrush = "Fy1Switch.ButtonPressedBrush";
+    internal const string ButtonActiveForegroundBrush = "Fy1Switch.ButtonActiveForegroundBrush";
+    internal const string PrimaryButtonHoverBrush = "Fy1Switch.PrimaryButtonHoverBrush";
+    internal const string PrimaryButtonPressedBrush = "Fy1Switch.PrimaryButtonPressedBrush";
 
     internal static ResourceDictionary CreateResources()
     {
@@ -38,10 +40,10 @@ internal static class DesktopTheme
                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
           <Style TargetType="Button">
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SubtleBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource Fy1Switch.ButtonBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.BorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -50,25 +52,51 @@ internal static class DesktopTheme
                 <ControlTemplate TargetType="Button">
                   <Border x:Name="Surface" Background="{TemplateBinding Background}"
                           BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                          CornerRadius="10" Padding="{TemplateBinding Padding}">
+                          CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
                     <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True"/>
                   </Border>
                   <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                      <Setter TargetName="Surface" Property="Opacity" Value="0.86"/>
-                    </Trigger>
-                    <Trigger Property="IsPressed" Value="True">
-                      <Setter TargetName="Surface" Property="Opacity" Value="0.7"/>
-                    </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
-                      <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.45"/>
                       <Setter Property="Cursor" Value="Arrow"/>
                     </Trigger>
                   </ControlTemplate.Triggers>
                 </ControlTemplate>
               </Setter.Value>
             </Setter>
+            <Style.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Fy1Switch.ButtonHoverBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ButtonActiveForegroundBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Fy1Switch.ButtonPressedBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ButtonActiveForegroundBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource Fy1Switch.ButtonBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+              </Trigger>
+            </Style.Triggers>
+          </Style>
+          <Style x:Key="Fy1Switch.PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.AccentForegroundBrush}"/>
+            <Style.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Fy1Switch.PrimaryButtonHoverBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.AccentForegroundBrush}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource Fy1Switch.PrimaryButtonPressedBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.AccentForegroundBrush}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.AccentForegroundBrush}"/>
+              </Trigger>
+            </Style.Triggers>
           </Style>
           <Style TargetType="CheckBox">
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -268,66 +296,10 @@ internal static class DesktopTheme
             </Setter>
           </Style>
           <Style x:Key="Fy1Switch.Settings.Button" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.SettingsBorderBrush}"/>
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="MinHeight" Value="32"/>
             <Setter Property="MinWidth" Value="72"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Template">
-              <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                  <Border x:Name="Surface" Background="{TemplateBinding Background}"
-                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                          CornerRadius="6" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True"/>
-                  </Border>
-                  <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                      <Setter TargetName="Surface" Property="Opacity" Value="0.85"/>
-                    </Trigger>
-                    <Trigger Property="IsPressed" Value="True">
-                      <Setter TargetName="Surface" Property="Opacity" Value="0.65"/>
-                    </Trigger>
-                    <Trigger Property="IsEnabled" Value="False">
-                      <Setter TargetName="Surface" Property="Opacity" Value="0.45"/>
-                      <Setter Property="Cursor" Value="Arrow"/>
-                    </Trigger>
-                  </ControlTemplate.Triggers>
-                </ControlTemplate>
-              </Setter.Value>
-            </Setter>
-          </Style>
-          <Style x:Key="Fy1Switch.Settings.BackButton" TargetType="Button" BasedOn="{StaticResource Fy1Switch.Settings.Button}">
-            <Setter Property="Background" Value="{DynamicResource Fy1Switch.BackButtonBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Template">
-              <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                  <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="6"
-                          Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
-                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
-                  </Border>
-                  <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                      <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Fy1Switch.BackButtonHoverBrush}"/>
-                      <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.BackButtonActiveForegroundBrush}"/>
-                    </Trigger>
-                    <Trigger Property="IsPressed" Value="True">
-                      <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Fy1Switch.BackButtonPressedBrush}"/>
-                      <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.BackButtonActiveForegroundBrush}"/>
-                    </Trigger>
-                    <Trigger Property="IsEnabled" Value="False">
-                      <Setter TargetName="Surface" Property="Opacity" Value="0.45"/>
-                      <Setter Property="Cursor" Value="Arrow"/>
-                    </Trigger>
-                  </ControlTemplate.Triggers>
-                </ControlTemplate>
-              </Setter.Value>
-            </Setter>
           </Style>
           <Style x:Key="Fy1Switch.Settings.ListBoxItem" TargetType="ListBoxItem">
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
@@ -508,9 +480,10 @@ internal static class DesktopTheme
             resources[SettingsBorderBrush] = SystemColors.WindowTextBrush;
             resources[SettingsSelectionBrush] = SystemColors.HighlightBrush;
             resources[SettingsSelectionForegroundBrush] = SystemColors.HighlightTextBrush;
-            resources[BackButtonBrush] = SystemColors.ControlBrush;
-            resources[BackButtonHoverBrush] = resources[BackButtonPressedBrush] = SystemColors.HighlightBrush;
-            resources[BackButtonActiveForegroundBrush] = SystemColors.HighlightTextBrush;
+            resources[ButtonBrush] = SystemColors.ControlBrush;
+            resources[ButtonHoverBrush] = resources[ButtonPressedBrush] = SystemColors.HighlightBrush;
+            resources[ButtonActiveForegroundBrush] = SystemColors.HighlightTextBrush;
+            resources[PrimaryButtonHoverBrush] = resources[PrimaryButtonPressedBrush] = SystemColors.HighlightBrush;
             return;
         }
         var dark = false;
@@ -537,10 +510,12 @@ internal static class DesktopTheme
         Set(SettingsBorderBrush, dark ? "#475365" : "#DFE4ED");
         Set(SettingsSelectionBrush, dark ? "#293C60" : "#F0F4FF");
         Set(SettingsSelectionForegroundBrush, dark ? "#F1F4F8" : "#1F2937");
-        Set(BackButtonBrush, dark ? "#303A49" : "#E2E8F2");
-        Set(BackButtonHoverBrush, dark ? "#465872" : "#C8D7EE");
-        Set(BackButtonPressedBrush, dark ? "#596E8D" : "#AFC5E6");
-        Set(BackButtonActiveForegroundBrush, dark ? "#FFFFFF" : "#17365F");
+        Set(ButtonBrush, dark ? "#303A49" : "#E2E8F2");
+        Set(ButtonHoverBrush, dark ? "#465872" : "#C8D7EE");
+        Set(ButtonPressedBrush, dark ? "#596E8D" : "#AFC5E6");
+        Set(ButtonActiveForegroundBrush, dark ? "#FFFFFF" : "#17365F");
+        Set(PrimaryButtonHoverBrush, dark ? "#BCD6FF" : "#224D9B");
+        Set(PrimaryButtonPressedBrush, dark ? "#7BA4E2" : "#193B79");
 
         void Set(string key, string value)
         {

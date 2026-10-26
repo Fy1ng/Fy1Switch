@@ -71,17 +71,12 @@ internal static class SettingsUi
 
     internal static void Button(Button button, bool primary = false)
     {
-        button.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.Button");
+        button.SetResourceReference(FrameworkElement.StyleProperty, primary ? "Fy1Switch.PrimaryButton" : "Fy1Switch.Settings.Button");
         button.MinWidth = 0;
         button.MinHeight = 32;
         button.FontSize = 12;
         button.Padding = new Thickness(12, 6, 12, 6);
         button.Margin = new Thickness(8, 0, 0, 0);
-        if (primary)
-        {
-            button.SetResourceReference(Control.BackgroundProperty, DesktopTheme.AccentBrush);
-            button.SetResourceReference(Control.ForegroundProperty, DesktopTheme.AccentForegroundBrush);
-        }
     }
 
     internal static void List(ListBox list)

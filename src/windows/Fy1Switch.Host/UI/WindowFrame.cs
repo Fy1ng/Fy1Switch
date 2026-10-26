@@ -5,7 +5,6 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Interop;
-using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shell;
@@ -66,39 +65,7 @@ internal static class WindowFrame
         Grid.SetRow(content, 1);
         root.Children.Add(content);
 
-        var style = (Style)XamlReader.Parse("""
-            <Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="Button">
-              <Setter Property="Background" Value="Transparent"/>
-              <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
-              <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-              <Setter Property="Template">
-                <Setter.Value>
-                  <ControlTemplate TargetType="Button">
-                    <Border x:Name="Surface" Background="{TemplateBinding Background}">
-                      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                      <Trigger Property="IsMouseOver" Value="True">
-                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Fy1Switch.SubtleBrush}"/>
-                      </Trigger>
-                      <Trigger Property="IsPressed" Value="True">
-                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Fy1Switch.BorderBrush}"/>
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="Tag" Value="close"/>
-                          <Condition Property="IsMouseOver" Value="True"/>
-                        </MultiTrigger.Conditions>
-                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                        <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.AccentForegroundBrush}"/>
-                      </MultiTrigger>
-                    </ControlTemplate.Triggers>
-                  </ControlTemplate>
-                </Setter.Value>
-              </Setter>
-            </Style>
-            """);
+        var style = (Style)window.FindResource(typeof(Button));
 
         Button CaptionButton(AppIconKind kind, string name, Action action)
         {
@@ -120,7 +87,6 @@ internal static class WindowFrame
             window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
         });
         var close = CaptionButton(AppIconKind.Close, "关闭", () => SystemCommands.CloseWindow(window));
-        close.Tag = "close";
         close.ToolTip = closeHint ?? "关闭窗口";
         window.StateChanged += (_, _) =>
         {
