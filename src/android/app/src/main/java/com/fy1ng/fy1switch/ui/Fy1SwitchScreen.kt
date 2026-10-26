@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -155,10 +154,7 @@ fun Fy1SwitchScreen(
                         state.selected?.let { scope.launch { repository.refresh(it.profile.deviceId) } }
                     }
                 }, modifier = Modifier.fillMaxSize().padding(padding),
-                indicator = {
-                    if (page == HOME) PullToRefreshDefaults.Indicator(
-                        state = pullState, isRefreshing = refreshing, modifier = Modifier.align(Alignment.TopCenter))
-                }) {
+                indicator = {}) {
             key(page) {
                 Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 12.dp),
@@ -343,9 +339,10 @@ private fun DeviceCard(device: DeviceState, state: AppState, repository: DeviceR
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Button(onClick = performAction, enabled = action.enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp), shape = RoundedCornerShape(18.dp)) {
-                if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else AppIcon(if (action.intent != null) AppIconType.Power else AppIconType.Refresh)
-                Spacer(Modifier.width(10.dp))
+                if (!state.busy) {
+                    AppIcon(if (action.intent != null) AppIconType.Power else AppIconType.Refresh)
+                    Spacer(Modifier.width(10.dp))
+                }
                 Text(action.label, style = MaterialTheme.typography.titleMedium)
             }
             if (power == DisplayPower.Unknown && StatePolicy.canSet(state)) {
