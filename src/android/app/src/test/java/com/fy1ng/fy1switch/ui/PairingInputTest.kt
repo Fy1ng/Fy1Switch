@@ -53,7 +53,7 @@ class PairingInputTest {
 
     @Test fun originalPinVersionAndExpiryChecksStillApply() {
         for (json in listOf(bundle().put("certificatePin", "sha256/invalid"), bundle().put("version", 2),
-            bundle().put("expiresAt", NOW.toString()), bundle().put("expiresAt", NOW.plusSeconds(301).toString()),
+            bundle().put("expiresAt", NOW.toString()), bundle().put("expiresAt", NOW.plusSeconds(331).toString()),
             bundle().put("endpoint", "http://192.0.2.1:8443"), bundle().put("code", ""))) {
             assertThrows(Exception::class.java) { PairingInput.validate(json.toString(), NOW) }
         }

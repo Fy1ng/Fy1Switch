@@ -141,17 +141,18 @@ class LanPairing(private val context: Context, private val repository: DeviceRep
                         mutable.value = mutable.value.copy(code = null, seconds = 0)
                     }
                     val bundle = channel.decrypt("windows-bundle", wire.read())
+                    var failureMessage: String? = null
                     val success = withContext(Dispatchers.Main.immediate) {
                         ensureActive()
                         require(current == generation && !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked)
-                        ShortCodePairing.acceptBundle(repository, bundle, clientName)
+                        ShortCodePairing.acceptBundle(repository, bundle, clientName) { failureMessage = it }
                     }
                     ensureActive()
                     wire.write(channel.encrypt("android-result", JSONObject().put("success", success).toString()))
                     withContext(Dispatchers.Main.immediate) {
                         if (current == generation) {
                             if (success) paired()
-                            stop(if (success) "配对成功。" else "证书或 HTTPS 配对失败，或电脑已经配对；请在电脑上重新开始。")
+                            stop(if (success) "配对成功。" else failureMessage)
                         }
                     }
                 }

@@ -80,9 +80,22 @@ class ProtocolTest {
     @Test fun validatesPairBundleLifetimeAndIdentity() {
         assertEquals(DEVICE, Protocol.pairBundle(bundleJson(), NOW).deviceId)
         assertThrows(IllegalArgumentException::class.java) { Protocol.pairBundle(bundleJson(expiresAt = NOW), NOW) }
-        assertThrows(IllegalArgumentException::class.java) { Protocol.pairBundle(bundleJson(expiresAt = NOW.plusSeconds(301)), NOW) }
+        assertThrows(IllegalArgumentException::class.java) { Protocol.pairBundle(bundleJson(expiresAt = NOW.plusSeconds(331)), NOW) }
         val response = JSONObject().put("deviceId", OTHER).put("clientId", CLIENT).put("token", "fixture-token")
         assertThrows(IllegalArgumentException::class.java) { Protocol.pairReply(response.toString(), DEVICE) }
+    }
+
+    @Test fun pairBundleAllowsOnlyBoundedClockDifference() {
+        for (difference in listOf(1L, 2L, 30L)) {
+            val windowsExpiry = NOW.plusSeconds(300 + difference)
+            assertEquals(windowsExpiry, Protocol.pairBundle(bundleJson(expiresAt = windowsExpiry), NOW).expiresAt)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            Protocol.pairBundle(bundleJson(expiresAt = NOW.plusSeconds(330).plusNanos(1)), NOW)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            Protocol.pairBundle(bundleJson(expiresAt = NOW.minusNanos(1)), NOW)
+        }
     }
 
     @Test fun acceptsOnlySafeHttpsEndpoints() {

@@ -14,6 +14,8 @@ Wire 严格依据 [Pairing-v1.md](Pairing-v1.md)：BC `bcprov-jdk18on:1.86`、RF
 
 无论 SRP 角色，Android **只在验证 PAKE 后**接收 authenticated `windows-bundle`。bundle 中的 Windows deviceId/pin 才进入既有 `DeviceRepository.pair`，使用原严格 pin HTTPS `/v1/pair` 并保存旧格式凭据；不把 mDNS device identity/pin 当 expected identity。已经配对的 deviceId 不自动重复 pair。保存成功后才发送 encrypted `android-result {success:true}`；HTTPS/证书失败发送 false。若 ack 途中断开，电脑不得假定完成，手机可能已经保存凭据。
 
+2026-10-27: 配对信息的到期时间上限允许 30 秒的两端时钟差, 避免 Windows 时间略快时, 刚生成的短码 HTTPS bootstrap 被手机当作超过五分钟有效期而拒绝. 已过期的信息仍拒绝, Windows 仍按自己的时钟执行原五分钟到期检查. 扫码和短码共用此校验. 短码失败分别提示无效或过期信息, 已添加电脑, 证书错误, HTTPS 连接失败或电脑拒绝, 不再把这些原因合并成证书错误.
+
 Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面重建时 `FAILURE_ALREADY_ACTIVE`。按能力取得 Wi-Fi multicast lock，API 33+ 使用 NSD network，连接时绑定解析网络（否则使用可用 Wi-Fi network）。不要求公网发现、后台保活或硬件控制。同 SSID 也可能有 AP/访客隔离、组播过滤、防火墙或 OEM NSD 限制；本地 JVM/build 不代表真机发现、锁屏、相机返回已验收。
 
 ### JVM/跨语言联调 API
@@ -24,7 +26,7 @@ Android 29 使用串行 legacy resolve，进程共享 resolve 队列避免页面
 - `ShortCodeProtocol.client(wire, serverSession, code, clientRole="android", clientSession=<UUID>, onProof={})`。
 - `ShortCodeProtocol.server(wire, serverSession, code, serverRole="android", onProof={})`。
 - 两者返回 `SecureChannel`：`encrypt(purpose, plaintext)` / `decrypt(purpose, frame)`；`transcriptHash` 可供 fixture 断言。每方向每 purpose 一次。测试可传 `windows` 角色；生产入口固定 Android。调用者负责 socket 关闭、截止时间及 admission，生产由 `LanPairing` 负责。
-- `ShortCodePairing.acceptBundle(repository, text, clientName): Boolean` 是 suspend 函数；测试用内存 StateStore，生产仍使用原 repository/store。不返回或回传 bearer。
+- `ShortCodePairing.acceptBundle(repository, text, clientName, onFailure={}): Boolean` 是 suspend 函数；测试用内存 StateStore，生产仍使用原 repository/store。可选 `onFailure` 接收不含敏感值的原因提示, 不返回或回传 bearer。
 
 显式任务 `:app:liveShortCodeTest` 读取 `FY1SWITCH_SHORT_CODE_FIXTURE` 指向的临时 UTF-8 JSON **文件路径**（可带 BOM），不进入常规 unit test。缺 env、失效 fixture、握手/身份/pin/target 断言失败均失败，不 skip、不复用缓存。测试只允许 loopback，不安装 APK、不调用电源 set。
 

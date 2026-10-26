@@ -8,6 +8,8 @@ import java.util.UUID
 
 object Protocol {
     const val MAX_BODY = 65536
+    private const val PAIR_LIFETIME_SECONDS = 300L
+    private const val PAIR_CLOCK_SKEW_SECONDS = 30L
 
     fun uuid(value: String): UUID = UUID.fromString(value).also {
         require(it.toString().equals(value, ignoreCase = true))
@@ -54,7 +56,10 @@ object Protocol {
         val json = JSONObject(text)
         require(json.get("version") == 1)
         val expiresAt = Instant.parse(json.getString("expiresAt"))
-        require(expiresAt > now && expiresAt <= now.plusSeconds(300))
+        // A fresh Windows bootstrap lasts five minutes on the server clock. A phone
+        // slightly behind that clock must not reject it before the HTTPS request.
+        // Windows still enforces the actual expiry; already-expired bundles stay invalid.
+        require(expiresAt > now && expiresAt <= now.plusSeconds(PAIR_LIFETIME_SECONDS + PAIR_CLOCK_SKEW_SECONDS))
         val code = json.getString("code")
         require(code.length in 1..256 && code.none { it.isISOControl() })
         return PairBundle(
