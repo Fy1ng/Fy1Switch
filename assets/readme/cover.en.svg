@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
+  <title id="title">Fy1Switch</title>
+  <desc id="desc">Turn your PC monitor on and off from your phone. Pull down Quick Settings, tap "Remote display", and the screen goes dark.</desc>
+
+  <rect x="1" y="1" width="1198" height="398" rx="28" fill="#F6F8FA" stroke="#DFE4ED" stroke-width="2"/>
+
+  <g id="title-block" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, PingFang SC, Microsoft YaHei, sans-serif">
+    <text x="64" y="86" font-size="20" font-weight="600" letter-spacing="1" fill="#2D5CB4">REMOTE MONITOR SWITCH</text>
+    <text x="62" y="166" font-size="76" font-weight="700" fill="#1F2937">Fy1Switch</text>
+    <text x="64" y="230" font-size="40" font-weight="600" fill="#1F2937">Turn your PC monitor</text>
+    <text x="64" y="282" font-size="40" font-weight="600" fill="#1F2937">on and off <tspan fill="#2D5CB4">from your phone</tspan></text>
+    <text x="64" y="346" font-size="20" fill="#566173">Windows PC · Android phone</text>
+  </g>
+
+  <g id="steps" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#566173">
+    <!-- 1. phone with the Quick Settings tile -->
+    <g transform="translate(634 40)">
+      <rect width="160" height="284" rx="26" fill="#1F2937"/>
+      <rect x="10" y="12" width="140" height="260" rx="18" fill="#FFFFFF"/>
+      <rect x="60" y="22" width="40" height="6" rx="3" fill="#D5DBE2"/>
+      <rect x="20" y="46" width="120" height="68" rx="16" fill="#2D5CB4"/>
+      <g transform="translate(34 66)" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="0" y="0" width="22" height="16" rx="3"/>
+        <path d="M7 22h8M11 16v6"/>
+      </g>
+      <text x="100" y="78" font-size="18" font-weight="600" fill="#FFFFFF">Remote</text>
+      <text x="100" y="100" font-size="18" font-weight="600" fill="#FFFFFF">display</text>
+      <rect x="20" y="126" width="56" height="56" rx="16" fill="#EEF2F8"/>
+      <rect x="84" y="126" width="56" height="56" rx="16" fill="#EEF2F8"/>
+      <rect x="20" y="194" width="56" height="56" rx="16" fill="#EEF2F8"/>
+      <rect x="84" y="194" width="56" height="56" rx="16" fill="#EEF2F8"/>
+      <text x="80" y="320">Open Quick Settings</text>
+    </g>
+
+    <!-- 2. one tap -->
+    <g transform="translate(818 182)">
+      <text x="34" y="-18" font-weight="600" fill="#2D5CB4">Tap</text>
+      <path d="M0 0H62" fill="none" stroke="#2D5CB4" stroke-width="3" stroke-dasharray="8 7" stroke-linecap="round"/>
+      <path d="M56 -10l12 10-12 10" fill="none" stroke="#2D5CB4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- 3. monitor goes dark -->
+    <g transform="translate(910 80)">
+      <rect width="230" height="160" rx="14" fill="#1F2937"/>
+      <rect x="10" y="10" width="210" height="128" rx="8" fill="#171A20"/>
+      <path d="M124 50a26 26 0 1 0 24 34a20 20 0 0 1 -24 -34z" fill="#475365"/>
+      <circle cx="208" cy="149" r="4" fill="#FFD98B"/>
+      <path d="M101 160h28l8 38h-44z" fill="#475365"/>
+      <rect x="69" y="196" width="92" height="10" rx="5" fill="#475365"/>
+      <text x="115" y="280">Screen goes dark</text>
+    </g>
+  </g>
+</svg>

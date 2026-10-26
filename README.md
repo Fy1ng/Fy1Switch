@@ -1,201 +1,184 @@
-<p align="right">
-  <strong>简体中文</strong> | <a href="README.en.md">English</a>
+<p align="right"><b>中文</b> · <a href="README.en.md">English</a></p>
+
+<p align="center">
+  <img src="assets/readme/cover.zh-CN.svg" width="100%" alt="Fy1Switch: 用手机开关电脑的显示器. 下拉手机快捷设置, 点一下远程显示器, 电脑屏幕就熄灭.">
 </p>
 
 <p align="center">
-  <img src="assets/readme/app-icon.png" width="80" height="80" alt="Fy1Switch 应用图标">
+  <a href="#上手">上手</a> ·
+  <a href="#工作方式">工作方式</a> ·
+  <a href="#远程连接">远程连接</a> ·
+  <a href="#已知边界">已知边界</a> ·
+  <a href="#从源码构建">从源码构建</a>
 </p>
 
-<h1 align="center">Fy1Switch</h1>
+人不在桌前, 也想关掉电脑那块显示器. Fy1Switch 让 Android 手机成为这块显示器的电源键: 在下拉快捷设置里点一下"远程显示器", Windows 电脑就通过 DDC/CI 让显示器进入待机或重新亮起, 再把读到的真实状态回报给手机.
 
-<p align="center">
-  <strong>用手机, 开关 Windows 电脑连接的显示器.</strong><br>
-  Android App 与快捷设置开关, 局域网直连, 可选 Tailscale 和自建中继.
-</p>
+> [!NOTE]
+> Windows 安装包和免安装 ZIP 在 [Releases](https://github.com/Fy1ng/Fy1Switch/releases/latest) 下载. Android App 暂未发布安装包, 需要[从源码构建](#从源码构建), 目前是 debug 构建.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Windows-x64-315DB3?style=flat-square" alt="Windows x64">
-  <img src="https://img.shields.io/badge/Android-10%2B-157A65?style=flat-square" alt="Android 10 及以上">
-  <img src="https://img.shields.io/badge/Status-Preview-A86A14?style=flat-square" alt="开发预览">
-</p>
+## 实际界面
 
-<p align="center">
-  <a href="#quick-start">快速开始</a> | <a href="#preview">界面预览</a> | <a href="#connections">连接方式</a> | <a href="#build">源码构建</a> | <a href="#docs">文档</a>
-</p>
-
-<p align="center">
-  <img src="assets/readme/hero.zh-CN.svg" width="100%" alt="显示器开关就在手边. 手机通过 Windows 控制实体显示器, 支持局域网及可选的 Tailscale 或自建中继连接.">
-</p>
-
-Fy1Switch 将电脑端的显示器控制接入手机. Windows 负责发现, 确认和控制本地目标; Android 提供日常开关, 状态读取和系统快捷入口. 适合希望从手机操作桌面显示器, 或搭配虚拟显示器使用的场景. 显示器与复制拓扑的兼容性需按下方说明确认.
-
-**当前为开发预览.** 仓库尚无 GitHub Release 安装包, 可按[源码构建](#build)生成 Windows 自包含目录和 Android debug APK. 已实现功能与本地测试范围见[兼容性与状态](#compatibility).
-
-<a id="features"></a>
-
-## 能做什么
-
-| 功能 | 使用体验 |
-| --- | --- |
-| 手机开关显示器 | 在 Android App 中查看状态, 明确开启或关闭目标显示器. |
-| 系统快捷设置 | 将"远程显示器"加入下拉面板, 已确认状态下直接切换, 状态不明时先读取. |
-| 扫码与短码配对 | 扫描电脑二维码; 同一局域网内也可查找电脑并输入电脑显示的六位码. |
-| 自动选择连接路径 | 按局域网, Tailscale, 自建 Relay 的顺序尝试已配置路径. |
-| 自动读取状态 | 进入主页, 返回前台或遇到不确定结果时执行有界只读恢复. |
-| 可选后台同步 | 默认关闭. 开启后显示常驻通知, 定期读取状态, 可从通知中停止. |
-| Windows 托盘 | 主窗口关闭后留在托盘, 提供状态, 刷新和本地开关入口. |
-
-<a id="preview"></a>
-
-## 界面预览
-
-下图使用真实 WPF 组件在隔离模拟环境中渲染, 展示当前 Windows 界面与配色. 图中的设备和状态均为模拟数据, 不代表实机控制结果.
+Windows 端的主窗口, 浅色与深色主题. 截图由真实 WPF 界面在模拟模式下渲染, 设备和状态是测试数据.
 
 <table>
   <tr>
-    <th width="50%">Windows 浅色</th>
-    <th width="50%">Windows 深色</th>
-  </tr>
-  <tr>
-    <td><img src="assets/readme/windows-light.png" width="100%" alt="Windows 浅色模拟界面, 包含显示器状态, 主开关, 刷新和连接手机入口"></td>
-    <td><img src="assets/readme/windows-dark.png" width="100%" alt="Windows 深色模拟界面, 与浅色界面保持相同的状态和操作布局"></td>
+    <td width="50%"><img src="assets/readme/windows-light.png" width="100%" alt="Windows 主窗口浅色主题: 显示器状态, 开关按钮, 刷新与连接手机入口"></td>
+    <td width="50%"><img src="assets/readme/windows-dark.png" width="100%" alt="Windows 主窗口深色主题, 布局与浅色一致"></td>
   </tr>
 </table>
 
-<a id="quick-start"></a>
+## 你会用到的部分
 
-## 快速开始
+**手机上**
+- 主页显示目标显示器最近一次读回的状态, 一个按钮开或关.
+- 快捷设置磁贴"远程显示器": 状态确定时直接切换, 不确定时先读取再说. 长按打开 App.
+- 一部手机可以保存多台电脑, 选一台作默认目标.
+- 后台同步默认关闭; 打开后会常驻一条通知, 定时读取状态.
 
-准备一台保持开机并登录的 Windows x64 电脑, 一部 Android 10 或更新的手机, 以及支持 DDC/CI 电源控制的显示器. 首次配对建议让手机和电脑处于同一局域网. 如显示器提供 DDC/CI 设置, 先在显示器菜单中开启.
+**电脑上**
+- 托盘常驻, 图标颜色区分开启, 关闭和未知.
+- 按显示器实际报告的能力, 提供亮度, 对比度, 音量, 输入源, 色温和旋转调节, 不支持的项置灰. 每一项都可以隐藏.
+- 只读查看显示器的 VCP 功能列表.
+- 管理已配对的手机, 可以逐台撤销.
 
-### 1. 在电脑上确认目标显示器
+## 上手
 
-从完整 Windows 构建目录运行 `Fy1Switch.Host.exe`, 在界面中发现并确认目标. 首次使用应在显示器旁核对实际开关与恢复, 再从手机操作. 使用时避免其他 DDC 控制程序同时访问同一显示器.
+需要准备:
 
-保留整个目录, 包括 `worker/`, `cli/` 和依赖文件. 自包含包不需要另外安装 .NET 或 PowerToys. 可从发布目录运行 `Install.ps1` 进行每用户安装; 自动启动由用户在设置中选择.
-
-### 2. 配对手机
-
-1. Windows 启动后自动运行手机控制服务. 打开"设置"检查自动识别的局域网地址, 连接参数修改后自动保存.
-2. 点击"连接手机", 保持二维码浮层打开.
-3. 在 Android App 中打开"添加电脑", 扫描电脑二维码, 核对并确认配对.
-4. 同一局域网内也可展开附近电脑入口, 选择电脑并输入电脑屏幕上的六位码.
-
-配对信息短时有效且只能使用一次. 每台手机获得独立授权, 可以在 Windows 端撤销. 地址无法访问时, 按[远程连接说明](docs/Remote-Control.md)检查监听, 防火墙和网络隔离.
-
-### 3. 日常使用
-
-- 打开 Android 主页查看当前显示器状态, 使用主按钮开启或关闭.
-- 在系统快捷设置编辑页添加"远程显示器"; 长按开关可以打开应用.
-- 需要后台状态更新时, 在设备设置开启"后台同步显示器状态"并按系统提示授权通知. 同步可能受系统省电和后台限制影响.
-- 退出 Windows 程序请使用托盘菜单的"退出"; 关闭设置窗口会保留托盘.
-
-<a id="connections"></a>
-
-## 连接方式
-
-| 路径 | 适用场景 | 需要准备 |
-| --- | --- | --- |
-| 局域网 HTTPS | 手机和电脑在同一网络 | 电脑程序保持运行, 手机能访问所选地址与端口. |
-| Tailscale HTTPS | 离开家庭网络后连接 | 两端单独安装并配置 Tailscale, 在 Fy1Switch 中启用对应路径. |
-| 自建 Relay | 需要中继作为连接路径 | 部署可信 Relay, 登录 WebUI 后让 Windows 使用六位接入码注册; 手机自动授权或通过六位码首次配对. |
-
-只尝试已配置的路径. 网络连接失败可以切换路径, 证书和授权错误会直接提示. 首次配对支持直连或 Relay 地址加 Windows 手机配对码. 已配对手机在局域网自动配置 Relay, 异地只需输入 Relay 地址. WebUI 支持密码和 Passkey 登录. 本项目不会自动配置 Tailscale, 修改防火墙或部署服务器.
-
-直连固定校验电脑证书, 每台手机使用独立凭据. **Relay 是可信的两段 TLS 中继, 可以读取转发内容, 不提供对中继不可见的端到端加密.** 详见[安全与连接模型](docs/Remote-Control.md)和[自建 Relay](docs/Relay.md).
-
-<a id="compatibility"></a>
-
-## 兼容性与状态
-
-| 项目 | 当前范围 |
+| | 要求 |
 | --- | --- |
-| Windows | x64, 运行于已登录用户会话. 电脑睡眠或关机后无法由本应用继续控制显示器. |
-| Android | Android 10 / API 29 起, 当前客户端界面为中文. 系统快捷设置和后台服务行为受设备厂商限制. |
-| 显示器 | 需要可用的 DDC/CI 电源控制与读回. 连接方式, 显示器固件和转接设备会影响兼容性. |
-| 虚拟显示器与复制模式 | 只对指定的实体屏与 VDD 组合做过受限验证, 不承诺任意 VDD 或多实体屏拓扑. |
-| 发布状态 | Windows, Android 和 Relay 已实现并有本地自动化覆盖; Android 当前为 debug 构建. |
+| 电脑 | Windows x64, 保持开机并登录. 已安装 .NET Desktop Runtime 10.0 和 ASP.NET Core Runtime 10.0 (x64) |
+| 手机 | Android 10 (API 29) 或更新 |
+| 显示器 | 支持 DDC/CI 电源控制. 部分显示器需要先在 OSD 菜单里打开 DDC/CI |
 
-拓扑或目标身份不确定时拒绝控制. 操作结果不确定时查询原操作并读取状态, 不盲目重放开关命令或自动更换绑定.
+**第一步, 在电脑上绑定显示器.** 从 [Releases](https://github.com/Fy1ng/Fy1Switch/releases/latest) 下载 `setup.exe` 安装 (当前用户, 无需管理员权限), 或解压 `portable.zip` 后运行 `Fy1Switch/Fy1Switch.Host.exe`. 启动后打开"设置", 程序会扫描一次可控制的显示器. 选中目标并确认绑定. 建议坐在显示器前试一次关闭和恢复, 确认控制的是这块屏. 同一时间不要让其他 DDC 工具 (例如 PowerToys 的 Power Display) 也在控制它, Fy1Switch 检测到会拒绝访问硬件.
 
-本地自动化不替代实机验收. 整机重启, 睡眠, 物理拔插, 目标手机的后台与快捷设置行为, 以及真实 LAN/Tailscale/Relay 跨设备场景仍需按各专题文档验证. 已确认的短时实体屏测试范围见 [P0 发现与验证](docs/P0-findings.md).
+**第二步, 配对手机.** 手机和电脑连到同一个局域网. 在电脑主窗口点"连接手机", 屏幕上会出现二维码和六位码. 在手机 App 里选"添加电脑", 扫码; 或者在附近设备列表里选中这台电脑, 输入六位码. 配对码 5 分钟内有效, 只能用一次.
 
-<a id="build"></a>
+**第三步, 把磁贴加到快捷设置.** 编辑手机的下拉快捷设置, 拖入"远程显示器". 以后不开 App 也能切换.
 
-## 源码构建
+关闭电脑上的主窗口只会缩到托盘. 要彻底退出, 用托盘菜单里的"退出".
 
-在 Windows 上使用 PowerShell 7. Windows 构建需要 `global.json` 指定的 .NET SDK `10.0.400` 或同 feature band 的更新补丁. Android 构建需要 Android SDK 36, JDK 17+ 和 Gradle 8.13; 已验证的本地组合使用 JDK 21.
+## 工作方式
+
+```text
+Android App / 快捷设置磁贴
+        │  HTTPS, 固定电脑证书, 每台手机独立凭据
+        ▼
+Windows 宿主 (WPF, 托盘)
+        │  私有命名管道, 校验进程身份
+        ▼
+硬件 Worker 进程 ── DDC/CI ──▶ 显示器  VCP D6: 关闭写 0x04, 开启写 0x01
+```
+
+几个影响使用体验的设计:
+
+- **以读回为准.** 写入成功只算"已接受". 只有再次读回的电源值和请求一致, 才显示为已确认. 读不到就显示"未确认", 不把离线当作关闭.
+- **不重复开关.** 每次操作带一个操作 ID. 网络超时后, 手机去查询这次操作的结果, 不会再发一次开关命令. 换连接路径重试时也沿用同一个 ID.
+- **身份变了就停.** 每次读写都核对显示拓扑的指纹. 显示器被替换, 或目标不再唯一, 程序会拒绝控制, 要求回到电脑上重新确认绑定.
+- **硬件访问隔离.** DDC 调用放在单独的 Worker 进程里, 有超时上限. 卡死时只隔离 Worker, 不拖垮主程序.
+
+显示器控制核心来自 [Microsoft PowerToys](https://github.com/microsoft/PowerToys) Power Display 的源码子集, 固定在一个提交上, 随项目一起编译. 不需要另外安装 PowerToys.
+
+## 远程连接
+
+手机按下面的顺序尝试你配置过的路径, 没配置的跳过:
+
+| 顺序 | 路径 | 什么时候用 | 你需要做的 |
+| --- | --- | --- | --- |
+| 1 | 局域网 HTTPS | 在家, 和电脑同一网络 | 无, 默认端口 48152 |
+| 2 | Tailscale HTTPS | 在外面, 两端都装了 Tailscale | 在电脑设置里启用 Tailscale 路径 |
+| 3 | 自建 Relay | 没有 Tailscale, 又需要在外面用 | 部署一台你信任的 Relay 服务器 |
+
+只有连接层失败 (连不上, 超时) 才会换下一条路径. 证书, 授权或协议出错会直接报错, 不会被换路径掩盖.
+
+Fy1Switch 不会替你修改防火墙, 登录 Tailscale 或部署服务器. 手机连不上电脑时, 先看[远程控制说明](docs/Remote-Control.md)里的排查步骤.
+
+> [!WARNING]
+> Relay 是两段 TLS 的转发服务, 手机到 Relay, Relay 到电脑各自加密. Relay 本身能看到转发的内容, 这不是端到端加密. 只部署在你信任的服务器上.
+
+Relay 是一个 ASP.NET Core 服务, 提供 Docker 镜像和 Compose 文件, 管理界面支持密码和 Passkey 登录. 部署步骤见[自建 Relay](docs/Relay.md).
+
+## 已知边界
+
+- **电脑必须醒着.** 电脑睡眠, 关机或注销后, 无法再控制显示器. 项目不提供网络唤醒.
+- **显示器兼容性因机而异.** 显示器固件, 接口类型, 转接头和扩展坞都会影响 DDC/CI. 写入"关闭"后, 有的显示器读回的是待机 (0x02), 这属于正常情况.
+- **复杂拓扑只做过有限验证.** 实机测试覆盖的是一台实体显示器加一个虚拟显示器 (VDD) 的复制模式. 其他多屏或虚拟屏组合没有保证.
+- **手机系统可能限制后台.** 磁贴和后台同步的表现受厂商省电策略影响.
+- **未完成的验收.** 整机重启, 睡眠恢复, 物理拔插和真实跨网络场景还需要实机验证. 已验证的范围记录在 [P0 实机记录](docs/P0-findings.md).
+
+## 从源码构建
+
+在 Windows 上用 PowerShell 7 运行. 工具链要求:
+
+- Windows 端: .NET SDK 10.0.400 (见 [`global.json`](global.json), 允许更新的补丁版本)
+- Android 端: Android SDK 36, JDK 17 或更新, Gradle 8.13
 
 ```powershell
 git clone https://github.com/Fy1ng/Fy1Switch.git
 cd Fy1Switch
 
-# Windows 程序目录, 使用系统 .NET 运行时
-.\tools\Publish-Windows.ps1
-
-# Windows NSIS 安装包和免安装 ZIP, 需本地 NSIS 3
-.\tools\Package-Windows.ps1 -MakeNsisPath 'C:\NSIS\makensis.exe'
-
-# Android 单测, lint 和 debug APK
-.\tools\Build-Android.ps1
-
-# Android 优化 APK, 使用本机测试签名
-.\tools\Build-Android.ps1 -Configuration Optimized -Clean
+.\tools\Publish-Windows.ps1   # 输出 artifacts/windows/win-x64/
+.\tools\Build-Android.ps1     # 运行单元测试和 lint, 生成 debug APK
 ```
 
-| 产物 | 默认位置 |
-| --- | --- |
-| Windows | `artifacts/windows/win-x64/Fy1Switch.Host.exe` 及同目录依赖 |
-| Windows 安装包和免安装版 | `artifacts/windows/packages/Fy1Switch-<版本>-win-x64-setup.exe` 和 `Fy1Switch-<版本>-win-x64-portable.zip` |
-| Android | `src/android/app/build/outputs/apk/debug/app-debug.apk` |
-| Android 优化版 | `src/android/app/build/outputs/apk/optimized/app-optimized.apk` |
-
-Android 脚本默认使用 `C:\android-sdk`, 读取 `JAVA_HOME`, 并查找本机缓存的 Gradle 8.13. 其他安装位置请使用 `-SdkPath`, `-JavaHome`, `-GradlePath` 指定, 详见 [Android 构建说明](docs/Android.md). 脚本不自动安装 SDK 或 Gradle, 不安装 APK.
-
-Windows 默认不附带 .NET 运行时, 需要系统已安装 .NET Desktop Runtime 10.0 x64 和 ASP.NET Core Runtime 10.0 x64, 无需 .NET SDK. 安装前自动检查依赖, 免安装版可执行 `Check-Runtime.ps1` 检查. 如需自包含目录, 发布时显式使用 `-SelfContained` 和独立的输出目录. 打包脚本通过 `-PublishDirectory` 选择完整发布目录; 免安装 ZIP 解压后运行 `Fy1Switch/Fy1Switch.Host.exe`. 详见 [Windows 使用说明](docs/Windows-P1.md).
-
-Android 优化版启用 R8 代码和资源裁剪, 使用本机原有 debug 证书, 用于本地安装和更新; 正式 release 保持独立签名要求. 详见 [Android 构建说明](docs/Android.md).
+Windows 发布目录要整体保留, 里面的 `worker/` 和 `cli/` 子目录是程序的一部分. 在该目录运行 `Install.ps1` 可以安装到当前用户 (不需要管理员权限); `Check-Runtime.ps1` 检查 .NET 运行时是否齐全.
 
 <details>
-<summary>开发验证与目录说明</summary>
+<summary>更多构建选项</summary>
 
 ```powershell
-.\tools\Test-Windows.ps1
-.\tools\Test-Pairing.ps1
-.\tools\Test-Network.ps1
+# 自包含版本, 自带 .NET 运行时. 请用新的输出目录
+.\tools\Publish-Windows.ps1 -SelfContained -OutputDirectory artifacts\windows\self-contained
+
+# NSIS 安装包和免安装 ZIP, 需要本机已有 NSIS 3
+.\tools\Package-Windows.ps1 -MakeNsisPath 'C:\NSIS\makensis.exe'
+
+# Android 优化版 APK (R8 裁剪, 使用本机 debug 签名)
+.\tools\Build-Android.ps1 -Configuration Optimized -Clean
+
+# SDK, JDK, Gradle 不在默认位置时
+.\tools\Build-Android.ps1 -SdkPath D:\android-sdk -JavaHome D:\jdk-21 -GradlePath D:\gradle-8.13\bin\gradle.bat
 ```
 
-默认测试使用模拟显示器或本机回环服务. 真实硬件诊断与显式 live fixture 有独立入口, 请先阅读对应文档.
-
-| 目录 | 内容 |
+| 产物 | 位置 |
 | --- | --- |
-| `src/windows/` | Windows 宿主, 独立 Worker, CLI 与控制核心 |
-| `src/android/` | Kotlin/Compose App 与 TileService |
-| `src/relay/` | ASP.NET Core Relay 与部署输入 |
-| `src/shared/` | 共享协议契约 |
-| `tests/` | 模拟与回环自动化测试 |
-| `vendor/` | 固定提交的 PowerToys 源码子集 |
+| Windows 程序 | `artifacts/windows/win-x64/Fy1Switch.Host.exe` |
+| 安装包 / 免安装 ZIP | `artifacts/windows/packages/` |
+| Android debug APK | `src/android/app/build/outputs/apk/debug/app-debug.apk` |
+| Android 优化版 APK | `src/android/app/build/outputs/apk/optimized/app-optimized.apk` |
 
-项目现已完整更名为 Fy1Switch, 包括程序文件名, Android 包名 `com.fy1ng.fy1switch`, Windows 数据目录及配对身份. 新版与更名前的旧版使用独立身份, 需要重新绑定显示器和配对手机; 旧版数据保留, 不自动迁移. 请退出旧版后使用新版, 并重新添加新版的 Android 快捷设置开关.
+测试脚本 `Test-Windows.ps1`, `Test-Pairing.ps1`, `Test-Network.ps1` 默认使用模拟显示器和本机回环, 不会碰真实硬件.
 
 </details>
 
-<a id="docs"></a>
+<details>
+<summary>仓库结构</summary>
+
+| 目录 | 内容 |
+| --- | --- |
+| `src/windows/` | WPF 宿主, 硬件 Worker, CLI, 发现, 配对与远程控制模块 |
+| `src/android/` | Kotlin + Jetpack Compose App 和快捷设置磁贴 |
+| `src/relay/` | ASP.NET Core Relay, Dockerfile 与 Compose 文件 |
+| `src/shared/` | 两端共用的协议定义 |
+| `tests/` | 单元测试, 回环和模拟硬件的集成测试 |
+| `tools/` | 构建, 打包, 安装和测试脚本 |
+| `vendor/powertoys/` | 固定版本的 PowerToys Power Display 源码子集 |
+| `docs/` | 各模块的详细说明 |
+
+</details>
 
 ## 文档
 
-| 主题 | 文档 |
-| --- | --- |
-| Windows 安装, 托盘与本地控制 | [Windows 使用说明](docs/Windows-P1.md) |
-| 网络, 配对与安全模型 | [远程控制](docs/Remote-Control.md) |
-| Android App 与快捷设置 | [Android 使用与构建](docs/Android.md) |
-| 中继配置与部署 | [自建 Relay](docs/Relay.md) |
-| 六位短码协议 | [Pairing v1](docs/Pairing-v1.md) |
-| 硬件验证范围 | [P0 发现与验证](docs/P0-findings.md) |
-| 开发过程与历史产物 | [开发与验证记录](docs/Development-History.md) |
+- [Windows 使用说明](docs/Windows-P1.md): 绑定, 状态语义, 本地 CLI, 安装与卸载
+- [Android 使用与构建](docs/Android.md): App, 磁贴, 后台同步
+- [远程控制与配对](docs/Remote-Control.md): 连接路径, 安全模型, 网络排查
+- [自建 Relay](docs/Relay.md): 配置, Docker 部署, 反向代理
+- [六位码配对协议](docs/Pairing-v1.md): SRP-6a 握手与报文格式
+- [P0 实机记录](docs/P0-findings.md): 已在真实硬件上验证过什么
+- [开发记录](docs/Development-History.md)
 
-## 致谢与第三方许可
+## 致谢与许可
 
-显示器控制核心复用 Microsoft PowerToys Power Display 的固定源码子集, 不要求安装 PowerToys. 界面图标使用 Microsoft Fluent System Icons, 应用图标使用项目已确认的独立素材.
-
-第三方组件及分发要求见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), [PowerToys MIT 许可证](vendor/powertoys/LICENSE)与 [licenses/](licenses/). 保留发布目录内的依赖和许可证文件. README 视觉组织参考 [beautify-github-readme](https://github.com/oil-oil/beautify-github-readme), 首屏 SVG 为本项目制作.
+显示器控制基于 Microsoft PowerToys 的 Power Display (MIT, 许可见 [`vendor/powertoys/LICENSE`](vendor/powertoys/LICENSE)). 界面图标来自 Microsoft Fluent System Icons. 其余第三方组件及其许可列在 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) 和 [`licenses/`](licenses/) 目录. 分发程序时请连同这些许可文件一起提供.
