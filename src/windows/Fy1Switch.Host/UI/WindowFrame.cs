@@ -71,6 +71,7 @@ internal static class WindowFrame
                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TargetType="Button">
               <Setter Property="Background" Value="Transparent"/>
               <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
+              <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="Button">
@@ -83,10 +84,6 @@ internal static class WindowFrame
                       </Trigger>
                       <Trigger Property="IsPressed" Value="True">
                         <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Fy1Switch.BorderBrush}"/>
-                      </Trigger>
-                      <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                        <Setter TargetName="Surface" Property="BorderThickness" Value="2"/>
                       </Trigger>
                       <MultiTrigger>
                         <MultiTrigger.Conditions>

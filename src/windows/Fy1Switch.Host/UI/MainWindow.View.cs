@@ -151,7 +151,7 @@ public sealed partial class MainWindow
         _settingsBack.Width = 32;
         _settingsBack.Padding = new Thickness(7);
         _settingsBack.BorderThickness = new Thickness(0);
-        _settingsBack.Background = Brushes.Transparent;
+        _settingsBack.SetResourceReference(Control.BackgroundProperty, DesktopTheme.SurfaceBrush);
         _settingsBack.Content = new VectorIcon { Kind = AppIconKind.Back, Width = 18, Height = 18 };
         _settingsBack.ToolTip = "返回";
         _settingsBack.Margin = new Thickness(0, 0, 14, 0);

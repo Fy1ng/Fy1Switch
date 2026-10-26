@@ -33,6 +33,7 @@ internal static class DesktopTheme
         <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
           <Style TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Background" Value="{DynamicResource Fy1Switch.SubtleBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.BorderBrush}"/>
@@ -56,10 +57,6 @@ internal static class DesktopTheme
                     <Trigger Property="IsPressed" Value="True">
                       <Setter TargetName="Surface" Property="Opacity" Value="0.7"/>
                     </Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True">
-                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                      <Setter TargetName="Surface" Property="BorderThickness" Value="2"/>
-                    </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
                       <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>
                       <Setter Property="Cursor" Value="Arrow"/>
@@ -69,18 +66,8 @@ internal static class DesktopTheme
               </Setter.Value>
             </Setter>
           </Style>
-          <Style TargetType="Expander">
-            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="Padding" Value="0,6"/>
-          </Style>
-          <Style TargetType="ListBox">
-            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SubtleBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.BorderBrush}"/>
-            <Setter Property="Padding" Value="6"/>
-          </Style>
           <Style TargetType="CheckBox">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
             <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.BorderBrush}"/>
@@ -116,10 +103,6 @@ internal static class DesktopTheme
                     <Trigger Property="IsMouseOver" Value="True">
                       <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
                     </Trigger>
-                    <Trigger Property="IsKeyboardFocused" Value="True">
-                      <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                      <Setter TargetName="Box" Property="BorderThickness" Value="2"/>
-                    </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
                       <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
                     </Trigger>
@@ -127,12 +110,6 @@ internal static class DesktopTheme
                 </ControlTemplate>
               </Setter.Value>
             </Setter>
-          </Style>
-          <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
-            <Setter Property="CaretBrush" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.BorderBrush}"/>
           </Style>
           <Style TargetType="ComboBox">
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
@@ -180,9 +157,6 @@ internal static class DesktopTheme
                     </Popup>
                   </Grid>
                   <ControlTemplate.Triggers>
-                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                      <Setter TargetName="DropDownToggle" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                    </Trigger>
                     <Trigger Property="IsMouseOver" Value="True">
                       <Setter TargetName="DropDownToggle" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
                     </Trigger>
@@ -222,15 +196,6 @@ internal static class DesktopTheme
               </Setter.Value>
             </Setter>
           </Style>
-          <Style TargetType="ListBoxItem">
-            <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
-            <Style.Triggers>
-              <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
-                <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.AccentForegroundBrush}"/>
-              </Trigger>
-            </Style.Triggers>
-          </Style>
           <Style x:Key="Fy1Switch.Settings.TextBox" TargetType="TextBox">
             <Setter Property="Background" Value="{DynamicResource Fy1Switch.SettingsInputBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
@@ -257,9 +222,6 @@ internal static class DesktopTheme
                     </Trigger>
                     <Trigger Property="IsMouseOver" Value="True">
                       <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.SecondaryBrush}"/>
-                    </Trigger>
-                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
                     </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
                       <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>
@@ -292,9 +254,6 @@ internal static class DesktopTheme
                   <ControlTemplate.Triggers>
                     <Trigger Property="IsMouseOver" Value="True">
                       <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.SecondaryBrush}"/>
-                    </Trigger>
-                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                      <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Fy1Switch.AccentBrush}"/>
                     </Trigger>
                     <Trigger Property="IsEnabled" Value="False">
                       <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>
@@ -375,6 +334,7 @@ internal static class DesktopTheme
             </Setter>
           </Style>
           <Style x:Key="Fy1Switch.Settings.ListBox" TargetType="ListBox">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Fy1Switch.SettingsBorderBrush}"/>
@@ -458,6 +418,14 @@ internal static class DesktopTheme
                 </ControlTemplate>
               </Setter.Value>
             </Setter>
+          </Style>
+          <Style TargetType="TextBox" BasedOn="{StaticResource Fy1Switch.Settings.TextBox}"/>
+          <Style TargetType="PasswordBox" BasedOn="{StaticResource Fy1Switch.Settings.PasswordBox}"/>
+          <Style TargetType="ListBox" BasedOn="{StaticResource Fy1Switch.Settings.ListBox}"/>
+          <Style TargetType="ListBoxItem" BasedOn="{StaticResource Fy1Switch.Settings.ListBoxItem}"/>
+          <Style TargetType="Expander" BasedOn="{StaticResource Fy1Switch.Settings.Expander}"/>
+          <Style TargetType="ScrollViewer">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
           </Style>
           <Style TargetType="ToolTip">
             <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>
