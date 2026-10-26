@@ -24,6 +24,17 @@ public sealed class UiTextTests
     public void MissingTimestampDoesNotPretendToBeRecent() => Assert.AreEqual("尚无记录", UiText.Time(default));
 
     [DataTestMethod]
+    [DataRow("display_process_conflict")]
+    [DataRow("other_controller_running")]
+    [DataRow("worker_already_running")]
+    public void DisplayProcessConflictExplainsHowToRecoverWithoutGenericLogPrompt(string code)
+    {
+        StringAssert.Contains(UiText.BriefError(code), "其他显示器控制程序");
+        StringAssert.Contains(UiText.BriefError(code), "重新扫描");
+        Assert.IsFalse(UiText.CanAutomaticallyRefresh(Snapshot(code)));
+    }
+
+    [DataTestMethod]
     [DataRow(null)]
     [DataRow("read_failed")]
     [DataRow("topology_unavailable")]

@@ -20,6 +20,8 @@ internal static class UiText
     {
         "topology_changed" => "连接已变化，请重新确认绑定。",
         "topology_unavailable" => "暂时无法检查显示器连接，请稍后刷新。",
+        "other_controller_running" or "display_process_conflict" or "worker_already_running" => "检测到其他显示器控制程序, 请关闭后重新扫描.",
+        "discovery_restart_required" => "显示器控制需要重新初始化, 请点击重新扫描.",
         "busy" or "controller_busy" or "operation_in_progress" => "已有操作进行中，请稍候。",
         "state_unknown" or "read_failed" or "readback_failed" => "状态尚不能确认，请先刷新。",
         "not_bound" or "binding_required" or "no_binding" => "请先在设置中绑定显示器。",

@@ -64,7 +64,28 @@ public sealed partial class DesktopController : IDesktopController, IAsyncDispos
     {
         await _commands.WaitAsync(cancellationToken);
         Publish(_snapshot with { Busy = true });
-        try { await _worker.StopAsync(); return await DiscoverCoreAsync(cancellationToken); }
+        try
+        {
+            var generation = Interlocked.Read(ref _topologyGeneration);
+            await _worker.StopAsync();
+            var discovery = await DiscoverCoreAsync(cancellationToken);
+            lock (_topologyGate)
+            {
+                if (generation == Interlocked.Read(ref _topologyGeneration))
+                {
+                    if (_snapshot.Binding is null)
+                        Publish(_snapshot with { ErrorCode = null, Observation = Unknown() });
+                    else if (!_invalidated && _snapshot.Binding is { NeedsConfirmation: false } binding)
+                    {
+                        if (discovery.TopologyFingerprint == binding.TopologyFingerprint && discovery.Candidates.Count == 1 &&
+                            discovery.Candidates[0].TargetKey == binding.TargetKey && discovery.Candidates[0].Profile == binding.Profile)
+                            Publish(_snapshot with { ErrorCode = null, Observation = Unknown() });
+                        else HandleError("topology_changed");
+                    }
+                }
+            }
+            return discovery;
+        }
         finally { Publish(_snapshot with { Busy = false }); _commands.Release(); }
     }
     public async Task<HostSnapshot> BindAsync(string targetKey, string topologyFingerprint, string name, CancellationToken cancellationToken = default)

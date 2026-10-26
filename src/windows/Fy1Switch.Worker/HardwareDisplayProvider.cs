@@ -254,7 +254,11 @@ internal sealed class HardwareDisplayProvider : IDisplayProvider
             var processes = Process.GetProcessesByName(name);
             try
             {
-                if (processes.Any(process => process.Id != Environment.ProcessId)) return "display_process_conflict";
+                if (processes.Any(process => process.Id != Environment.ProcessId))
+                {
+                    SafeWorkerLog.Write("display_process_conflict process=" + name);
+                    return "display_process_conflict";
+                }
             }
             finally
             {

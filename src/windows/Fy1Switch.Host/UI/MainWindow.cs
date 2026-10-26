@@ -405,6 +405,10 @@ public sealed partial class MainWindow : Window
         if (_closed)
             return;
         _discovery = discovery;
+        _displayControlsGeneration++;
+        _displayControls = null;
+        _controlsReadError = null;
+        _displayControlsReadAttempted = false;
         PopulateCandidates(discovery);
         SetMessage(discovery.Candidates.Count == 0
             ? "未发现可绑定的显示器。请检查连接和当前配置，再手动重扫。"
