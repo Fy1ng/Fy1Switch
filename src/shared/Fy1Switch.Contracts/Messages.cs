@@ -16,8 +16,8 @@ public sealed record DiscoverySnapshot(string TopologyFingerprint, IReadOnlyList
 public sealed record MonitorBinding(Guid TargetId, string TargetKey, string Name, string Profile, string TopologyFingerprint, bool NeedsConfirmation = false);
 public sealed record OperationRecord(Guid OperationId, Guid TargetId, PowerIntent Requested, PowerIntent? Resolved, OperationOutcome Outcome, string? ErrorCode, PowerObservation? Observation, DateTimeOffset UpdatedAt);
 public sealed record HostSnapshot(Guid DeviceId, MonitorBinding? Binding, PowerObservation Observation, bool WorkerRunning, bool Busy, bool StartupEnabled, string? ErrorCode, bool Simulation);
-public sealed record WorkerRequest(Guid RequestId, string Command, string? TargetKey = null, string? TopologyFingerprint = null, PowerIntent? Intent = null, int Version = 1);
-public sealed record WorkerReply(Guid RequestId, bool Success, string? ErrorCode = null, DiscoverySnapshot? Discovery = null, PowerObservation? Observation = null, bool? WriteAccepted = null, int Version = 1);
+public sealed record WorkerRequest(Guid RequestId, string Command, string? TargetKey = null, string? TopologyFingerprint = null, PowerIntent? Intent = null, int Version = 1, DisplayControl? Control = null, int? Value = null);
+public sealed record WorkerReply(Guid RequestId, bool Success, string? ErrorCode = null, DiscoverySnapshot? Discovery = null, PowerObservation? Observation = null, bool? WriteAccepted = null, int Version = 1, DisplayControlsSnapshot? Controls = null, DisplayControlWriteResult? ControlWrite = null);
 public sealed record LocalRequest(Guid RequestId, string Command, Guid? TargetId = null, string? TargetKey = null, string? TopologyFingerprint = null, string? Name = null, PowerIntent? Intent = null, Guid? OperationId = null, bool? Enabled = null, int Version = 1);
 public sealed record LocalReply(Guid RequestId, bool Success, string? ErrorCode = null, HostSnapshot? Snapshot = null, DiscoverySnapshot? Discovery = null, OperationRecord? Operation = null, int Version = 1);
 

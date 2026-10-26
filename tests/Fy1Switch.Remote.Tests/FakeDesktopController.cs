@@ -47,6 +47,10 @@ internal sealed class FakeDesktopController(Guid deviceId, TestDirectory directo
     }
 
     public Task<DiscoverySnapshot> DiscoverAsync(CancellationToken cancellationToken = default) => throw LocalOnly("discover");
+    public Task<DisplayControlsSnapshot> GetDisplayControlsAsync(Guid targetId, CancellationToken cancellationToken = default) => throw LocalOnly("read-controls");
+    public Task<DisplayControlWriteResult> SetDisplayControlAsync(Guid targetId, DisplayControl control, int value, CancellationToken cancellationToken = default) => throw LocalOnly("set-control");
+    public Task<MonitorPreferences> GetMonitorPreferencesAsync(string targetKey, CancellationToken cancellationToken = default) => throw LocalOnly("monitor-preferences");
+    public Task<MonitorPreferences> SetMonitorPreferencesAsync(string targetKey, MonitorPreferences preferences, CancellationToken cancellationToken = default) => throw LocalOnly("set-monitor-preferences");
     public Task<HostSnapshot> BindAsync(string targetKey, string topologyFingerprint, string name, CancellationToken cancellationToken = default) => throw LocalOnly("bind");
     public Task<HostSnapshot> UnbindAsync(CancellationToken cancellationToken = default) => throw LocalOnly("unbind");
     public Task<HostSnapshot> SetStartupAsync(bool enabled, CancellationToken cancellationToken = default) => throw LocalOnly("startup");

@@ -27,6 +27,12 @@ public sealed class StateStore : IDisposable
     }
 
     public Guid DeviceId => Guid.Parse(ReadScalar("SELECT value FROM metadata WHERE key='device_id'")!);
+    public MonitorPreferences LoadMonitorPreferences(string targetKey) =>
+        ReadScalar("SELECT value FROM metadata WHERE key=$key", ("$key", "monitor_preferences:" + targetKey)) is { } json
+            ? WireJson.Parse<MonitorPreferences>(json) : new();
+    public void SaveMonitorPreferences(string targetKey, MonitorPreferences preferences) =>
+        Execute("INSERT INTO metadata(key,value) VALUES($key,$value) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("$key", "monitor_preferences:" + targetKey), ("$value", WireJson.Serialize(preferences)));
     public MonitorBinding? LoadBinding() => ReadScalar("SELECT payload FROM binding WHERE id=1") is { } json ? WireJson.Parse<MonitorBinding>(json) : null;
     public void SaveBinding(MonitorBinding? binding)
     {

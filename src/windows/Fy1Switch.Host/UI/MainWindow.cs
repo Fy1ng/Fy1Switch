@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
         Activated += (_, _) =>
         {
             _automaticRefreshAttempts = 0;
+            _displayControlsReadAttempted = false;
             _ = RefreshViewAsync();
         };
         Render();
@@ -237,6 +238,7 @@ public sealed partial class MainWindow : Window
         _snapshotAvailable = true;
         _snapshotError = null;
         _snapshotVersion++;
+        UpdateDisplayControlsBinding(bindingChanged, newlyInvalidated);
         if (operationWasUnconfirmed && !HasUnconfirmedOperation)
         {
             _actionMessage = null;
@@ -247,7 +249,7 @@ public sealed partial class MainWindow : Window
         Render();
     }
 
-    private bool IsBusy => _localBusy || _automaticRefreshing || _snapshot?.Busy == true;
+    private bool IsBusy => _localBusy || _automaticRefreshing || _displayControlsReading || _snapshot?.Busy == true;
     private bool IsAutomaticallyRefreshing => _automaticRefreshing || _automaticRefreshTimer.IsEnabled;
 
     private bool NeedsAutomaticRefresh => _snapshotAvailable && UiText.CanAutomaticallyRefresh(_snapshot) &&
@@ -448,6 +450,7 @@ public sealed partial class MainWindow : Window
         ApplySnapshot(snapshot);
         if (_closed)
             return;
+        await ReadDisplayControlsCoreAsync(cancellationToken);
         if (_lastOperation is { } operation && HasUnconfirmedOperation)
         {
             await CheckOperationAsync(operation, cancellationToken, refresh: false);

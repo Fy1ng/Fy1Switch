@@ -7,6 +7,8 @@ internal interface IDisplayProvider : IDisposable
     Task<DiscoverySnapshot> DiscoverAsync(CancellationToken cancellationToken);
     Task<PowerObservation> ReadAsync(string targetKey, string fingerprint, CancellationToken cancellationToken);
     Task<PowerWriteResult> SetAsync(string targetKey, string fingerprint, PowerIntent intent, CancellationToken cancellationToken);
+    Task<DisplayControlsSnapshot> ReadControlsAsync(string targetKey, string fingerprint, CancellationToken cancellationToken);
+    Task<DisplayControlWriteResult> SetControlAsync(string targetKey, string fingerprint, DisplayControl control, int value, CancellationToken cancellationToken);
 }
 
 internal sealed record PowerWriteResult(bool WriteAccepted, PowerObservation Observation);

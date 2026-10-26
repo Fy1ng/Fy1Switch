@@ -180,6 +180,7 @@ public sealed partial class MainWindow
         binding.Children.Add(_candidates);
         binding.Children.Add(_candidateEmpty);
         settings.Children.Add(SettingsUi.Card(binding));
+        InitializeDisplayControls(page, settings);
 
         var startup = new StackPanel();
         startup.Children.Add(SettingsUi.Heading("启动选项", AppIconKind.Power));
@@ -335,6 +336,7 @@ public sealed partial class MainWindow
             _statusBox.BorderThickness = new Thickness(1);
             _details.Text = string.Join("\n", new[] { _actionDetails, error is null ? null : $"当前错误代码：{error}\n{UiText.Error(error)}" });
             _details.Visibility = string.IsNullOrWhiteSpace(_details.Text) ? Visibility.Collapsed : Visibility.Visible;
+            RenderDisplayControls();
         }
         finally
         {

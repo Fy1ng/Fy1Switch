@@ -2,7 +2,7 @@ using Fy1Switch.Contracts;
 
 namespace Fy1Switch.Runtime;
 
-public sealed class DesktopController : IDesktopController, IAsyncDisposable
+public sealed partial class DesktopController : IDesktopController, IAsyncDisposable
 {
     private readonly IWorkerTransport _worker;
     private readonly IStartupRegistration _startup;

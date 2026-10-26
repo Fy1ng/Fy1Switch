@@ -113,6 +113,73 @@ internal sealed class HardwareDisplayProvider : IDisplayProvider
         }
     }
 
+    public async Task<DisplayControlsSnapshot> ReadControlsAsync(string targetKey, string fingerprint, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateTarget(targetKey, fingerprint);
+        var controls = new List<DisplayControlState>();
+        foreach (var control in Enum.GetValues<DisplayControl>())
+        {
+            var supported = DisplayControlPolicy.Supports(monitor!, control);
+            int? value = null;
+            if (supported)
+            {
+                ValidateTarget(targetKey, fingerprint);
+                try { value = await backend!.ReadControlAsync(monitor!, control, cancellationToken); }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested) { }
+                ValidateTopology(fingerprint, false);
+            }
+            controls.Add(new(control, supported, value, DisplayControlPolicy.Values(monitor!, control)));
+        }
+        ValidateTopology(fingerprint, false);
+        return new(targetKey, monitor!.Name, monitor.Id, controls, DisplayControlPolicy.VcpCodes(monitor), DateTimeOffset.UtcNow);
+    }
+
+    public async Task<DisplayControlWriteResult> SetControlAsync(string targetKey, string fingerprint, DisplayControl control, int value, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateTarget(targetKey, fingerprint);
+        DisplayControlPolicy.Validate(monitor!, control, value);
+        bool? accepted = false;
+        try
+        {
+            // A fresh continuous read supplies the device's actual maximum for the
+            // upstream percentage-to-raw conversion, including monitors with max=50.
+            if (DisplayControlPolicy.IsContinuous(control))
+            {
+                var current = await backend!.ReadControlAsync(monitor!, control, cancellationToken);
+                ValidateTarget(targetKey, fingerprint);
+                if (current is null) return new(false, null, false, "control_read_failed");
+            }
+            var expected = DisplayControlPolicy.ExpectedReadback(monitor!, control, value);
+            accepted = null;
+            accepted = await backend!.WriteControlAsync(monitor!, control, value, cancellationToken);
+            ValidateTopology(fingerprint, accepted);
+            if (!accepted.Value) return new(false, null, false, "control_write_failed");
+            if (control != DisplayControl.Rotation) await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            int? readback = null;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                ValidateTopology(fingerprint, accepted);
+                try { readback = await backend.ReadControlAsync(monitor!, control, cancellationToken); }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested) { }
+                ValidateTopology(fingerprint, accepted);
+                if (readback is not null) break;
+                if (attempt < 2) await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
+            }
+            var confirmed = readback == expected;
+            return new(true, readback, confirmed, confirmed ? null : readback is null ? "control_read_failed" : "control_not_confirmed");
+        }
+        catch (DisplayProviderException exception)
+        {
+            throw new DisplayProviderException(exception.ErrorCode, accepted);
+        }
+        catch (Exception)
+        {
+            throw new DisplayProviderException("control_io_failed", accepted);
+        }
+    }
+
     private void ValidateTarget(string targetKey, string fingerprint)
     {
         Guard();

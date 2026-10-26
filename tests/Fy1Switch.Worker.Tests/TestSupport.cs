@@ -47,6 +47,17 @@ internal sealed class FakeBackend : IPowerDisplayBackend
     public Action? OnRead { get; set; }
     public Action? OnWrite { get; set; }
     public bool FailCapture { get; set; }
+    public Dictionary<DisplayControl, int?> ControlValues { get; } = new()
+    {
+        [DisplayControl.Brightness] = 65, [DisplayControl.Contrast] = 50,
+        [DisplayControl.Volume] = 25, [DisplayControl.InputSource] = 17,
+        [DisplayControl.ColorTemperature] = 5, [DisplayControl.Rotation] = 0,
+    };
+    public List<(DisplayControl Control, int Value)> ControlWrites { get; } = [];
+    public List<DisplayControl> ControlReads { get; } = [];
+    public Action? OnControlRead { get; set; }
+    public Action? OnControlWrite { get; set; }
+    public bool ApplyControlWrite { get; set; } = true;
 
     public static DisplayMonitor ValidMonitor() => new()
     {
@@ -99,6 +110,21 @@ internal sealed class FakeBackend : IPowerDisplayBackend
         return Task.FromResult(WriteAccepted);
     }
 
+    public Task<int?> ReadControlAsync(DisplayMonitor monitor, DisplayControl control, CancellationToken cancellationToken)
+    {
+        ControlReads.Add(control);
+        OnControlRead?.Invoke();
+        return Task.FromResult(ControlValues.GetValueOrDefault(control));
+    }
+
+    public Task<bool> WriteControlAsync(DisplayMonitor monitor, DisplayControl control, int value, CancellationToken cancellationToken)
+    {
+        ControlWrites.Add((control, value));
+        OnControlWrite?.Invoke();
+        if (WriteAccepted && ApplyControlWrite) ControlValues[control] = value;
+        return Task.FromResult(WriteAccepted);
+    }
+
     public void Dispose() => Disposed = true;
 }
 
@@ -125,6 +151,12 @@ internal sealed class FakeProvider : IDisplayProvider
 
     public Task<PowerWriteResult> SetAsync(string targetKey, string fingerprint, PowerIntent intent, CancellationToken cancellationToken) =>
         throw new AssertFailedException("Unexpected set");
+
+    public Task<DisplayControlsSnapshot> ReadControlsAsync(string targetKey, string fingerprint, CancellationToken cancellationToken) =>
+        throw new AssertFailedException("Unexpected controls read");
+
+    public Task<DisplayControlWriteResult> SetControlAsync(string targetKey, string fingerprint, DisplayControl control, int value, CancellationToken cancellationToken) =>
+        throw new AssertFailedException("Unexpected control set");
 
     public void Dispose() => Disposed = true;
 }

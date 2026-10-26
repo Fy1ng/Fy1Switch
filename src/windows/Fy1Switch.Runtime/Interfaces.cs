@@ -25,6 +25,10 @@ public interface IDesktopController
     Task<HostSnapshot> BindAsync(string targetKey, string topologyFingerprint, string name, CancellationToken cancellationToken = default);
     Task<HostSnapshot> UnbindAsync(CancellationToken cancellationToken = default);
     Task<HostSnapshot> RefreshAsync(CancellationToken cancellationToken = default);
+    Task<DisplayControlsSnapshot> GetDisplayControlsAsync(Guid targetId, CancellationToken cancellationToken = default);
+    Task<DisplayControlWriteResult> SetDisplayControlAsync(Guid targetId, DisplayControl control, int value, CancellationToken cancellationToken = default);
+    Task<MonitorPreferences> GetMonitorPreferencesAsync(string targetKey, CancellationToken cancellationToken = default);
+    Task<MonitorPreferences> SetMonitorPreferencesAsync(string targetKey, MonitorPreferences preferences, CancellationToken cancellationToken = default);
     Task<OperationRecord> ExecuteAsync(Guid targetId, PowerIntent intent, Guid operationId, CancellationToken cancellationToken = default);
     Task<OperationRecord?> GetOperationAsync(Guid operationId, CancellationToken cancellationToken = default);
     Task<HostSnapshot> SetStartupAsync(bool enabled, CancellationToken cancellationToken = default);

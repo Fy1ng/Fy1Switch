@@ -143,6 +143,54 @@ internal static class DesktopTheme
               </Setter.Value>
             </Setter>
           </Style>
+          <Style x:Key="Fy1Switch.Display.Slider" TargetType="Slider">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                  <Grid x:Name="Surface" Background="Transparent" MinHeight="28">
+                    <Track x:Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                           Value="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                           IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
+                      <Track.DecreaseRepeatButton>
+                        <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                          <RepeatButton.Template>
+                            <ControlTemplate TargetType="RepeatButton">
+                              <Border Height="4" CornerRadius="2" Background="{DynamicResource Fy1Switch.AccentBrush}"/>
+                            </ControlTemplate>
+                          </RepeatButton.Template>
+                        </RepeatButton>
+                      </Track.DecreaseRepeatButton>
+                      <Track.IncreaseRepeatButton>
+                        <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                          <RepeatButton.Template>
+                            <ControlTemplate TargetType="RepeatButton">
+                              <Border Height="4" CornerRadius="2" Background="{DynamicResource Fy1Switch.BorderBrush}"/>
+                            </ControlTemplate>
+                          </RepeatButton.Template>
+                        </RepeatButton>
+                      </Track.IncreaseRepeatButton>
+                      <Track.Thumb>
+                        <Thumb Width="16" Height="20" FocusVisualStyle="{x:Null}">
+                          <Thumb.Template>
+                            <ControlTemplate TargetType="Thumb">
+                              <Ellipse Width="14" Height="14" Fill="{DynamicResource Fy1Switch.AccentBrush}"
+                                       Stroke="{DynamicResource Fy1Switch.SurfaceBrush}" StrokeThickness="2"/>
+                            </ControlTemplate>
+                          </Thumb.Template>
+                        </Thumb>
+                      </Track.Thumb>
+                    </Track>
+                  </Grid>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                      <Setter TargetName="Surface" Property="Opacity" Value="0.4"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
           <Style TargetType="ComboBox">
             <Setter Property="Foreground" Value="{DynamicResource Fy1Switch.ForegroundBrush}"/>
             <Setter Property="Background" Value="{DynamicResource Fy1Switch.SurfaceBrush}"/>

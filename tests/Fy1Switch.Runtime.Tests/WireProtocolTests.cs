@@ -75,5 +75,27 @@ public sealed class WireProtocolTests
         Assert.AreEqual(request, WireJson.Parse<WorkerRequest>(WireJson.Serialize(request)));
     }
 
+    [TestMethod]
+    public void ExistingWorkerJsonRemainsReadableWithoutDisplayControlFields()
+    {
+        var id = Guid.NewGuid();
+        var request = WireJson.Parse<WorkerRequest>($"{{\"requestId\":\"{id}\",\"command\":\"read\",\"version\":1}}");
+        Assert.AreEqual(id, request.RequestId);
+        Assert.IsNull(request.Control);
+        Assert.IsNull(request.Value);
+        var reply = WireJson.Parse<WorkerReply>($"{{\"requestId\":\"{id}\",\"success\":true,\"version\":1}}");
+        Assert.IsNull(reply.Controls);
+        Assert.IsNull(reply.ControlWrite);
+    }
+
+    [TestMethod]
+    public void DisplayControlMessagesKeepFeatureValueAndUnconfirmedAcceptance()
+    {
+        var request = new WorkerRequest(Guid.NewGuid(), "set-control", Control: DisplayControl.InputSource, Value: 0x11);
+        Assert.AreEqual(request, WireJson.Parse<WorkerRequest>(WireJson.Serialize(request)));
+        var reply = new WorkerReply(request.RequestId, true, ControlWrite: new(true, null, false, "control_read_failed"));
+        Assert.AreEqual(reply, WireJson.Parse<WorkerReply>(WireJson.Serialize(reply)));
+    }
+
     private static StreamReader Reader(string text) => new(new MemoryStream(Encoding.UTF8.GetBytes(text)), new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false);
 }

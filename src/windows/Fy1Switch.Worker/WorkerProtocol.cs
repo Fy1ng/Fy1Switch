@@ -49,11 +49,15 @@ internal sealed class WorkerProtocol(IDisplayProvider provider)
         if (request.Version != 1) return new(request.RequestId, false, "unsupported_version");
         if (request.RequestId == Guid.Empty) return new(request.RequestId, false, "invalid_request");
         if (request.Command == "shutdown") return new(request.RequestId, true);
-        if (request.Command is not ("discover" or "read" or "set")) return new(request.RequestId, false, "unknown_command");
-        if (request.Command is "read" or "set" && (!IsHash(request.TargetKey) || !IsHash(request.TopologyFingerprint)))
-            return new(request.RequestId, false, "invalid_request", WriteAccepted: request.Command == "set" ? false : null);
+        if (request.Command is not ("discover" or "read" or "set" or "read-controls" or "set-control")) return new(request.RequestId, false, "unknown_command");
+        var writing = request.Command is "set" or "set-control";
+        if (request.Command is "read" or "set" or "read-controls" or "set-control" && (!IsHash(request.TargetKey) || !IsHash(request.TopologyFingerprint)))
+            return new(request.RequestId, false, "invalid_request", WriteAccepted: writing ? false : null,
+                ControlWrite: request.Command == "set-control" ? new(false, null, false, "invalid_request") : null);
         if (request.Command == "set" && request.Intent is not (PowerIntent.On or PowerIntent.Off))
             return new(request.RequestId, false, "invalid_intent", WriteAccepted: false);
+        if (request.Command == "set-control" && (request.Control is null || !Enum.IsDefined(request.Control.Value) || request.Value is null))
+            return new(request.RequestId, false, "invalid_request", WriteAccepted: false, ControlWrite: new(false, null, false, "invalid_request"));
 
         try
         {
@@ -65,6 +69,12 @@ internal sealed class WorkerProtocol(IDisplayProvider provider)
                     var observation = await provider.ReadAsync(request.TargetKey!, request.TopologyFingerprint!, cancellationToken);
                     return new(request.RequestId, observation.State != DisplayPower.Unknown,
                         observation.State == DisplayPower.Unknown ? "power_read_failed" : null, Observation: observation);
+                case "read-controls":
+                    return new(request.RequestId, true, Controls: await provider.ReadControlsAsync(request.TargetKey!, request.TopologyFingerprint!, cancellationToken));
+                case "set-control":
+                    var controlResult = await provider.SetControlAsync(request.TargetKey!, request.TopologyFingerprint!, request.Control!.Value, request.Value!.Value, cancellationToken);
+                    return new(request.RequestId, controlResult.WriteAccepted == true, controlResult.ErrorCode,
+                        WriteAccepted: controlResult.WriteAccepted, ControlWrite: controlResult);
                 default:
                     var result = await provider.SetAsync(request.TargetKey!, request.TopologyFingerprint!, request.Intent!.Value, cancellationToken);
                     return new(request.RequestId, result.WriteAccepted,
@@ -74,7 +84,8 @@ internal sealed class WorkerProtocol(IDisplayProvider provider)
         }
         catch (DisplayProviderException exception)
         {
-            return new(request.RequestId, false, exception.ErrorCode, WriteAccepted: request.Command == "set" ? exception.WriteAccepted : null);
+            return new(request.RequestId, false, exception.ErrorCode, WriteAccepted: writing ? exception.WriteAccepted : null,
+                ControlWrite: request.Command == "set-control" ? new(exception.WriteAccepted, null, false, exception.ErrorCode) : null);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
