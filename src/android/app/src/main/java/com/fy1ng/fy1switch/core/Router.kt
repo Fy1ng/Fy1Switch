@@ -50,16 +50,28 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
         else -> 15_000L
     }
 
+    private fun configuredRoutes(device: DeviceProfile) = buildList {
+        add(Route.Direct)
+        if (device.tailscaleEndpoint != null) add(Route.Tailscale)
+        if (device.relay != null) add(Route.Relay)
+    }
+
+    internal fun restoreRouteHint(device: DeviceProfile, route: Route?) {
+        val configured = configuredRoutes(device)
+        val index = configured.indexOf(route)
+        if (index <= 0) return
+        // A saved route is a latency hint, not proof of connectivity. Earlier paths
+        // still get the normal authenticated recovery probe before the hinted path.
+        val probeAt = clock.instant()
+        configured.take(index).forEach { cooldowns.putIfAbsent(pathKey(device, it), probeAt) }
+    }
+
     suspend fun send(device: DeviceProfile, request: RemoteCommand): Delivery {
         if (device.deviceId != request.deviceId) return Delivery.Failure(Feedback.Protocol, false)
         val initialRemaining = Duration.between(clock.instant(), request.expiresAt).toMillis()
         if (initialRemaining <= 0 || initialRemaining > 120_000) return Delivery.Failure(Feedback.Expired, false)
         val body = Protocol.command(request)
-        val configured = buildList {
-            add(Route.Direct)
-            if (device.tailscaleEndpoint != null) add(Route.Tailscale)
-            if (device.relay != null) add(Route.Relay)
-        }
+        val configured = configuredRoutes(device)
         val keys = configured.associateWith { pathKey(device, it) }
         cooldowns.keys.removeAll { it.deviceId == device.deviceId && it !in keys.values }
         val failedThisRequest = mutableSetOf<PathKey>()

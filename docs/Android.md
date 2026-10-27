@@ -110,6 +110,8 @@ Relay 支持首次配对及已有手机自动授权. 地址必须为 HTTPS 根�
 - TLS 身份失败、HTTP 错误/鉴权拒绝、协议解析失败不自动换通道。两边都超时的 set 记为 Unknown，而不是成功或肯定未执行。
 - 2026-10-27: 控制路由按异常原因区分 TLS 连接中断与身份验证失败. 对端关闭握手、连接重置等不携带证书/对端身份错误的 SSLException 按网络故障继续尝试已配置路径; 异常原因链中的 CertificateException(包括证书过期、尚未生效和 pin 不符)及 SSLPeerUnverifiedException(包括主机名不符)仍立即停止. 冷却后的只读恢复探测使用相同规则, 不记录原始异常或凭据.
   - 验证: optimized 的 200 项 JVM 测试全部通过, 包括 loopback 上真实 TLS 握手拒绝后的 Relay 回退; lint 0 errors/11 项既有 warnings, APK 构建成功. `tools/Test-Android-Live.ps1` 的 Android JVM 到 Windows loopback HTTPS/模拟 Worker 联调通过, 错误 pin 仍返回 Security. 未安装到手机, 未验证移动网络或控制真实显示器.
+- 冷启动保存并恢复每台电脑最近成功的路径提示. 如果此前通过 Relay 成功, 清理进程后先用现有的一秒只读 `status` 探测局域网及已配置的 Tailscale, 再进入 Relay 的正常请求预算, 避免每次下拉磁贴重新等待完整直连超时. 返回局域网后探测成功即恢复直连优先. 提示只用于探测预算, 不恢复在线标志或状态新鲜度, 不代替证书和授权验证; 旧版状态缺少提示时仍按原顺序连接. 更换 Relay/Tailscale 连接参数时清除旧提示, 仅重命名保留提示. 新安装包需先成功连接一次, 才能在后续进程重启时利用保存的路径.
+  - 验证: 212 项 optimized JVM 测试全部通过, lint 0 errors/11 项既有 warnings, optimized APK 构建成功. 模拟时钟复现无 Tailscale 时旧版冷启动前置等待 15 秒, 修复后为 1 秒; 覆盖完整状态编码/解码和 Repository 磁贴恢复, 返回局域网, 两条备用路径, 证书失败及 Relay 离线后恢复较慢局域网. 该时间仅指前置探测预算, 不包含 Relay 连接和 Windows 硬件读回. 未完成手机清理进程后的真机计时.
 - 禁止自动重定向和 OkHttp 自动重试，防止凭据转发与隐藏重发。响应体最多读取 64 KiB。
 - 响应必须匹配 requestId、version、当前选定设备 deviceId；operation 必须匹配请求携带的 operationId / targetId / intent。额外 capabilities 不参与授权，不从响应 body 切换当前设备或路由目标。
 

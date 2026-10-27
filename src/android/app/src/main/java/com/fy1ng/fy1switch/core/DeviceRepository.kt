@@ -47,6 +47,7 @@ class DeviceRepository(
                 mutableState.value = try {
                     store.read().let { restored ->
                         restored.copy(loaded = true, busy = false, request = null, devices = restored.devices.map { device ->
+                            router.restoreRouteHint(device.profile, device.lastSuccessfulRoute)
                             device.copy(lastLiveReadAtMillis = null,
                                 requiresRefresh = device.requiresRefresh && device.operation?.outcome != OperationOutcome.Failed)
                         })
@@ -140,7 +141,9 @@ class DeviceRepository(
         }
         currentCoroutineContext().ensureActive()
         val removed = device.profile.relay != null && relay == null
-        replace(device.copy(lastLiveReadAtMillis = null, profile = device.profile.copy(name = savedName, relay = relay,
+        replace(device.copy(lastLiveReadAtMillis = null,
+            lastSuccessfulRoute = device.lastSuccessfulRoute.takeIf { relay == device.profile.relay && tailscale == device.profile.tailscaleEndpoint },
+            profile = device.profile.copy(name = savedName, relay = relay,
             tailscaleEndpoint = tailscale, autoLearnTailscale = autoLearnTailscale,
             autoLearnRelay = autoLearnRelay && !removed)))
         relayLearningAttempts.remove(deviceId)
@@ -171,7 +174,9 @@ class DeviceRepository(
         val tailscale = if (tailscaleEndpoint == null) device.profile.tailscaleEndpoint
             else if (tailscaleEndpoint.isBlank()) null else configurationValue(Feedback.InvalidTailscaleEndpoint) { Protocol.endpoint(tailscaleEndpoint) }
         val learn = autoLearnTailscale ?: if (tailscaleEndpoint == null) device.profile.autoLearnTailscale else tailscaleEndpoint.isNotBlank()
-        replace(device.copy(lastLiveReadAtMillis = null, profile = device.profile.copy(name = savedName, relay = relay,
+        replace(device.copy(lastLiveReadAtMillis = null,
+            lastSuccessfulRoute = device.lastSuccessfulRoute.takeIf { relay == device.profile.relay && tailscale == device.profile.tailscaleEndpoint },
+            profile = device.profile.copy(name = savedName, relay = relay,
             tailscaleEndpoint = tailscale, autoLearnTailscale = learn,
             autoLearnRelay = device.profile.autoLearnRelay && !(device.profile.relay != null && relay == null))))
         Feedback.Saved

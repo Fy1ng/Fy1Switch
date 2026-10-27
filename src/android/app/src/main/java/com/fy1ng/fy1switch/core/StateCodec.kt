@@ -26,6 +26,7 @@ object StateCodec {
                     } ?: JSONObject.NULL)
                     .put("status", device.status?.let(Protocol::statusJson) ?: JSONObject.NULL)
                     .put("operation", device.operation?.let(Protocol::operationJson) ?: JSONObject.NULL)
+                    .put("lastSuccessfulRoute", device.lastSuccessfulRoute?.name ?: JSONObject.NULL)
                     .put("feedback", device.feedback.name).put("requiresRefresh", device.requiresRefresh))
             }
         }).toString()
@@ -54,8 +55,18 @@ object StateCodec {
                 if (it.outcome == OperationOutcome.Pending) it.copy(outcome = OperationOutcome.Unknown) else it
             }
             val feedback = if (StatePolicy.unresolved(operation)) Feedback.Unknown else Feedback.valueOf(device.getString("feedback"))
+            // This optional hint only affects connection probing, never identity or live state.
+            val routeName = device.opt("lastSuccessfulRoute") as? String
+            val lastSuccessfulRoute = Route.entries.firstOrNull { it.name == routeName }?.takeIf {
+                when (it) {
+                    Route.Direct -> true
+                    Route.Tailscale -> profile.tailscaleEndpoint != null
+                    Route.Relay -> profile.relay != null
+                }
+            }
             DeviceState(profile, status, operation, connected = false, feedback = feedback,
-                requiresRefresh = device.optBoolean("requiresRefresh", StatePolicy.unresolved(operation)) || operation?.outcome == OperationOutcome.Unknown)
+                requiresRefresh = device.optBoolean("requiresRefresh", StatePolicy.unresolved(operation)) || operation?.outcome == OperationOutcome.Unknown,
+                lastSuccessfulRoute = lastSuccessfulRoute)
         }
         require(devices.map { it.profile.deviceId }.distinct().size == devices.size)
         val defaultId = json.stringOrNull("defaultDeviceId")?.let(Protocol::uuid)
