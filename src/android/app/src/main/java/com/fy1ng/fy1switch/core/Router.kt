@@ -1,11 +1,13 @@
 package com.fy1ng.fy1switch.core
 
 import java.io.IOException
+import java.security.cert.CertificateException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import javax.net.ssl.SSLException
+import javax.net.ssl.SSLPeerUnverifiedException
 
 enum class Route(val label: String) { Direct("局域网"), Tailscale("Tailscale"), Relay("Relay") }
 class ExpiredRequestException : Exception()
@@ -118,8 +120,11 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
             transport.control(device, route, body, timeout)
         } catch (_: ExpiredRequestException) {
             return Delivery.Failure(Feedback.Expired, true)
-        } catch (_: SSLException) {
-            return Delivery.Failure(Feedback.Security, true)
+        } catch (exception: SSLException) {
+            // A peer closing/resetting a TLS connection is still a transport failure.
+            // Only certificate/peer identity failures must stop all route fallback.
+            val feedback = if (isTlsIdentityFailure(exception)) Feedback.Security else Feedback.Offline
+            return Delivery.Failure(feedback, true)
         } catch (_: IOException) {
             return Delivery.Failure(Feedback.Offline, true)
         } catch (_: IllegalArgumentException) {
@@ -133,5 +138,15 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
             return Delivery.Failure(Feedback.Protocol, true)
         }
         return Delivery.Reply(reply, route)
+    }
+
+    private fun isTlsIdentityFailure(exception: SSLException): Boolean {
+        val visited = mutableSetOf<Throwable>()
+        var cause: Throwable? = exception
+        while (cause != null && visited.add(cause)) {
+            if (cause is CertificateException || cause is SSLPeerUnverifiedException) return true
+            cause = cause.cause
+        }
+        return false
     }
 }

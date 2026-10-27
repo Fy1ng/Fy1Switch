@@ -108,6 +108,8 @@ Relay 支持首次配对及已有手机自动授权. 地址必须为 HTTPS 根�
 - 两通道使用**同一序列化 body、requestId、operationId、expiresAt**，不因为回退重新生成操作。
 - 各次发送前检查剩余有效期，剩余时间更短则缩短 timeout；过期不发送后续通道。
 - TLS 身份失败、HTTP 错误/鉴权拒绝、协议解析失败不自动换通道。两边都超时的 set 记为 Unknown，而不是成功或肯定未执行。
+- 2026-10-27: 控制路由按异常原因区分 TLS 连接中断与身份验证失败. 对端关闭握手、连接重置等不携带证书/对端身份错误的 SSLException 按网络故障继续尝试已配置路径; 异常原因链中的 CertificateException(包括证书过期、尚未生效和 pin 不符)及 SSLPeerUnverifiedException(包括主机名不符)仍立即停止. 冷却后的只读恢复探测使用相同规则, 不记录原始异常或凭据.
+  - 验证: optimized 的 200 项 JVM 测试全部通过, 包括 loopback 上真实 TLS 握手拒绝后的 Relay 回退; lint 0 errors/11 项既有 warnings, APK 构建成功. `tools/Test-Android-Live.ps1` 的 Android JVM 到 Windows loopback HTTPS/模拟 Worker 联调通过, 错误 pin 仍返回 Security. 未安装到手机, 未验证移动网络或控制真实显示器.
 - 禁止自动重定向和 OkHttp 自动重试，防止凭据转发与隐藏重发。响应体最多读取 64 KiB。
 - 响应必须匹配 requestId、version、当前选定设备 deviceId；operation 必须匹配请求携带的 operationId / targetId / intent。额外 capabilities 不参与授权，不从响应 body 切换当前设备或路由目标。
 

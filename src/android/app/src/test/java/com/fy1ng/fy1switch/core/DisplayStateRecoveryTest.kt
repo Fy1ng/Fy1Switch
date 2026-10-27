@@ -10,7 +10,6 @@ import kotlinx.coroutines.yield
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
-import javax.net.ssl.SSLException
 
 class DisplayStateRecoveryTest {
     @Test fun queriesOriginalOperationThenReadsCurrentPowerWithoutRewritingItsOutcome() = runBlocking {
@@ -77,7 +76,7 @@ class DisplayStateRecoveryTest {
         for (feedback in listOf(Feedback.Security, Feedback.Unauthorized, Feedback.Protocol)) {
             val transport = FakeTransport().apply { handler = {
                 when (feedback) {
-                    Feedback.Security -> throw SSLException("fixture")
+                    Feedback.Security -> throw certificateFailure()
                     Feedback.Unauthorized -> HttpResult(401, "")
                     else -> HttpResult(200, "invalid fixture JSON")
                 }

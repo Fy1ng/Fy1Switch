@@ -5,16 +5,67 @@ import com.fy1ng.fy1switch.core.CLIENT
 import com.fy1ng.fy1switch.core.PIN
 import com.fy1ng.fy1switch.core.Protocol
 import com.fy1ng.fy1switch.core.Route
+import com.fy1ng.fy1switch.core.DeviceProfile
+import com.fy1ng.fy1switch.core.Delivery
+import com.fy1ng.fy1switch.core.HttpResult
+import com.fy1ng.fy1switch.core.PairBundle
+import com.fy1ng.fy1switch.core.Router
+import com.fy1ng.fy1switch.core.Transport
 import com.fy1ng.fy1switch.core.profile
+import com.fy1ng.fy1switch.core.replyJson
 import com.fy1ng.fy1switch.core.request
+import com.fy1ng.fy1switch.core.status
+import kotlinx.coroutines.runBlocking
 import okio.Buffer
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 import org.json.JSONObject
+import java.io.DataInputStream
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.time.Instant
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class HttpsTransportTest {
+    @Test fun realTlsHandshakeRejectionFallsBackWithoutSendingHttpToThePeer() = runBlocking {
+        val https = HttpsTransport()
+        val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "tls-rejection-fixture").apply { isDaemon = true } }
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { listener ->
+            listener.soTimeout = 5_000
+            try {
+                val clientHello = executor.submit<Boolean> {
+                    listener.accept().use { socket ->
+                        socket.soTimeout = 5_000
+                        val header = ByteArray(5)
+                        DataInputStream(socket.getInputStream()).readFully(header)
+                        // Reject before presenting a certificate: a fatal TLS handshake_failure alert.
+                        socket.getOutputStream().write(byteArrayOf(21, 3, 3, 0, 2, 2, 40))
+                        header[0] == 22.toByte()
+                    }
+                }
+                val device = profile(true).copy(endpoint = "https://127.0.0.1:${listener.localPort}")
+                val attempts = mutableListOf<Route>()
+                val transport = object : Transport {
+                    override suspend fun pair(bundle: PairBundle, clientName: String, timeoutMillis: Long): HttpResult = error("Unexpected pairing")
+                    override suspend fun control(device: DeviceProfile, route: Route, body: String, timeoutMillis: Long): HttpResult {
+                        attempts += route
+                        return if (route == Route.Direct) https.control(device, route, body, timeoutMillis)
+                        else HttpResult(200, replyJson(body, status = status()))
+                    }
+                }
+                val result = Router(transport).send(device, request(command = "status", expires = Instant.now().plusSeconds(30)))
+                assertEquals(Route.Relay, (result as Delivery.Reply).route)
+                assertEquals(listOf(Route.Direct, Route.Relay), attempts)
+                assertTrue(clientHello.get(5, TimeUnit.SECONDS))
+            } finally {
+                executor.shutdownNow()
+            }
+        }
+    }
+
     @Test fun relayFirstPairingSendsOnlyOneTimeCodeAndPhoneName() {
         val transport = HttpsTransport()
         val request = transport.relayPairRequest("https://relay.example/", "000042", "Phone")

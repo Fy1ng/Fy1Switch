@@ -6,6 +6,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.security.cert.CertificateException
+import javax.net.ssl.SSLHandshakeException
 
 internal val NOW: Instant = Instant.parse("2026-10-05T05:00:00Z")
 internal val DEVICE: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
@@ -15,6 +17,9 @@ internal val OPERATION: UUID = UUID.fromString("44444444-4444-4444-8444-44444444
 internal val REQUEST: UUID = UUID.fromString("55555555-5555-4555-8555-555555555555")
 internal val CLIENT: UUID = UUID.fromString("66666666-6666-4666-8666-666666666666")
 internal const val PIN = "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+internal fun certificateFailure(cause: CertificateException = CertificateException("Fixture certificate mismatch")) =
+    SSLHandshakeException("Fixture certificate verification failed").apply { initCause(cause) }
 
 internal fun profile(relay: Boolean = false, deviceId: UUID = DEVICE) = DeviceProfile(
     deviceId, CLIENT, "Test display", "https://192.0.2.1:8443", PIN, "fixture-device-token",

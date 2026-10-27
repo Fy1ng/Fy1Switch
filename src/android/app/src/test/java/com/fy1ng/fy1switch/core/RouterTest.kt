@@ -4,7 +4,13 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import java.net.SocketTimeoutException
+import java.security.cert.CertificateException
+import java.security.cert.CertificateExpiredException
+import java.security.cert.CertificateNotYetValidException
+import javax.net.ssl.SSLException
 import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
+import javax.net.ssl.SSLProtocolException
 
 class RouterTest {
     @Test fun prefersDirectWithoutDuplicateSend() = runBlocking {
@@ -30,6 +36,30 @@ class RouterTest {
         assertTrue(result.mayHaveExecuted)
         assertEquals(Feedback.Offline, result.feedback)
         assertEquals(2, transport.attempts.size)
+    }
+
+    @Test fun tlsConnectionFailuresReachRelayWithTheOriginalRequest() = runBlocking {
+        for (failure in listOf(
+            SSLHandshakeException("Peer closed the handshake"),
+            SSLProtocolException("Connection interrupted"),
+            SSLException("Connection reset"),
+        )) {
+            val transport = FakeTransport().apply { handler = {
+                if (it.route == Route.Direct) throw failure
+                HttpResult(200, replyJson(it.body, operation = operation()))
+            } }
+            val result = Router(transport, MutableClock()).send(profile(true), request()) as Delivery.Reply
+            assertEquals(Route.Relay, result.route)
+            assertEquals(listOf(Route.Direct, Route.Relay), transport.attempts.map { it.route })
+            assertEquals(Protocol.command(request()), transport.attempts.last().body)
+        }
+    }
+
+    @Test fun tlsConnectionFailureWithoutFallbackIsOfflineAndUncertain() = runBlocking {
+        val transport = FakeTransport().apply { handler = { throw SSLHandshakeException("Peer closed the handshake") } }
+        val result = Router(transport, MutableClock()).send(profile(), request()) as Delivery.Failure
+        assertEquals(Feedback.Offline, result.feedback)
+        assertTrue(result.mayHaveExecuted)
     }
 
     @Test fun expiredRequestIsNeverSent() = runBlocking {
@@ -65,9 +95,18 @@ class RouterTest {
     }
 
     @Test fun certificateFailureNeverDowngradesToRelay() = runBlocking {
-        val transport = FakeTransport().apply { handler = { throw SSLHandshakeException("fixture") } }
-        assertEquals(Feedback.Security, (Router(transport, MutableClock()).send(profile(true), request()) as Delivery.Failure).feedback)
-        assertEquals(1, transport.attempts.size)
+        for (failure in listOf(
+            certificateFailure(),
+            certificateFailure(CertificateExpiredException("Fixture expired")),
+            certificateFailure(CertificateNotYetValidException("Fixture not yet valid")),
+            SSLPeerUnverifiedException("Fixture hostname mismatch"),
+            SSLException("Wrapped identity failure", IllegalStateException(CertificateException("Fixture mismatch"))),
+            SSLException("Wrapped peer failure", SSLPeerUnverifiedException("Fixture pin mismatch")),
+        )) {
+            val transport = FakeTransport().apply { handler = { throw failure } }
+            assertEquals(Feedback.Security, (Router(transport, MutableClock()).send(profile(true), request()) as Delivery.Failure).feedback)
+            assertEquals(1, transport.attempts.size)
+        }
     }
 
     @Test fun authenticationAndHttpErrorsAreNotRetried() = runBlocking {

@@ -5,7 +5,6 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import java.net.SocketTimeoutException
-import javax.net.ssl.SSLHandshakeException
 
 class TailscaleTest {
     private val endpoint = "https://100.64.0.2:8443"
@@ -90,7 +89,7 @@ class TailscaleTest {
             val transport = FakeTransport().apply { handler = {
                 if (it.route == Route.Direct) throw SocketTimeoutException()
                 when (failure) {
-                    "tls" -> throw SSLHandshakeException("fixture")
+                    "tls" -> throw certificateFailure()
                     "identity" -> HttpResult(200, replyJson(it.body, status = status(deviceId = OTHER)))
                     "request" -> HttpResult(200, JSONObject(replyJson(it.body)).put("requestId", OTHER.toString()).toString())
                     else -> HttpResult(failure.toInt(), "untrusted")

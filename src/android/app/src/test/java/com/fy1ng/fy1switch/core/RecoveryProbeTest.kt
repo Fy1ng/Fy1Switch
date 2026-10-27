@@ -78,6 +78,24 @@ class RecoveryProbeTest {
         assertEquals(listOf("set"), transport.attempts.map(::command))
     }
 
+    @Test fun tlsConnectionFailureDuringRecoveryProbeStillReachesRelay() = runBlocking {
+        val clock = MutableClock()
+        val transport = FakeTransport().apply { handler = {
+            if (it.route != Route.Relay) throw SSLHandshakeException("Peer closed the handshake")
+            HttpResult(200, replyJson(it.body, status = status()))
+        } }
+        val router = Router(transport, clock)
+        assertEquals(Route.Relay, (router.send(device, request(command = "status")) as Delivery.Reply).route)
+        clock.now = NOW.plusSeconds(5)
+        transport.attempts.clear()
+        val write = request(expires = clock.now.plusSeconds(30))
+        assertEquals(Route.Relay, (router.send(device, write) as Delivery.Reply).route)
+        assertEquals(listOf(Route.Direct, Route.Tailscale, Route.Relay), transport.attempts.map { it.route })
+        assertEquals(listOf("status", "status", "set"), transport.attempts.map(::command))
+        assertEquals(listOf(1000L, 1000L, 12000L), transport.attempts.map { it.timeout })
+        assertEquals(Protocol.command(write), transport.attempts.last().body)
+    }
+
     @Test fun singleRouteRecoversOverSlowLinkWithinOriginalDeadline() = runBlocking {
         for ((commandName, lifetimeMillis) in listOf("status" to 3_200L, "set" to 3_200L, "set" to 30_000L)) {
             val clock = MutableClock()
@@ -178,7 +196,7 @@ class RecoveryProbeTest {
             transport.attempts.clear()
             transport.handler = {
                 when (failure) {
-                    "tls" -> throw SSLHandshakeException("fixture")
+                    "tls" -> throw certificateFailure()
                     "identity" -> HttpResult(200, replyJson(it.body, status = status(deviceId = OTHER)))
                     "missing-status" -> HttpResult(200, replyJson(it.body))
                     else -> HttpResult(200, replyJson(it.body, status = status(), success = false))
@@ -376,7 +394,7 @@ class RecoveryProbeTest {
                 transport.handler = {
                     if (allUnhealthy) simulateLatency(clock, it)
                     when (failure) {
-                        "tls" -> throw SSLHandshakeException("fixture")
+                        "tls" -> throw certificateFailure()
                         "identity" -> HttpResult(200, replyJson(it.body, status = status(deviceId = OTHER)))
                         "request" -> HttpResult(200, JSONObject(replyJson(it.body, status = status())).put("requestId", OTHER.toString()).toString())
                         "missing-status" -> HttpResult(200, replyJson(it.body))
