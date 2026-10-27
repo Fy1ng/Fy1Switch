@@ -32,7 +32,7 @@
 You're away from your desk and want the monitor off. Fy1Switch turns an Android phone into that monitor's power button. Tap the **Remote display** (远程显示器) tile in Quick Settings, and the Windows PC puts the monitor into standby (or wakes it) over DDC/CI, then reports the state it actually read back.
 
 > [!NOTE]
-> The Windows installer and portable ZIP are on the [Releases](https://github.com/Fy1ng/Fy1Switch/releases/latest) page. The Android app has no published package yet, so [build it from source](#building-from-source); it is currently a debug build. Both apps currently have a Chinese-only interface; this README gives the original label next to each English name, for example **Settings** (设置).
+> The Windows installer, portable ZIP, and Android APKs are on the [Releases](https://github.com/Fy1ng/Fy1Switch/releases/latest) page. For local Android testing, choose `android-optimized.apk`, signed with the local debug certificate for testing only. The `android-release-unsigned.apk` is unsigned and needs your signing key before installation or distribution. You can also [build from source](#building-from-source). Both apps currently have a Chinese-only interface; this README gives the original label next to each English name, for example **Settings** (设置).
 
 ## What it looks like
 

@@ -32,7 +32,7 @@
 人不在桌前, 也想关掉电脑那块显示器. Fy1Switch 让 Android 手机成为这块显示器的电源键: 在下拉快捷设置里点一下"远程显示器", Windows 电脑就通过 DDC/CI 让显示器进入待机或重新亮起, 再把读到的真实状态回报给手机.
 
 > [!NOTE]
-> Windows 安装包和免安装 ZIP 在 [Releases](https://github.com/Fy1ng/Fy1Switch/releases/latest) 下载. Android App 暂未发布安装包, 需要[从源码构建](#从源码构建), 目前是 debug 构建.
+> Windows 安装包, 免安装 ZIP 和 Android APK 均可在 [Releases](https://github.com/Fy1ng/Fy1Switch/releases/latest) 下载. Android 本地测试请选 `android-optimized.apk`, 该包使用本机 debug 证书签名, 仅用于测试; `android-release-unsigned.apk` 未签名, 需要自行签名后才能安装或分发. 自行构建见[从源码构建](#从源码构建).
 
 ## 实际界面
 
