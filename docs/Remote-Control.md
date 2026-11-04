@@ -1,5 +1,11 @@
 # 远程控制与配对
 
+## 可选 WOL 远程开机
+
+WOL 使用独立 HTTPS Gateway, 不属于 Windows `PowerIntent.On/Off/Toggle`, 也不通过离线的 Relay 转发. 手机使用独立 WOL 凭据, Gateway 经已有 VPS-OpenWrt WireGuard 隧道和受限 SSH 发送白名单魔术包. 手机及 Windows 不需要安装 WireGuard. 完整部署见 [Wake-on-LAN.md](Wake-on-LAN.md).
+
+WOL Gateway 仅负责发送与查询发送结果. 电脑启动后, 已配对 Android 仍通过原 LAN/Tailscale/Relay 和原证书/凭据读取可信状态. Host 当前随用户登录启动, 不由 WOL 改为系统服务. 手机在移动数据下继续控制显示器, 仍需可达的原有通道, 例如 Relay. `packet_sent` 不更新显示器状态, Host 状态未知也不等于电脑关机.
+
 ## 自动多路径（2026-10-07）
 
 同一设备可配置局域网 HTTPS、Tailscale HTTPS 和可信 Relay，按此顺序尝试；未配置的路径跳过。所有入口使用原设备身份、证书和手机授权，不需要为每条路径重新绑定显示器。旧版单地址配置继续有效。Tailscale 客户端和 Relay 服务仍须单独安装、配置，本项目不会自动登录、开放防火墙或部署中继。
@@ -76,4 +82,4 @@ Windows 新版在 artifacts/windows-remote/win-x64，Android 调试 APK 在 arti
 
 Windows remote.json 保存开关、监听和已加密 Relay 凭据；identity.pfx.protected 是 DPAPI 私钥；clients.json 是客户端名/UUID/token哈希，不含明文 token。此目录仍属于个人运行数据，不提交、不上传诊断包。取消远程控制关闭 HTTPS 与 WSS，并取消尚未使用的配对码。
 
-本地 Worker 硬件权限、Windows 登录会话和此前系统级验收边界仍然适用。整机睡眠或关机不属于显示器 OFF；本项目不默认提供 Wake-on-LAN。
+本地 Worker 硬件权限、Windows 登录会话和此前系统级验收边界仍然适用. 整机睡眠或关机不属于显示器 OFF. 可选 WOL 独立配置, 默认关闭, 不改变原显示器磁贴离线时只读恢复的行为.

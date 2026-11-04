@@ -45,6 +45,7 @@ fun Fy1SwitchScreen(
     onTileMessageConsumed: (String) -> Unit, onPairingVisibilityChanged: (Boolean) -> Unit,
     backgroundSync: BackgroundSyncManager, backgroundSyncMessage: String?, backgroundSyncPermissionPending: Boolean,
     onBackgroundSyncEnabled: (Boolean) -> Unit, onOpenNotificationSettings: () -> Unit,
+    onAddWakeTile: () -> Unit,
 ) {
     val state by repository.state.collectAsState()
     val backgroundSyncState by backgroundSync.state.collectAsState()
@@ -63,7 +64,7 @@ fun Fy1SwitchScreen(
     val snackbar = remember { SnackbarHostState() }
     val latestPairingVisibility by rememberUpdatedState(onPairingVisibilityChanged)
     DisposableEffect(page) {
-        latestPairingVisibility(page == PAIRING)
+        latestPairingVisibility(page == PAIRING || page == SETTINGS)
         onDispose { latestPairingVisibility(false) }
     }
     LaunchedEffect(tileMessage) {
@@ -74,6 +75,15 @@ fun Fy1SwitchScreen(
     }
     LaunchedEffect(Unit) { repository.initialize() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val wolOperation = state.selected?.wolOperation
+    LaunchedEffect(page, state.defaultDeviceId, wolOperation?.operationId, wolOperation?.status, lifecycle) {
+        val id = state.defaultDeviceId
+        if (page == HOME && id != null && wolOperation != null && wolOperation.status != WolStatus.Pending) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                repository.wol.observeHost(id, wolOperation.operationId) { repository.state.value.defaultDeviceId == id }
+            }
+        }
+    }
     LaunchedEffect(page, state.loaded, state.defaultDeviceId, state.storageFailed, lifecycle) {
         if (page == SETTINGS && state.loaded && state.selected == null) page = HOME
         val deviceId = state.defaultDeviceId
@@ -185,7 +195,7 @@ fun Fy1SwitchScreen(
                                 key(device.profile.deviceId) {
                                     DeviceSettingsScreen(device, state, repository, scope,
                                         onBack = { if (page == SETTINGS) page = HOME },
-                                        onPair = { leaveSettings(PAIRING) }, onAddTile = onAddTile,
+                                        onPair = { leaveSettings(PAIRING) }, onAddTile = onAddTile, onAddWakeTile = onAddWakeTile,
                                         onDirtyChanged = { settingsDirty = it },
                                         backgroundSyncState = backgroundSyncState, backgroundSyncMessage = backgroundSyncMessage,
                                         backgroundSyncPermissionPending = backgroundSyncPermissionPending,
@@ -197,6 +207,9 @@ fun Fy1SwitchScreen(
                             else -> {
                                 val device = requireNotNull(visibleState.selected)
                                 key(device.profile.deviceId) { DeviceCard(device, visibleState, repository, scope) }
+                                key(device.profile.deviceId, "wol") {
+                                    WolHome(requireNotNull(state.selected), state, repository, scope) { page = SETTINGS }
+                                }
                                 if (showTileGuide) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text("添加快捷开关，下次无需打开应用", style = MaterialTheme.typography.titleSmall)

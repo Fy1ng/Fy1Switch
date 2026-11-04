@@ -1,4 +1,7 @@
 * text=auto
 vendor/powertoys/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 *.ps1 text eol=crlf
+*.sh text eol=lf
+*.service text eol=lf
+src/wol/openwrt/fy1switch-wol text eol=lf
 licenses/SQLitePCLRaw.NOTICE -whitespace

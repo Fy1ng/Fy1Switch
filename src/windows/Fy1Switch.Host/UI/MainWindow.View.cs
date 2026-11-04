@@ -202,6 +202,7 @@ public sealed partial class MainWindow
         startup.Children.Add(silentBranch);
         settings.Children.Add(SettingsUi.Card(startup));
         settings.Children.Add(_remoteSettingsHost);
+        settings.Children.Add(_wolSettingsHost);
         var diagnostics = new StackPanel();
         diagnostics.Margin = new Thickness(28, 10, 0, 0);
         diagnostics.Children.Add(_source);

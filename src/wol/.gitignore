@@ -1,0 +1,14 @@
+# Private local deployment data. Keep real configuration outside the checkout.
+*.local.json
+/gateway.json
+/wol.config.json
+/data/
+/ssh/
+id_ed25519*
+id_rsa*
+known_hosts
+devices.export
+*.db
+*.db-shm
+*.db-wal
+service.lock

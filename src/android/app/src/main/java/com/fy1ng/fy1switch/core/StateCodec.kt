@@ -11,6 +11,13 @@ interface StateStore {
 object StateCodec {
     fun encode(state: AppState): String = JSONObject().put("version", 1)
         .put("defaultDeviceId", state.defaultDeviceId?.toString() ?: JSONObject.NULL)
+        .put("wolTileDeviceId", state.wolTileDeviceId?.toString() ?: JSONObject.NULL)
+        .put("wolAuthorizations", JSONArray().apply { state.wolAuthorizations.forEach { authorization ->
+            put(JSONObject().put("endpoint", authorization.endpoint).put("clientId", authorization.clientId.toString())
+                .put("accessToken", authorization.accessToken).put("devices", JSONArray().apply {
+                    authorization.devices.forEach { put(JSONObject().put("deviceId", it.deviceId.toString()).put("name", it.name)) }
+                }))
+        } })
         .put("devices", JSONArray().apply {
             state.devices.forEach { device ->
                 val profile = device.profile
@@ -21,6 +28,12 @@ object StateCodec {
                     .put("autoLearnTailscale", profile.autoLearnTailscale)
                     .put("autoLearnRelay", profile.autoLearnRelay)
                     .put("deviceToken", profile.deviceToken)
+                    .put("wol", profile.wol?.let { JSONObject().put("endpoint", it.endpoint)
+                        .put("targetId", it.targetId.toString()).put("enabled", it.enabled) } ?: JSONObject.NULL)
+                    .put("wolOperation", device.wolOperation?.let { JSONObject().put("operationId", it.operationId.toString())
+                        .put("deviceId", it.deviceId.toString()).put("status", it.status.name).put("issuedAt", it.issuedAt.toString())
+                        .put("expiresAt", it.expiresAt.toString()).put("updatedAt", it.updatedAt.toString())
+                        .put("errorCode", it.errorCode ?: JSONObject.NULL) } ?: JSONObject.NULL)
                     .put("relay", profile.relay?.let {
                         JSONObject().put("endpoint", it.endpoint).put("controllerToken", it.controllerToken)
                     } ?: JSONObject.NULL)
@@ -48,6 +61,8 @@ object StateCodec {
                 device.stringOrNull("tailscaleEndpoint")?.let(Protocol::endpoint),
                 if (device.has("autoLearnTailscale")) device.get("autoLearnTailscale").also { require(it is Boolean) } as Boolean else true,
                 if (device.has("autoLearnRelay")) device.get("autoLearnRelay").also { require(it is Boolean) } as Boolean else true,
+                device.objectOrNull("wol")?.let { WolBinding(WolProtocol.endpoint(it.getString("endpoint")),
+                    Protocol.uuid(it.getString("targetId")), it.getBoolean("enabled")) },
             )
             val status = device.objectOrNull("status")?.let(Protocol::status)
             require(status == null || status.deviceId == profile.deviceId)
@@ -66,11 +81,27 @@ object StateCodec {
             }
             DeviceState(profile, status, operation, connected = false, feedback = feedback,
                 requiresRefresh = device.optBoolean("requiresRefresh", StatePolicy.unresolved(operation)) || operation?.outcome == OperationOutcome.Unknown,
-                lastSuccessfulRoute = lastSuccessfulRoute)
+                lastSuccessfulRoute = lastSuccessfulRoute,
+                wolOperation = device.objectOrNull("wolOperation")?.let {
+                    val savedStatus = WolStatus.valueOf(it.getString("status"))
+                    WolOperation(Protocol.uuid(it.getString("operationId")), Protocol.uuid(it.getString("deviceId")),
+                        if (savedStatus == WolStatus.Pending) WolStatus.Unknown else savedStatus,
+                        java.time.Instant.parse(it.getString("issuedAt")), java.time.Instant.parse(it.getString("expiresAt")),
+                        java.time.Instant.parse(it.getString("updatedAt")), it.stringOrNull("errorCode"))
+                }?.also { require(profile.wol != null && it.deviceId == profile.wol.targetId) })
         }
         require(devices.map { it.profile.deviceId }.distinct().size == devices.size)
         val defaultId = json.stringOrNull("defaultDeviceId")?.let(Protocol::uuid)
         require(defaultId == null || devices.any { it.profile.deviceId == defaultId })
-        return AppState(devices, defaultId ?: devices.firstOrNull()?.profile?.deviceId, loaded = true)
+        val authorizations = json.optJSONArray("wolAuthorizations")?.let { array ->
+            require(array.length() <= 20)
+            (0 until array.length()).map { index -> array.getJSONObject(index).let {
+                WolAuthorization(WolProtocol.endpoint(it.getString("endpoint")), Protocol.uuid(it.getString("clientId")),
+                    WolProtocol.token(it.getString("accessToken")), WolProtocol.targets(it.getJSONArray("devices")))
+            } }
+        } ?: emptyList()
+        require(authorizations.map { it.endpoint }.distinct().size == authorizations.size)
+        return AppState(devices, defaultId ?: devices.firstOrNull()?.profile?.deviceId, loaded = true,
+            wolAuthorizations = authorizations, wolTileDeviceId = json.stringOrNull("wolTileDeviceId")?.let(Protocol::uuid))
     }
 }

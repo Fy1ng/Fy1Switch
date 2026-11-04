@@ -1,0 +1,39 @@
+[Unit]
+Description=Fy1Switch Wake on LAN Gateway
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=fy1switch-wol
+Group=fy1switch-wol
+WorkingDirectory=/opt/fy1switch-wol
+Environment=FY1SWITCH_WOL_CONFIG=/etc/fy1switch-wol/gateway.json
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5090
+ExecStart=/usr/bin/dotnet /opt/fy1switch-wol/Fy1Switch.WolGateway.dll
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+StateDirectory=fy1switch-wol
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/fy1switch-wol
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+LimitNOFILE=512
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

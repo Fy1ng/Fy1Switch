@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name" translatable="false">Fy1Switch</string>
     <string name="tile_name">远程显示器</string>
+    <string name="wake_tile_name">远程开机</string>
 </resources>

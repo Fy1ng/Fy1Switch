@@ -51,6 +51,7 @@ Windows 端的主窗口, 浅色与深色主题. 截图由真实 WPF 界面在模
 - 主页显示目标显示器最近一次读回的状态, 一个按钮开或关.
 - 快捷设置磁贴"远程显示器": 状态确定时直接切换, 不确定时先读取再说. 长按打开 App.
 - 一部手机可以保存多台电脑, 选一台作默认目标.
+- 可选远程开机: 通过独立 WOL Gateway 唤醒电脑, 支持 App 按钮和独立"远程开机"磁贴, 手机无需家庭 VPN.
 - 后台同步默认关闭; 打开后会常驻一条通知, 定时读取状态.
 
 **电脑上**
@@ -117,9 +118,13 @@ Fy1Switch 不会替你修改防火墙, 登录 Tailscale 或部署服务器. 手�
 
 Relay 是一个 ASP.NET Core 服务, 提供 Docker 镜像和 Compose 文件, 管理界面支持密码和 Passkey 登录. 部署步骤见[自建 Relay](docs/Relay.md).
 
+需要在电脑关机或睡眠时唤醒它, 可部署独立的 .NET 10 WOL Gateway. 手机通过 HTTPS 和独立手机授权请求 Gateway, VPS 经已有 WireGuard 隧道使用受限 SSH 调用 OpenWrt `etherwake`. 无需开放家庭公网端口, 唤醒不依赖 Windows Host 或 Relay 在线. 配置、密钥限制、Android 磁贴及故障排查见 [WOL 部署与使用](docs/Wake-on-LAN.md).
+
+唤醒包发送成功只表示发送操作完成, 不等于电脑、Host 或显示器已经启动. Host 在用户登录并启动后通过原控制通道恢复; 移动网络下继续控制显示器仍需要可达的 Relay 等原有路径.
+
 ## 已知边界
 
-- **电脑必须醒着.** 电脑睡眠, 关机或注销后, 无法再控制显示器. 项目不提供网络唤醒.
+- **显示器控制需要 Host 在线.** 可选 WOL 能独立唤醒支持的电脑, 但不能绕过网卡供电、BIOS 或 Windows 登录条件; 原显示器控制需等待 Host 恢复.
 - **显示器兼容性因机而异.** 显示器固件, 接口类型, 转接头和扩展坞都会影响 DDC/CI. 写入"关闭"后, 有的显示器读回的是待机 (0x02), 这属于正常情况.
 - **复杂拓扑只做过有限验证.** 实机测试覆盖的是一台实体显示器加一个虚拟显示器 (VDD) 的复制模式. 其他多屏或虚拟屏组合没有保证.
 - **手机系统可能限制后台.** 磁贴和后台同步的表现受厂商省电策略影响.
@@ -178,6 +183,7 @@ Windows 发布目录要整体保留, 里面的 `worker/` 和 `cli/` 子目录是
 | `src/windows/` | WPF 宿主, 硬件 Worker, CLI, 发现, 配对与远程控制模块 |
 | `src/android/` | Kotlin + Jetpack Compose App 和快捷设置磁贴 |
 | `src/relay/` | ASP.NET Core Relay, Dockerfile 与 Compose 文件 |
+| `src/wol/` | 独立 WOL Gateway, OpenWrt 受限脚本及 Linux 部署示例 |
 | `src/shared/` | 两端共用的协议定义 |
 | `tests/` | 单元测试, 回环和模拟硬件的集成测试 |
 | `tools/` | 构建, 打包, 安装和测试脚本 |
@@ -192,6 +198,7 @@ Windows 发布目录要整体保留, 里面的 `worker/` 和 `cli/` 子目录是
 - [Android 使用与构建](docs/Android.md): App, 磁贴, 后台同步
 - [远程控制与配对](docs/Remote-Control.md): 连接路径, 安全模型, 网络排查
 - [自建 Relay](docs/Relay.md): 配置, Docker 部署, 反向代理
+- [WOL 远程开机](docs/Wake-on-LAN.md): Windows 网卡, OpenWrt, 既有 WireGuard, Gateway, Android 独立磁贴与撤销
 - [六位码配对协议](docs/Pairing-v1.md): SRP-6a 握手与报文格式
 - [P0 实机记录](docs/P0-findings.md): 已在真实硬件上验证过什么
 - [开发记录](docs/Development-History.md)

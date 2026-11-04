@@ -1,0 +1,11 @@
+wol.example.com {
+    request_body {
+        max_size 8KB
+    }
+    reverse_proxy 127.0.0.1:5090 {
+        transport http {
+            response_header_timeout 50s
+        }
+    }
+    # Do not enable request-body or Authorization-header logging.
+}

@@ -1,0 +1,67 @@
+#!/bin/sh
+# Install as root:root 0755. This file and its allowlist must not be writable
+# by the gateway's SSH identity. Never eval SSH_ORIGINAL_COMMAND.
+set -fu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+unset ENV BASH_ENV CDPATH
+umask 077
+ALLOWLIST='/etc/fy1switch-wol/devices'
+ETHERWAKE='/usr/bin/etherwake'
+
+deny() { exit "$1"; }
+original=${SSH_ORIGINAL_COMMAND-}
+case "$original" in
+    ''|*[!a-z0-9\ -]*) deny 64 ;;
+esac
+# Globbing is disabled above. Only the restricted alphabet and exactly three
+# whitespace-separated fields can reach this split; no shell interpretation.
+# shellcheck disable=SC2086
+set -- $original
+[ "$#" -eq 3 ] || deny 64
+action=$1
+device=$2
+requested_digest=$3
+case "$action" in wake|check) ;; *) deny 64 ;; esac
+printf '%s\n' "$device" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || deny 64
+printf '%s\n' "$requested_digest" | grep -Eq '^[0-9a-f]{64}$' || deny 64
+[ -f "$ALLOWLIST" ] && [ ! -L "$ALLOWLIST" ] && [ -r "$ALLOWLIST" ] || deny 65
+config_dir=${ALLOWLIST%/*}
+[ -d "$config_dir" ] && [ ! -L "$config_dir" ] || deny 65
+[ "$(stat -c '%u' "$config_dir")" = 0 ] || deny 65
+case "$(stat -c '%a' "$config_dir")" in 700|500|750|550|755|555) ;; *) deny 65 ;; esac
+# Standard OpenWrt deployment uses root for raw Ethernet access. The file's
+# integrity is a separate requirement from etherwake's execution privilege.
+[ "$(stat -c '%u' "$ALLOWLIST")" = 0 ] || deny 65
+case "$(stat -c '%a' "$ALLOWLIST")" in 600|400|640|440|644|444) ;; *) deny 65 ;; esac
+[ -x "$ETHERWAKE" ] || deny 69
+found=0
+selected_mac=
+selected_interface=
+selected_digest=
+while IFS=' ' read -r entry_id entry_mac entry_interface entry_digest extra || [ -n "${entry_id-}" ]; do
+    [ -n "$entry_id" ] || continue
+    [ "$entry_id" = "$device" ] || continue
+    [ "$found" -eq 0 ] && [ -z "$extra" ] || deny 65
+    printf '%s\n' "$entry_mac" | grep -Eq '^([0-9A-F]{2}:){5}[0-9A-F]{2}$' || deny 65
+    case "$entry_mac" in 00:00:00:00:00:00|?[13579BDF]:*) deny 65 ;; esac
+    printf '%s\n' "$entry_interface" | grep -Eq '^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,14}$' || deny 65
+    actual_digest=$(printf '%s' "$entry_id|$entry_mac|$entry_interface" | sha256sum) || deny 69
+    actual_digest=${actual_digest%% *}
+    [ "$entry_digest" = "$actual_digest" ] && [ "$entry_digest" = "$requested_digest" ] || deny 66
+    [ -d "/sys/class/net/$entry_interface" ] || deny 69
+    selected_mac=$entry_mac
+    selected_interface=$entry_interface
+    selected_digest=$entry_digest
+    found=1
+done < "$ALLOWLIST"
+[ "$found" -eq 1 ] || deny 66
+
+if [ "$action" = check ]; then
+    # This checks the fixed dispatcher and mapping only. It sends no packet
+    # and cannot prove raw-socket privileges, NIC firmware, or PC power state.
+    printf 'FY1SWITCH_WOL_V1 ready %s %s\n' "$device" "$selected_digest"
+    exit 0
+fi
+"$ETHERWAKE" -i "$selected_interface" "$selected_mac" >/dev/null 2>&1 || deny 70
+printf 'FY1SWITCH_WOL_V1 packet_sent %s %s\n' "$device" "$selected_digest"

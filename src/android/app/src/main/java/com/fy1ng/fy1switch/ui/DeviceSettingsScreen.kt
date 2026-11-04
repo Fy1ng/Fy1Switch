@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun DeviceSettingsScreen(
     device: DeviceState, state: AppState, repository: DeviceRepository, scope: CoroutineScope,
-    onBack: () -> Unit, onPair: () -> Unit, onAddTile: () -> Unit,
+    onBack: () -> Unit, onPair: () -> Unit, onAddTile: () -> Unit, onAddWakeTile: () -> Unit,
     onDirtyChanged: (Boolean) -> Unit,
     backgroundSyncState: BackgroundSyncState, backgroundSyncMessage: String?, backgroundSyncPermissionPending: Boolean,
     onBackgroundSyncEnabled: (Boolean) -> Unit, onOpenNotificationSettings: () -> Unit,
@@ -34,9 +34,10 @@ internal fun DeviceSettingsScreen(
     var advanced by rememberSaveable { mutableStateOf(false) }
     var confirmRemoval by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var wolDirty by remember { mutableStateOf(false) }
     val dirty = name != profile.name || endpoint != profile.relay?.endpoint.orEmpty() ||
         tailscale != profile.tailscaleEndpoint.orEmpty() || autoLearn != profile.autoLearnTailscale || autoRelay != profile.autoLearnRelay
-    SideEffect { onDirtyChanged(dirty) }
+    SideEffect { onDirtyChanged(dirty || wolDirty) }
     DisposableEffect(Unit) { onDispose { onDirtyChanged(false) } }
     fun saveConnection(refreshRelay: Boolean = false) {
         val submittedName = name
@@ -67,6 +68,7 @@ internal fun DeviceSettingsScreen(
         }
         BackgroundSyncSettings(backgroundSyncState, backgroundSyncMessage, backgroundSyncPermissionPending,
             onBackgroundSyncEnabled, onOpenNotificationSettings)
+        WolSettings(device, state, repository, scope, onAddWakeTile) { wolDirty = it }
         OutlinedCard(shape = RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = { advanced = !advanced }, modifier = Modifier.fillMaxWidth()) {

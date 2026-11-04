@@ -61,6 +61,7 @@ Copy-Item -LiteralPath (Join-Path $root 'docs/P0-findings.md') -Destination (Joi
 Copy-Item -LiteralPath (Join-Path $root 'docs/Remote-Control.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/Android.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/Relay.md') -Destination (Join-Path $output 'docs')
+Copy-Item -LiteralPath (Join-Path $root 'docs/Wake-on-LAN.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/Pairing-v1.md') -Destination (Join-Path $output 'docs')
 Copy-Item -LiteralPath (Join-Path $root 'docs/UI-Terminology.md') -Destination (Join-Path $output 'docs')
 New-Item -ItemType Directory -Path (Join-Path $output 'licenses') -Force | Out-Null

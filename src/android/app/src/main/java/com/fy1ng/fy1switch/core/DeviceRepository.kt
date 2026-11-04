@@ -28,6 +28,7 @@ class DeviceRepository(
     private val transport: Transport,
     private val clock: Clock = Clock.systemUTC(),
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    wolTransport: WolTransport? = null,
 ) {
     private val mutableState = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = mutableState.asStateFlow()
@@ -37,6 +38,22 @@ class DeviceRepository(
     private var backgroundRead: Deferred<Feedback>? = null
     private var foregroundWaiters = 0
     private val relayLearningAttempts = mutableMapOf<UUID, Pair<String, java.time.Instant>>()
+    val wol = WolRepository(this, wolTransport, clock, monotonicMillis)
+
+    internal suspend fun updateWol(change: (AppState) -> AppState) {
+        initialize()
+        mutex.withLock {
+            if (state.value.storageFailed) throw WolFailure("storage")
+            try { withContext(Dispatchers.IO) { persist(change(state.value)) } }
+            catch (_: StorageFailure) { storageFailure(); throw WolFailure("storage") }
+        }
+    }
+
+    fun hasFreshHost(deviceId: UUID, maxAgeMillis: Long = 25_000): Boolean {
+        val device = state.value.devices.find { it.profile.deviceId == deviceId } ?: return false
+        if (state.value.storageFailed || !device.connected) return false
+        return device.lastHostResponseAtMillis?.let { monotonicMillis() - it in 0..maxAgeMillis } == true
+    }
 
     suspend fun initialize() = initializeInternal()
 
@@ -48,7 +65,7 @@ class DeviceRepository(
                     store.read().let { restored ->
                         restored.copy(loaded = true, busy = false, request = null, devices = restored.devices.map { device ->
                             router.restoreRouteHint(device.profile, device.lastSuccessfulRoute)
-                            device.copy(lastLiveReadAtMillis = null,
+                            device.copy(lastLiveReadAtMillis = null, lastHostResponseAtMillis = null,
                                 requiresRefresh = device.requiresRefresh && device.operation?.outcome != OperationOutcome.Failed)
                         })
                     }
@@ -87,8 +104,9 @@ class DeviceRepository(
             bundle.tailscaleEndpoint.takeIf { existing?.profile?.autoLearnTailscale != false } ?: existing?.profile?.tailscaleEndpoint,
             existing?.profile?.autoLearnTailscale ?: true,
             existing?.profile?.autoLearnRelay ?: true,
+            existing?.profile?.wol,
         )
-        val device = DeviceState(profile, feedback = Feedback.Paired)
+        val device = DeviceState(profile, feedback = Feedback.Paired, wolOperation = existing?.wolOperation)
         persist(state.value.copy(
             devices = state.value.devices.filterNot { it.profile.deviceId == profile.deviceId } + device,
             defaultDeviceId = profile.deviceId,
@@ -113,9 +131,10 @@ class DeviceRepository(
         val existing = state.value.devices.find { it.profile.deviceId == paired.deviceId }?.profile
         val profile = DeviceProfile(paired.deviceId, paired.clientId, existing?.name ?: paired.deviceName ?: "Windows 电脑", paired.endpoint,
             paired.certificatePin, paired.deviceToken, RelayConfig(endpoint, paired.controllerToken), paired.tailscaleEndpoint,
-            existing?.autoLearnTailscale ?: true, existing?.autoLearnRelay ?: true)
+            existing?.autoLearnTailscale ?: true, existing?.autoLearnRelay ?: true, existing?.wol)
         persist(state.value.copy(devices = state.value.devices.filterNot { it.profile.deviceId == paired.deviceId } +
-            DeviceState(profile, feedback = Feedback.Paired), defaultDeviceId = paired.deviceId))
+            DeviceState(profile, feedback = Feedback.Paired,
+                wolOperation = state.value.devices.find { it.profile.deviceId == paired.deviceId }?.wolOperation), defaultDeviceId = paired.deviceId))
         Feedback.Paired
     }
 
@@ -396,7 +415,8 @@ class DeviceRepository(
                 val profile = device.profile.copy(tailscaleEndpoint =
                     reply.status?.tailscaleEndpoint.takeIf { device.profile.autoLearnTailscale } ?: device.profile.tailscaleEndpoint)
                 val updated = device.copy(profile = profile, status = status, operation = operation, connected = connected,
-                    feedback = feedback, requiresRefresh = requiresRefresh, lastSuccessfulRoute = delivery.route)
+                    feedback = feedback, requiresRefresh = requiresRefresh, lastSuccessfulRoute = delivery.route,
+                    lastHostResponseAtMillis = if (reply.status != null && connected) monotonicMillis() else device.lastHostResponseAtMillis)
                 val trusted = StatePolicy.confirmedPower(updated) != DisplayPower.Unknown
                 val readAt = when {
                     trusted && freshRead -> monotonicMillis()
@@ -413,7 +433,9 @@ class DeviceRepository(
     private fun find(deviceId: UUID): DeviceState = requireNotNull(state.value.devices.find { it.profile.deviceId == deviceId })
 
     private fun replace(device: DeviceState) = persist(state.value.copy(devices = state.value.devices.map {
-        if (it.profile.deviceId == device.profile.deviceId) device else it
+        // WOL may update its independent state between a display read and its response.
+        if (it.profile.deviceId == device.profile.deviceId) device.copy(profile = device.profile.copy(wol = it.profile.wol),
+            wolOperation = it.wolOperation) else it
     }))
 
     private fun persist(next: AppState) {

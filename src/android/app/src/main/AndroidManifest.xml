@@ -36,6 +36,18 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
         <service
+            android:name=".WakeTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_fluent_power_24_regular"
+            android:label="@string/wake_tile_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="false" />
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="false" />
+        </service>
+        <service
             android:name=".DisplayTileService"
             android:exported="true"
             android:icon="@drawable/ic_display"

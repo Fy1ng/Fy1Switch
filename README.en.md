@@ -51,6 +51,7 @@ The Windows main window in light and dark themes. These are renders of the real 
 - A home screen showing the monitor's last read-back state, with one button to turn it on or off.
 - A **Remote display** (远程显示器) Quick Settings tile. When the state is known, a tap toggles it; when it isn't, the tile reads the state first. Long-press opens the app.
 - Several PCs saved on one phone, with one picked as the default target.
+- Optional remote wake through a standalone WOL Gateway, using an app button or a separate **Remote wake** (远程开机) tile. No home VPN is required on the phone.
 - Optional background sync, off by default. When on, it shows a persistent notification and reads the state periodically.
 
 **On the PC**
@@ -117,9 +118,13 @@ Fy1Switch does not change your firewall, sign in to Tailscale, or deploy servers
 
 The Relay is an ASP.NET Core service with a Docker image and Compose files. Its web admin console supports password and passkey sign-in. Deployment steps are in [Self-hosted Relay](docs/Relay.md) (Chinese).
 
+To wake a shut-down or sleeping PC, deploy the standalone .NET 10 WOL Gateway. The phone authenticates to its public HTTPS endpoint with an independent per-phone credential. The VPS uses an existing WireGuard tunnel and restricted SSH to invoke OpenWrt `etherwake`. Wake requests do not require Windows Host or Relay to be online, and no home public inbound port is needed. See [WOL deployment and usage](docs/Wake-on-LAN.md) (Chinese) for configuration, SSH restrictions, Android setup, revocation, and troubleshooting.
+
+A successfully sent wake packet does not prove that the PC has booted, Host has connected, or the monitor is on. Existing monitor control resumes after the user signs in and Host starts. Monitor control over mobile data still needs a reachable existing route such as Relay.
+
 ## Known limits
 
-- **The PC must be awake.** Once the PC sleeps, shuts down, or signs out, the monitor can't be controlled. Wake-on-LAN is not provided.
+- **Monitor control requires Host online.** Optional WOL can independently wake a supported PC, but cannot bypass NIC standby power, BIOS settings, or Windows sign-in requirements. Monitor control waits for Host to return.
 - **Monitor support varies.** Firmware, cable type, adapters, and docks all affect DDC/CI. Some monitors report standby (0x02) after an "off" write; that is expected.
 - **Complex setups have limited testing.** Hardware testing covered one physical monitor mirrored with one virtual display (VDD). Other multi-monitor or virtual-display combinations aren't guaranteed.
 - **Phones may restrict background work.** Vendor battery policies affect the tile and background sync.
@@ -178,6 +183,7 @@ The test scripts `Test-Windows.ps1`, `Test-Pairing.ps1`, and `Test-Network.ps1` 
 | `src/windows/` | WPF host, hardware worker, CLI, discovery, pairing, and remote-control modules |
 | `src/android/` | Kotlin + Jetpack Compose app and the Quick Settings tile |
 | `src/relay/` | ASP.NET Core Relay, Dockerfile, and Compose files |
+| `src/wol/` | Standalone WOL Gateway, restricted OpenWrt script, and Linux deployment examples |
 | `src/shared/` | Protocol contracts shared by both ends |
 | `tests/` | Unit tests and integration tests over loopback and simulated hardware |
 | `tools/` | Build, packaging, install, and test scripts |
@@ -194,6 +200,7 @@ Most documents are in Chinese; the pairing protocol is in English.
 - [Android guide](docs/Android.md): app, tile, background sync, build
 - [Remote control and pairing](docs/Remote-Control.md): connection paths, security model, network troubleshooting
 - [Self-hosted Relay](docs/Relay.md): configuration, Docker deployment, reverse proxy
+- [Remote wake / WOL](docs/Wake-on-LAN.md): Windows NIC, OpenWrt, existing WireGuard, Gateway, Android tile, and revocation
 - [Six-digit pairing protocol](docs/Pairing-v1.md): SRP-6a handshake and wire format
 - [P0 hardware findings](docs/P0-findings.md): what has been verified on real hardware
 - [Development history](docs/Development-History.md)

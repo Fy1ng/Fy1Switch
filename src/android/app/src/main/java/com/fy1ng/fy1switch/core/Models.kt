@@ -85,6 +85,7 @@ data class DeviceProfile(
     val tailscaleEndpoint: String? = null,
     val autoLearnTailscale: Boolean = true,
     val autoLearnRelay: Boolean = true,
+    val wol: WolBinding? = null,
 ) {
     override fun toString() = "DeviceProfile(redacted)"
 }
@@ -129,6 +130,8 @@ data class DeviceState(
     val lastSuccessfulRoute: Route? = null,
     // Process-local phone time. Never restore freshness from a saved snapshot or host timestamp.
     val lastLiveReadAtMillis: Long? = null,
+    val wolOperation: WolOperation? = null,
+    val lastHostResponseAtMillis: Long? = null,
 )
 data class AppState(
     val devices: List<DeviceState> = emptyList(),
@@ -138,6 +141,8 @@ data class AppState(
     val storageFailed: Boolean = false,
     val notice: Feedback? = null,
     val request: RepositoryRequest? = null,
+    val wolAuthorizations: List<WolAuthorization> = emptyList(),
+    val wolTileDeviceId: UUID? = null,
 ) {
     val selected: DeviceState? get() = devices.find { it.profile.deviceId == defaultDeviceId }
 }

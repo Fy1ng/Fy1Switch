@@ -1,0 +1,1 @@
+no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty,command="/usr/libexec/fy1switch-wol" ssh-ed25519 REPLACE_WITH_WOL_GATEWAY_PUBLIC_KEY fy1switch-wol-only

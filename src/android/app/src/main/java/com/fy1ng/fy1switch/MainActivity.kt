@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
                 backgroundSyncPermissionPending = backgroundSyncPermissionPending,
                 onBackgroundSyncEnabled = ::setBackgroundSyncEnabled,
                 onOpenNotificationSettings = ::openNotificationSettings,
+                onAddWakeTile = ::addWakeTile,
                 onPairingVisibilityChanged = { pairing ->
                     if (pairing) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                     else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -139,6 +140,31 @@ class MainActivity : ComponentActivity() {
         } catch (_: RuntimeException) {
             tileRequestPending = false
             tileMessage = "系统不支持此次添加请求，请在快捷设置的编辑页面手动添加。"
+        }
+    }
+
+    private fun addWakeTile() {
+        if (tileRequestPending) return
+        if (Build.VERSION.SDK_INT < 33) {
+            tileMessage = "请展开系统快捷设置, 点编辑, 将远程开机拖入开关区域."
+            return
+        }
+        tileRequestPending = true
+        try {
+            val manager = getSystemService(StatusBarManager::class.java) ?: throw IllegalStateException()
+            manager.requestAddTileService(ComponentName(this, WakeTileService::class.java), getString(R.string.wake_tile_name),
+                Icon.createWithResource(this, R.drawable.ic_fluent_power_24_regular), mainExecutor) { result ->
+                tileRequestPending = false
+                tileMessage = when (result) {
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> "远程开机磁贴已添加."
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> "远程开机磁贴已经添加."
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_NOT_ADDED -> "已取消添加远程开机磁贴."
+                    else -> "请在快捷设置的编辑页面手动添加远程开机."
+                }
+            }
+        } catch (_: RuntimeException) {
+            tileRequestPending = false
+            tileMessage = "请在快捷设置的编辑页面手动添加远程开机."
         }
     }
 }

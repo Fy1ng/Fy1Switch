@@ -1,5 +1,15 @@
 # Android App 与快捷设置开关
 
+## 可选 WOL 远程开机
+
+设备设置中可启用 WOL, 填写 Gateway HTTPS 根地址并用管理员签发的一次性注册码授权. 同一 Gateway 每手机一份独立凭据, 保存在现有 Keystore AES-GCM 加密存储. 旧数据缺少 WOL 字段时默认关闭, 原 Windows 配对、固定证书、Relay 和显示器磁贴继续使用.
+
+主页新增独立远程开机操作, 不属于显示器 On/Off/Toggle. 新增 `WakeTileService` 对应"远程开机"磁贴, 用户自行添加; 默认跟随当前电脑, 可固定目标, 删除固定电脑后不会唤醒其他电脑. 保留 `com.fy1ng.fy1switch.DisplayTileService` 组件及原行为, 原显示器磁贴离线时不会自动 WOL.
+
+发送前保存操作 ID, App/磁贴共同去重. 网络失败或进程回收后查询已有操作, 不自动无限重发. `packet_sent` 仅表示发送成功, 等待原可信通道返回 Host 状态; 有限生命周期内的上线检查有超时和停止条件, 不增加永久后台服务. Gateway 不可用不改变原显示器状态语义.
+
+连接测试不发送 WOL. 本地清除不等于服务端撤销; 撤销本手机会影响该 Gateway 的全部关联电脑. Windows 重新配对保留对应电脑的 WOL 配置. 完整 VPS/OpenWrt 部署和诊断见 [Wake-on-LAN.md](Wake-on-LAN.md).
+
 完整更名后的包名为 `com.fy1ng.fy1switch`, 与更名前的旧版独立安装. 旧版数据和 Keystore 不迁移或删除, 新版需要重新配对并添加新的快捷设置开关. 以下稳定组件和协议标识指 Fy1Switch 新版, 不表示可以覆盖安装旧包.
 
 Android 新增电脑时, 默认采用 Windows 配对响应中的 `deviceName`, 即 Windows 当前设备名称. 扫码, LAN 短码和 Relay 配对使用相同规则, 主页, 设备设置和快捷设置磁贴共用保存的电脑名称. 配对页的 "本手机名称" 只用于 Windows 上识别已配对手机, 不作为电脑默认名称. 重新配对保留已有本地名称; 旧版 Windows 未返回名称时使用 "Windows 电脑". 既有记录不自动改名, 以保留用户自定义名称.

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifiers></RuntimeIdentifiers>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../../THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../../licenses/Microsoft.Data.Sqlite.LICENSE;../../../licenses/SQLitePCLRaw.LICENSE;../../../licenses/SQLitePCLRaw.NOTICE"
+             Link="licenses/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

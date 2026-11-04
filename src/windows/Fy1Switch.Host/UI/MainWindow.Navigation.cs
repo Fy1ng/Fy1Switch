@@ -17,11 +17,13 @@ public sealed partial class MainWindow
     private readonly Border _pairingBackdrop = new() { Background = new SolidColorBrush(Color.FromArgb(128, 0, 0, 0)) };
     private readonly ContentControl _pairingHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
     private readonly ContentControl _remoteSettingsHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
+    private readonly ContentControl _wolSettingsHost = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
     private readonly Button _pairingClose = Button("关闭配对");
     private readonly Button _settingsBack = Button("返回", AppIconKind.Back);
     private ScrollViewer _homePage = null!;
     private ScrollViewer _settingsPage = null!;
     private RemoteConnectionView? _remoteView;
+    private WolSetupView? _wolView;
     private IInputElement? _pairingReturnFocus;
     private Task _pairingCloseTask = Task.CompletedTask;
     private long _pairingRevision;
@@ -90,6 +92,13 @@ public sealed partial class MainWindow
             UpdateRemoteSettingsVisibility();
         };
         Content = WindowFrame.Wrap(this, _shell, "关闭窗口后仍在托盘运行");
+    }
+
+    internal void AttachWolSetup(WolSetupView view)
+    {
+        Dispatcher.VerifyAccess();
+        _wolView = view;
+        _wolSettingsHost.Content = view.Content;
     }
 
     internal void AttachRemote(RemoteConnectionView view)
@@ -207,6 +216,7 @@ public sealed partial class MainWindow
         _settingsBack.Focus();
         await closing;
         UpdateRemoteSettingsVisibility();
+        _wolView?.RefreshCandidates();
         if (_discovery is null && _snapshotAvailable && !IsBusy)
             await DiscoverAsync();
     }
