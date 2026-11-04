@@ -37,6 +37,8 @@ data class RemoteCommand(
     val intent: PowerIntent? = null,
     val operationId: UUID? = null,
     val version: Int = 1,
+    val control: DisplayControl? = null,
+    val value: Int? = null,
 )
 data class RemoteReply(
     val requestId: UUID,
@@ -45,6 +47,8 @@ data class RemoteReply(
     val status: RemoteStatus?,
     val operation: OperationRecord?,
     val version: Int,
+    val controls: DisplayControls? = null,
+    val controlOperation: ControlOperation? = null,
 )
 data class PairBundle(
     val deviceId: UUID,
@@ -132,6 +136,11 @@ data class DeviceState(
     val lastLiveReadAtMillis: Long? = null,
     val wolOperation: WolOperation? = null,
     val lastHostResponseAtMillis: Long? = null,
+    val controls: DisplayControls? = null,
+    val controlOperation: ControlOperation? = null,
+    val controlsFeedback: ControlsFeedback = ControlsFeedback.Ready,
+    val controlsReadAtMillis: Long? = null,
+    val controlsRequireRefresh: Boolean = false,
 )
 data class AppState(
     val devices: List<DeviceState> = emptyList(),
@@ -147,7 +156,7 @@ data class AppState(
     val selected: DeviceState? get() = devices.find { it.profile.deviceId == defaultDeviceId }
 }
 
-enum class RepositoryAction { Other, Refresh, Set }
+enum class RepositoryAction { Other, Refresh, Set, Controls, SetControl, ControlQuery }
 data class RepositoryRequest(
     val id: UUID,
     val action: RepositoryAction,

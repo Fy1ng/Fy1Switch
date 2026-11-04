@@ -41,4 +41,6 @@ src/shared/**
 src/shared/Fy1Switch.Contracts/**
 !src/shared/Fy1Switch.Contracts/Messages.cs
 !src/shared/Fy1Switch.Contracts/RemoteMessages.cs
+!src/shared/Fy1Switch.Contracts/DisplayControls.cs
+!src/shared/Fy1Switch.Contracts/RemoteDisplayControls.cs
 !src/shared/Fy1Switch.Contracts/Fy1Switch.Contracts.csproj

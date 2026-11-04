@@ -49,6 +49,7 @@ The Windows main window in light and dark themes. These are renders of the real 
 
 **On the phone**
 - A home screen showing the monitor's last read-back state, with one button to turn it on or off.
+- Monitor settings for brightness, contrast, volume, input source, color preset, and rotation, enabled according to the PC's reported capabilities, plus a read-only VCP list. Requires an updated Windows Host and, when used, an updated Relay.
 - A **Remote display** (远程显示器) Quick Settings tile. When the state is known, a tap toggles it; when it isn't, the tile reads the state first. Long-press opens the app.
 - Several PCs saved on one phone, with one picked as the default target.
 - Optional remote wake through a standalone WOL Gateway, using an app button or a separate **Remote wake** (远程开机) tile. No home VPN is required on the phone.

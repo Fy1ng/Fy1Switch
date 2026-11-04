@@ -65,7 +65,7 @@ class DeviceRepository(
                     store.read().let { restored ->
                         restored.copy(loaded = true, busy = false, request = null, devices = restored.devices.map { device ->
                             router.restoreRouteHint(device.profile, device.lastSuccessfulRoute)
-                            device.copy(lastLiveReadAtMillis = null, lastHostResponseAtMillis = null,
+                            device.copy(lastLiveReadAtMillis = null, lastHostResponseAtMillis = null, controls = null, controlsReadAtMillis = null,
                                 requiresRefresh = device.requiresRefresh && device.operation?.outcome != OperationOutcome.Failed)
                         })
                     }
@@ -335,6 +335,150 @@ class DeviceRepository(
         applyDelivery(deviceId, request, router.send(device.profile, request))
     }
 
+    fun hasFreshControls(deviceId: UUID): Boolean {
+        val device = state.value.devices.find { it.profile.deviceId == deviceId } ?: return false
+        if (state.value.storageFailed || !DisplayControlPolicy.bound(device) || device.controls?.targetId != device.status?.targetId) return false
+        return device.controlsReadAtMillis?.let { monotonicMillis() - it in 0..30_000 } == true
+    }
+
+    suspend fun recoverDisplayControls(deviceId: UUID): Feedback = guarded(RepositoryAction.Controls, deviceId, waitForIdle = true) {
+        if (state.value.defaultDeviceId != deviceId) return@guarded Feedback.Busy
+        if (!DisplayControlPolicy.bound(find(deviceId))) {
+            val connected = readStatusInternal(deviceId, live = false)
+            if (connected != Feedback.Updated) return@guarded connected
+        }
+        if (DisplayControlPolicy.unresolved(find(deviceId).controlOperation)) {
+            val queried = queryDisplayControlInternal(deviceId)
+            if (queried in recoveryStopFeedback || find(deviceId).controlOperation?.outcome == OperationOutcome.Pending) return@guarded queried
+        }
+        readDisplayControlsInternal(deviceId)
+    }
+
+    suspend fun readDisplayControls(deviceId: UUID): Feedback = guarded(RepositoryAction.Controls, deviceId) {
+        if (state.value.defaultDeviceId != deviceId) return@guarded Feedback.Busy
+        readDisplayControlsInternal(deviceId)
+    }
+
+    private suspend fun readDisplayControlsInternal(deviceId: UUID): Feedback {
+        val device = find(deviceId)
+        if (!DisplayControlPolicy.bound(device)) {
+            replace(device.copy(controlsFeedback = ControlsFeedback.Unavailable, controlsReadAtMillis = null))
+            return Feedback.Busy
+        }
+        val request = RemoteCommand(UUID.randomUUID(), deviceId, "controls", clock.instant().plusSeconds(30), targetId = device.status?.targetId)
+        return applyControlDelivery(deviceId, request, router.send(device.profile, request))
+    }
+
+    suspend fun setDisplayControl(deviceId: UUID, control: DisplayControl, value: Int, expectedTargetId: UUID? = null): Feedback {
+        initialize()
+        // UI callers pass their rendered snapshot. Other callers capture the current binding before lock admission.
+        val capturedTarget = expectedTargetId ?: state.value.devices.find { it.profile.deviceId == deviceId }?.status?.targetId
+        return guarded(RepositoryAction.SetControl, deviceId) {
+            if (state.value.defaultDeviceId != deviceId) return@guarded Feedback.Busy
+            if (capturedTarget == null || find(deviceId).status?.targetId != capturedTarget) {
+                replace(find(deviceId).copy(controlsFeedback = ControlsFeedback.TargetChanged))
+                return@guarded Feedback.Busy
+            }
+            if (!DisplayControlPolicy.legal(control, value)) {
+                replace(find(deviceId).copy(controlsFeedback = ControlsFeedback.InvalidValue))
+                return@guarded Feedback.InvalidInput
+            }
+            if (find(deviceId).controlsRequireRefresh) return@guarded Feedback.Busy
+            if (!hasFreshControls(deviceId)) {
+                val read = readDisplayControlsInternal(deviceId)
+                if (read != Feedback.Updated) return@guarded read
+            }
+            val device = find(deviceId)
+            if (device.status?.targetId != capturedTarget || device.controls?.targetId != capturedTarget) {
+                replace(device.copy(controlsFeedback = ControlsFeedback.TargetChanged))
+                return@guarded Feedback.Busy
+            }
+            if (!DisplayControlPolicy.canApply(state.value.copy(busy = false), device, control, value, hasFreshControls(deviceId))) {
+                replace(device.copy(controlsFeedback = ControlsFeedback.InvalidValue))
+                return@guarded Feedback.InvalidInput
+            }
+            val operation = ControlOperation(UUID.randomUUID(), capturedTarget, control, value,
+                OperationOutcome.Pending, null, null, clock.instant())
+            replace(device.copy(controlOperation = operation, controlsRequireRefresh = true, controlsFeedback = ControlsFeedback.Pending))
+            val request = RemoteCommand(UUID.randomUUID(), deviceId, "set-control", clock.instant().plusSeconds(30),
+                targetId = operation.targetId, operationId = operation.operationId, control = control, value = value)
+            applyControlDelivery(deviceId, request, router.send(device.profile, request))
+        }
+    }
+
+    suspend fun queryDisplayControl(deviceId: UUID): Feedback = guarded(RepositoryAction.ControlQuery, deviceId) {
+        if (state.value.defaultDeviceId != deviceId) return@guarded Feedback.Busy
+        queryDisplayControlInternal(deviceId)
+    }
+
+    private suspend fun queryDisplayControlInternal(deviceId: UUID): Feedback {
+        val device = find(deviceId)
+        val operation = device.controlOperation ?: return Feedback.NotFound
+        if (device.status?.targetId != operation.targetId) {
+            replace(device.copy(controls = null, controlsReadAtMillis = null, controlsFeedback = ControlsFeedback.Unavailable))
+            return Feedback.Busy
+        }
+        val request = RemoteCommand(UUID.randomUUID(), deviceId, "control-operation", clock.instant().plusSeconds(30),
+            targetId = operation.targetId, operationId = operation.operationId)
+        return applyControlDelivery(deviceId, request, router.send(device.profile, request))
+    }
+
+    private fun applyControlDelivery(deviceId: UUID, request: RemoteCommand, delivery: Delivery): Feedback {
+        val device = find(deviceId)
+        if (device.status?.targetId != request.targetId) {
+            replace(device.copy(controls = null, controlsReadAtMillis = null, controlsFeedback = ControlsFeedback.Unavailable))
+            return Feedback.Protocol
+        }
+        if (delivery is Delivery.Failure) {
+            val operation = if (request.command == "set-control") device.controlOperation?.copy(
+                outcome = if (delivery.mayHaveExecuted) OperationOutcome.Unknown else OperationOutcome.Failed,
+                errorCode = delivery.errorCode, updatedAt = clock.instant()) else device.controlOperation
+            val feedback = when {
+                delivery.errorCode == "invalid_command" -> ControlsFeedback.Unsupported
+                delivery.errorCode == "operation_not_found" -> ControlsFeedback.NotFound
+                request.command == "set-control" && delivery.mayHaveExecuted -> ControlsFeedback.Unknown
+                delivery.feedback in setOf(Feedback.Security, Feedback.Protocol, Feedback.Unauthorized) -> ControlsFeedback.Security
+                delivery.feedback == Feedback.Offline -> ControlsFeedback.Offline
+                else -> ControlsFeedback.Failed
+            }
+            replace(device.copy(controlOperation = operation, controlsFeedback = feedback, controlsReadAtMillis = null,
+                controlsRequireRefresh = DisplayControlPolicy.unresolved(operation)))
+            return if (request.command == "set-control" && delivery.mayHaveExecuted) Feedback.Unknown else delivery.feedback
+        }
+        val reply = (delivery as Delivery.Reply).value
+        if (!reply.success) return applyControlDelivery(deviceId, request, Delivery.Failure(Feedback.Failed, true, reply.errorCode))
+        val returned = reply.controlOperation
+        val prior = device.controlOperation
+        if (returned != null && (prior == null || returned.operationId != prior.operationId || returned.control != prior.control ||
+                returned.requestedValue != prior.requestedValue || returned.targetId != prior.targetId)) {
+            return applyControlDelivery(deviceId, request, Delivery.Failure(Feedback.Protocol, true))
+        }
+        val controls = reply.controls ?: device.controls?.let { snapshot ->
+            if (returned?.outcome == OperationOutcome.Confirmed) snapshot.copy(controls = snapshot.controls.map {
+                if (it.control == returned.control) it.copy(value = returned.result?.value) else it
+            }) else snapshot
+        }
+        val feedback = if (request.command == "controls") ControlsFeedback.Updated else when (returned?.outcome) {
+            OperationOutcome.Confirmed -> ControlsFeedback.Confirmed
+            OperationOutcome.AcceptedUnconfirmed -> ControlsFeedback.Unconfirmed
+            OperationOutcome.Pending -> ControlsFeedback.Pending
+            OperationOutcome.Failed -> ControlsFeedback.Failed
+            else -> ControlsFeedback.Unknown
+        }
+        replace(device.copy(controls = controls, controlOperation = returned ?: prior, controlsFeedback = feedback,
+            controlsReadAtMillis = if (reply.controls != null) monotonicMillis() else device.controlsReadAtMillis,
+            controlsRequireRefresh = if (request.command == "controls") false else DisplayControlPolicy.unresolved(returned),
+            lastSuccessfulRoute = delivery.route, lastHostResponseAtMillis = monotonicMillis()))
+        return when (feedback) {
+            ControlsFeedback.Confirmed -> Feedback.Confirmed
+            ControlsFeedback.Updated -> Feedback.Updated
+            ControlsFeedback.Unconfirmed -> Feedback.AcceptedUnconfirmed
+            ControlsFeedback.Pending -> Feedback.Pending
+            ControlsFeedback.Unknown -> Feedback.Unknown
+            else -> Feedback.Failed
+        }
+    }
+
     suspend fun queryOperation(deviceId: UUID): Feedback = guarded { queryOperationInternal(deviceId) }
 
     private suspend fun queryOperationInternal(deviceId: UUID): Feedback {
@@ -414,9 +558,15 @@ class DeviceRepository(
                 }
                 val profile = device.profile.copy(tailscaleEndpoint =
                     reply.status?.tailscaleEndpoint.takeIf { device.profile.autoLearnTailscale } ?: device.profile.tailscaleEndpoint)
+                val changedTarget = reply.status != null && reply.status.targetId != device.status?.targetId
                 val updated = device.copy(profile = profile, status = status, operation = operation, connected = connected,
                     feedback = feedback, requiresRefresh = requiresRefresh, lastSuccessfulRoute = delivery.route,
-                    lastHostResponseAtMillis = if (reply.status != null && connected) monotonicMillis() else device.lastHostResponseAtMillis)
+                    lastHostResponseAtMillis = if (reply.status != null && connected) monotonicMillis() else device.lastHostResponseAtMillis,
+                    controls = if (changedTarget) null else device.controls,
+                    controlsReadAtMillis = if (changedTarget || !connected) null else device.controlsReadAtMillis,
+                    controlOperation = if (changedTarget) null else device.controlOperation,
+                    controlsRequireRefresh = if (changedTarget) false else device.controlsRequireRefresh,
+                    controlsFeedback = if (changedTarget) ControlsFeedback.Ready else device.controlsFeedback)
                 val trusted = StatePolicy.confirmedPower(updated) != DisplayPower.Unknown
                 val readAt = when {
                     trusted && freshRead -> monotonicMillis()
@@ -476,6 +626,16 @@ class DeviceRepository(
             mutableState.value = state.value.copy(notice = feedback)
             return feedback
         } catch (exception: CancellationException) {
+            if (kind == RepositoryAction.SetControl) withContext(NonCancellable + Dispatchers.IO) {
+                try {
+                    persist(state.value.copy(devices = state.value.devices.map {
+                        if (it.profile.deviceId == deviceId && it.controlOperation?.outcome == OperationOutcome.Pending) it.copy(
+                            controlOperation = it.controlOperation.copy(outcome = OperationOutcome.Unknown, updatedAt = clock.instant()),
+                            controlsRequireRefresh = true, controlsReadAtMillis = null, controlsFeedback = ControlsFeedback.Unknown,
+                        ) else it
+                    }))
+                } catch (_: StorageFailure) { storageFailure() }
+            }
             if (kind == RepositoryAction.Set) withContext(NonCancellable + Dispatchers.IO) {
                 try {
                     persist(state.value.copy(devices = state.value.devices.map {

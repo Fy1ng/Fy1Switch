@@ -25,7 +25,7 @@ interface Transport {
 
 sealed interface Delivery {
     data class Reply(val value: RemoteReply, val route: Route) : Delivery
-    data class Failure(val feedback: Feedback, val mayHaveExecuted: Boolean) : Delivery
+    data class Failure(val feedback: Feedback, val mayHaveExecuted: Boolean, val errorCode: String? = null) : Delivery
 }
 
 class Router(private val transport: Transport, private val clock: Clock = Clock.systemUTC()) {
@@ -76,6 +76,7 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
         cooldowns.keys.removeAll { it.deviceId == device.deviceId && it !in keys.values }
         val failedThisRequest = mutableSetOf<PathKey>()
         var attempted = false
+        var ambiguousParameterWrite = false
         try {
             for ((index, route) in configured.withIndex()) {
                 val key = keys.getValue(route)
@@ -115,9 +116,11 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
                 attempted = true
                 val result = exchange(device, route, request, body, minOf(sendBudget, limit(device, route)))
                 if (result is Delivery.Failure && result.feedback == Feedback.Offline) {
+                    if (request.command == "set-control" && result.mayHaveExecuted) ambiguousParameterWrite = true
                     failedThisRequest.add(key)
                     continue
                 }
+                if (result is Delivery.Failure && ambiguousParameterWrite) return result.copy(mayHaveExecuted = true)
                 return result
             }
             return Delivery.Failure(Feedback.Offline, attempted)
@@ -143,6 +146,14 @@ class Router(private val transport: Transport, private val clock: Clock = Clock.
             return Delivery.Failure(Feedback.Protocol, true)
         }
         if (response.status == 401 || response.status == 403) return Delivery.Failure(Feedback.Unauthorized, true)
+        if (request.command in DisplayControlPolicy.commands) {
+            if (response.status == 400 && DisplayControlProtocol.explicitUnsupported(response.body, request))
+                return Delivery.Failure(Feedback.Failed, false, "invalid_command")
+            if (response.status in setOf(404, 409)) {
+                val code = runCatching { org.json.JSONObject(response.body).getString("errorCode") }.getOrNull()
+                if (code in setOf("operation_not_found", "operation_conflict")) return Delivery.Failure(Feedback.Failed, true, code)
+            }
+        }
         if (response.status !in 200..299) return Delivery.Failure(Feedback.Failed, true)
         val reply = try {
             Protocol.reply(response.body, request)

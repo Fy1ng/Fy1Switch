@@ -90,9 +90,40 @@ public class RemoteRoundTripTests
             Assert.AreEqual(direct.Reply.Operation.UpdatedAt, result.Operation.UpdatedAt);
             using var on = await Post("control", Command("set", PowerIntent.On, Guid.NewGuid()), phone.Token);
             Assert.AreEqual(DisplayPower.On, WireJson.Parse<RemoteReply>(await on.Content.ReadAsStringAsync()).Operation!.Observation!.State);
+
+            // Parameter reads and writes traverse the same authenticated HTTPS/WSS path.
+            using var controls = await Post("control", Command("controls"), phone.Token);
+            Assert.AreEqual(HttpStatusCode.OK, controls.StatusCode);
+            var controlsJson = await controls.Content.ReadAsStringAsync();
+            var capabilities = WireJson.Parse<RemoteReply>(controlsJson).Controls!;
+            Assert.AreEqual(bound.Binding!.TargetId, capabilities.TargetId);
+            Assert.AreEqual(65, capabilities.Controls.Single(c => c.Control == DisplayControl.Brightness).Value);
+            Assert.IsFalse(capabilities.Controls.Single(c => c.Control == DisplayControl.Volume).Supported);
+            Assert.IsFalse(controlsJson.Contains(SimulatedTransport.Key, StringComparison.Ordinal), "Private target keys must not cross the remote boundary.");
+            var parameterId = Guid.NewGuid();
+            RemoteCommand Parameter(int value) => Command("set-control", operation: parameterId) with { Control = DisplayControl.Brightness, Value = value };
+            var firstParameter = await gateway.ControlAsync(phone.Token, Parameter(42));
+            Assert.AreEqual(200, firstParameter.StatusCode);
+            Assert.AreEqual(OperationOutcome.Confirmed, firstParameter.Reply.ControlOperation!.Outcome);
+            using var parameterRetry = await Post("control", Parameter(42), phone.Token);
+            Assert.AreEqual(HttpStatusCode.OK, parameterRetry.StatusCode);
+            var parameterResult = WireJson.Parse<RemoteReply>(await parameterRetry.Content.ReadAsStringAsync()).ControlOperation!;
+            Assert.AreEqual(firstParameter.Reply.ControlOperation, parameterResult);
+            Assert.AreEqual(1, worker.ParameterWrites, "Cross-route retries must not issue a second parameter write.");
+            using var parameterConflict = await Post("control", Parameter(43), phone.Token);
+            Assert.AreEqual(HttpStatusCode.Conflict, parameterConflict.StatusCode);
+            Assert.AreEqual(1, worker.ParameterWrites);
+            using var parameterQuery = await Post("control", Command("control-operation", operation: parameterId), phone.Token);
+            Assert.AreEqual(HttpStatusCode.OK, parameterQuery.StatusCode);
+            Assert.AreEqual(parameterResult, WireJson.Parse<RemoteReply>(await parameterQuery.Content.ReadAsStringAsync()).ControlOperation);
+            using var reread = await Post("control", Command("controls"), phone.Token);
+            Assert.AreEqual(42, WireJson.Parse<RemoteReply>(await reread.Content.ReadAsStringAsync()).Controls!.Controls.Single(c => c.Control == DisplayControl.Brightness).Value);
             security.Revoke(phone.ClientId);
             using var revoked = await Post("control", Command("status"), phone.Token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            using var revokedParameter = await Post("control", Parameter(44) with { OperationId = Guid.NewGuid() }, phone.Token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, revokedParameter.StatusCode);
+            Assert.AreEqual(1, worker.ParameterWrites);
             Assert.AreEqual(2, worker.Writes);
             await relay.StopAsync();
         }
@@ -107,14 +138,24 @@ public class RemoteRoundTripTests
     private sealed class FakeStartup : IStartupRegistration { public bool Enabled { get; private set; } public void SetEnabled(bool enabled) => Enabled = enabled; }
     private sealed class SimulatedTransport : IWorkerTransport
     {
-        private static readonly string Key = new('a', 64);
+        internal static readonly string Key = new('a', 64);
         private static readonly string Fingerprint = new('b', 64);
         private DisplayPower _power = DisplayPower.On;
         public int Writes { get; private set; }
+        public int ParameterWrites { get; private set; }
+        private int brightness = 65;
         public bool IsRunning => true;
         public Task<WorkerReply> SendAsync(WorkerRequest request, CancellationToken cancellationToken = default)
         {
             if (request.Command == "discover") return Task.FromResult(new WorkerReply(request.RequestId, true, Discovery: new(Fingerprint, [new(Key, "fixture", "simulation")], DateTimeOffset.UtcNow)));
+            if (request.Command == "read-controls") return Task.FromResult(new WorkerReply(request.RequestId, true,
+                Controls: new(Key, "fixture", "private-monitor-id", [new(DisplayControl.Brightness, true, brightness, []), new(DisplayControl.Volume, false, null, [])], [], DateTimeOffset.UtcNow)));
+            if (request.Command == "set-control")
+            {
+                ParameterWrites++;
+                brightness = request.Value!.Value;
+                return Task.FromResult(new WorkerReply(request.RequestId, true, ControlWrite: new(true, brightness, true)));
+            }
             if (request.Command == "set") { Writes++; _power = request.Intent == PowerIntent.On ? DisplayPower.On : DisplayPower.Off; }
             return Task.FromResult(new WorkerReply(request.RequestId, true, Observation: new(_power, _power == DisplayPower.On ? 1 : 2, DateTimeOffset.UtcNow, "simulation"), WriteAccepted: request.Command == "set" ? true : null));
         }

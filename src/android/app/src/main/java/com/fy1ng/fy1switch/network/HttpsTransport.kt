@@ -107,17 +107,18 @@ class HttpsTransport : Transport {
 
     override suspend fun control(device: DeviceProfile, route: Route, body: String, timeoutMillis: Long): HttpResult {
         return post(controlClient(device, route), controlRequest(device, route, body), timeoutMillis,
-            Instant.parse(JSONObject(body).getString("expiresAt")))
+            Instant.parse(JSONObject(body).getString("expiresAt")),
+            JSONObject(body).getString("command") in com.fy1ng.fy1switch.core.DisplayControlPolicy.commands)
     }
 
-    internal fun readResponse(response: Response): HttpResult = response.use {
-        if (it.code !in 200..299) return@use HttpResult(it.code, "")
+    internal fun readResponse(response: Response, parameterErrors: Boolean = false): HttpResult = response.use {
+        if (it.code !in 200..299 && !(parameterErrors && it.code in setOf(400, 404, 409))) return@use HttpResult(it.code, "")
         val source = requireNotNull(it.body) { "Missing response" }.source()
         require(!source.request(Protocol.MAX_BODY.toLong() + 1)) { "Response too large" }
         HttpResult(it.code, source.readUtf8())
     }
 
-    private suspend fun post(client: OkHttpClient, request: Request, timeoutMillis: Long, expiresAt: Instant): HttpResult =
+    private suspend fun post(client: OkHttpClient, request: Request, timeoutMillis: Long, expiresAt: Instant, parameterErrors: Boolean = false): HttpResult =
         suspendCancellableCoroutine { continuation ->
             val remaining = Duration.between(Instant.now(), expiresAt).toMillis()
             if (remaining <= 0) {
@@ -135,7 +136,7 @@ class HttpsTransport : Transport {
 
                 override fun onResponse(call: Call, response: Response) {
                     try {
-                        val result = readResponse(response)
+                        val result = readResponse(response, parameterErrors)
                         continuation.resume(result)
                     } catch (exception: Exception) {
                         continuation.resumeWithException(exception)

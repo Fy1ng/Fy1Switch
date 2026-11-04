@@ -4,7 +4,8 @@ using Fy1Switch.Runtime;
 
 namespace Fy1Switch.Remote.Tests;
 
-internal sealed record ControllerCall(string Method, Guid? TargetId = null, PowerIntent? Intent = null, Guid? OperationId = null);
+internal sealed record ControllerCall(string Method, Guid? TargetId = null, PowerIntent? Intent = null, Guid? OperationId = null,
+    DisplayControl? Control = null, int? Value = null);
 
 internal sealed class FakeDesktopController(Guid deviceId, TestDirectory directory, TestClock clock) : IDesktopController
 {
@@ -17,6 +18,8 @@ internal sealed class FakeDesktopController(Guid deviceId, TestDirectory directo
     public string DataDirectory => directory.Path;
     public ControllerCall[] Calls => calls.ToArray();
     public Func<CancellationToken, Task<HostSnapshot>>? SnapshotHandler { get; set; }
+    public Func<Guid, CancellationToken, Task<DisplayControlsSnapshot>>? ControlsHandler { get; set; }
+    public Func<Guid, DisplayControl, int, CancellationToken, Task<DisplayControlWriteResult>>? ControlWriteHandler { get; set; }
     public OperationRecord? Operation { get; set; }
     public HostSnapshot Snapshot { get; set; } = new(deviceId,
         new(Guid.NewGuid(), PrivateTargetKey, "Test display", PrivateProfile, PrivateFingerprint),
@@ -47,8 +50,18 @@ internal sealed class FakeDesktopController(Guid deviceId, TestDirectory directo
     }
 
     public Task<DiscoverySnapshot> DiscoverAsync(CancellationToken cancellationToken = default) => throw LocalOnly("discover");
-    public Task<DisplayControlsSnapshot> GetDisplayControlsAsync(Guid targetId, CancellationToken cancellationToken = default) => throw LocalOnly("read-controls");
-    public Task<DisplayControlWriteResult> SetDisplayControlAsync(Guid targetId, DisplayControl control, int value, CancellationToken cancellationToken = default) => throw LocalOnly("set-control");
+    public Task<DisplayControlsSnapshot> GetDisplayControlsAsync(Guid targetId, CancellationToken cancellationToken = default)
+    {
+        if (ControlsHandler is null) throw LocalOnly("read-controls");
+        calls.Enqueue(new("read-controls", targetId));
+        return ControlsHandler(targetId, cancellationToken);
+    }
+    public Task<DisplayControlWriteResult> SetDisplayControlAsync(Guid targetId, DisplayControl control, int value, CancellationToken cancellationToken = default)
+    {
+        if (ControlWriteHandler is null) throw LocalOnly("set-control");
+        calls.Enqueue(new("set-control", targetId, Control: control, Value: value));
+        return ControlWriteHandler(targetId, control, value, cancellationToken);
+    }
     public Task<MonitorPreferences> GetMonitorPreferencesAsync(string targetKey, CancellationToken cancellationToken = default) => throw LocalOnly("monitor-preferences");
     public Task<MonitorPreferences> SetMonitorPreferencesAsync(string targetKey, MonitorPreferences preferences, CancellationToken cancellationToken = default) => throw LocalOnly("set-monitor-preferences");
     public Task<HostSnapshot> BindAsync(string targetKey, string topologyFingerprint, string name, CancellationToken cancellationToken = default) => throw LocalOnly("bind");

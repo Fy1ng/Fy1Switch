@@ -7,6 +7,7 @@ public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity 
 {
     private readonly SemaphoreSlim _slots = new(8, 8);
     private readonly SemaphoreSlim _relayAdmissions = new(1, 1);
+    private readonly Lazy<RemoteDisplayControlService> _displayControls = new(() => new(controller, security, deviceId, clock));
     public Guid DeviceId => deviceId;
     public string? TailscaleEndpoint { get; set; }
     public string? PublicEndpoint { get; set; }
@@ -56,12 +57,16 @@ public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity 
         var now = clock?.Invoke() ?? DateTimeOffset.UtcNow;
         if (request.Version != 1 || request.RequestId == Guid.Empty || request.DeviceId != deviceId) return (400, new(request.RequestId, false, "invalid_request"));
         if (request.ExpiresAt <= now || request.ExpiresAt > now.AddSeconds(120)) return (400, new(request.RequestId, false, "request_expired_or_invalid_deadline"));
-        if (request.Command is not ("status" or "refresh" or "set" or "operation")) return (400, new(request.RequestId, false, "invalid_command"));
+        var parameters = request.Command is "controls" or "set-control" or "control-operation";
+        if (!parameters && request.Command is not ("status" or "refresh" or "set" or "operation")) return (400, new(request.RequestId, false, "invalid_command"));
+        if (parameters ? !RemoteDisplayControlService.IsRequestValid(request) : request.Control is not null || request.Value is not null)
+            return (400, new(request.RequestId, false, "invalid_request"));
         if (!await _slots.WaitAsync(0, cancellationToken)) return (429, new(request.RequestId, false, "busy"));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(request.ExpiresAt - now);
         try
         {
+            if (parameters) return await _displayControls.Value.HandleAsync(token, request, deadline.Token);
             if (request.Command == "set")
             {
                 if (request.TargetId is null || request.TargetId == Guid.Empty || request.Intent is null || request.OperationId is null || request.OperationId == Guid.Empty || !Enum.IsDefined(request.Intent.Value)) return (400, new(request.RequestId, false, "invalid_request"));
@@ -79,7 +84,7 @@ public sealed class RemoteGateway(IDesktopController controller, DeviceSecurity 
             return (200, new(request.RequestId, true, Status: new(snapshot.DeviceId, snapshot.Binding?.TargetId, snapshot.Binding?.Name, snapshot.Observation, available, snapshot.Busy, TailscaleEndpoint, RelayEndpoint)));
         }
         catch (ControlException exception) { return (409, new(request.RequestId, false, exception.Code)); }
-        catch (OperationCanceledException) { return (504, new(request.RequestId, false, "deadline_exceeded_result_unknown")); }
+        catch (OperationCanceledException) { return (504, new(request.RequestId, false, parameters ? "request_cancelled_before_dispatch" : "deadline_exceeded_result_unknown")); }
         catch { return (500, new(request.RequestId, false, "internal_error")); }
         finally { _slots.Release(); }
     }

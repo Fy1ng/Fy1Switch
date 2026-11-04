@@ -3,6 +3,7 @@ package com.fy1ng.fy1switch.integration
 import com.fy1ng.fy1switch.core.Delivery
 import com.fy1ng.fy1switch.core.DeviceProfile
 import com.fy1ng.fy1switch.core.DisplayPower
+import com.fy1ng.fy1switch.core.DisplayControl
 import com.fy1ng.fy1switch.core.Feedback
 import com.fy1ng.fy1switch.core.OperationOutcome
 import com.fy1ng.fy1switch.core.OperationRecord
@@ -34,11 +35,11 @@ import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLContext
 
 class LiveWindowsIntegrationTest {
-    @Test(timeout = 90_000)
+    @Test(timeout = 120_000)
     fun realHttpsPairControlDeduplicateAndRejectWrongPin() = runBlocking {
         var stage = "load fixture"
         try {
-            withTimeout(60_000) {
+            withTimeout(90_000) {
                 val fixturePath = System.getenv("FY1SWITCH_ANDROID_FIXTURE")
                 ensure(!fixturePath.isNullOrBlank(), "FY1SWITCH_ANDROID_FIXTURE is required")
                 val path = Path.of(requireNotNull(fixturePath))
@@ -62,6 +63,8 @@ class LiveWindowsIntegrationTest {
                 try {
                     stage = "initial refresh On"
                     refreshOn(router, device, targetId)
+                    stage = "display parameters roundtrip and durable deduplication"
+                    parameterRoundTrip(router, device, targetId)
                     stage = "set Off"
                     val off = command(device, targetId, PowerIntent.Off)
                     val first = confirmedOperation(router, device, off, DisplayPower.Off)
@@ -139,6 +142,47 @@ class LiveWindowsIntegrationTest {
     private fun command(device: DeviceProfile, targetId: UUID, intent: PowerIntent) = RemoteCommand(
         UUID.randomUUID(), device.deviceId, "set", Instant.now().plusSeconds(30), targetId, intent, UUID.randomUUID(),
     )
+
+    private suspend fun parameterRoundTrip(router: Router, device: DeviceProfile, targetId: UUID) {
+        fun readRequest() = RemoteCommand(UUID.randomUUID(), device.deviceId, "controls", Instant.now().plusSeconds(30), targetId)
+        val before = reply(router, device, readRequest()).controls
+        ensure(before?.targetId == targetId, "Parameter capabilities target mismatch")
+        val brightness = requireNotNull(before).controls.single { it.control == DisplayControl.Brightness }
+        ensure(brightness.supported && brightness.value != null, "Fixture brightness must be readable")
+        ensure(before.controls.single { it.control == DisplayControl.Volume }.supported == false, "Fixture volume must remain unsupported")
+        val original = requireNotNull(brightness.value)
+        var restored = false
+        suspend fun set(value: Int): com.fy1ng.fy1switch.core.ControlOperation {
+            val request = RemoteCommand(UUID.randomUUID(), device.deviceId, "set-control", Instant.now().plusSeconds(30), targetId,
+                operationId = UUID.randomUUID(), control = DisplayControl.Brightness, value = value)
+            val record = reply(router, device, request).controlOperation
+            ensure(record?.outcome == OperationOutcome.Confirmed && record.result?.confirmed == true && record.result.value == value,
+                "Parameter write was not confirmed by readback")
+            return requireNotNull(record)
+        }
+        try {
+            val first = set(if (original == 73) 74 else 73)
+            val repeatRequest = RemoteCommand(UUID.randomUUID(), device.deviceId, "set-control", Instant.now().plusSeconds(30), targetId,
+                operationId = first.operationId, control = first.control, value = first.requestedValue)
+            val repeated = reply(router, device, repeatRequest).controlOperation
+            ensure(repeated == first, "Parameter deduplication changed the durable result")
+            val query = RemoteCommand(UUID.randomUUID(), device.deviceId, "control-operation", Instant.now().plusSeconds(30), targetId,
+                operationId = first.operationId)
+            ensure(reply(router, device, query).controlOperation == first, "Parameter query did not return the original operation")
+            val current = reply(router, device, readRequest()).controls
+            ensure(current?.controls?.single { it.control == DisplayControl.Brightness }?.value == first.requestedValue,
+                "Parameter capability read did not confirm new brightness")
+            set(original)
+            ensure(reply(router, device, readRequest()).controls?.controls?.single { it.control == DisplayControl.Brightness }?.value == original,
+                "Fixture brightness was not restored")
+            restored = true
+        } finally {
+            if (!restored) withContext(NonCancellable) {
+                try { withTimeout(15_000) { set(original) } }
+                catch (_: Throwable) { throw AssertionError("Fixture brightness cleanup could not be confirmed; details suppressed.") }
+            }
+        }
+    }
 
     private fun refreshCommand(device: DeviceProfile, targetId: UUID) = RemoteCommand(
         UUID.randomUUID(), device.deviceId, "refresh", Instant.now().plusSeconds(30), targetId = targetId,

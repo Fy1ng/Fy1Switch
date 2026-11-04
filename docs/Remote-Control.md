@@ -1,5 +1,25 @@
 # 远程控制与配对
 
+## 显示器参数的远程控制
+
+已配对手机现在可以通过原控制通道读取和设置当前绑定显示器的亮度、对比度、音量、输入源、色温和旋转. 仍使用 Windows 设备 token、固定证书和原 LAN/Tailscale/Relay 路由, 仅暴露现有参数枚举, 不接受任意 VCP、发现、绑定、启动项或退出命令. 本地隐藏显示项只是 UI 偏好, 不构成远程权限撤销.
+
+扩展继续使用 `/v1/control` 和 Relay 的 `/v1/devices/{deviceId}/control`, 协议 version 仍为 1:
+
+| command | 额外请求字段 | 结果 |
+| --- | --- | --- |
+| `controls` | `targetId` | `controls`: 当前目标能力、数值、VCP 只读列表、观测时间 |
+| `set-control` | `targetId`, `operationId`, `control`, `value` | `controlOperation`: 独立持久化参数操作结果 |
+| `control-operation` | `targetId`, `operationId` | 查询原参数操作, 不写入硬件 |
+
+`control` 仅接受 `Brightness/Contrast/Volume/InputSource/ColorTemperature/Rotation` 字符串. 连续参数使用 0-100, 离散参数由设备能力限制. Windows 校验绑定、拓扑和实际能力, 不将客户端传来的范围当作授权. 响应不公开内部 TargetKey 或 MonitorId.
+
+普通 `status/refresh/set/operation` 请求和响应不附带新增空字段, `RemoteStatus` 结构保持不变. 这保证旧 Relay 的严格 JSON 校验仍能处理原电源流量. 新命令需要新版 Host 和新版 Relay; 旧组件拒绝新命令时 Android 提示升级, 不将其解释成电脑关机或电源控制失效.
+
+参数写入先保存 Pending 操作, 再调用现有显示器控制实现. 相同 operationId 和参数返回已有结果, 同 ID 不同目标/参数拒绝, 跨路径不会重复写入. 主机中断时 Pending 恢复为 Unknown, 不自动重放. Confirmed 必须有有效硬件读回证据, 写入接受但未确认与结果未知分别显示. 参数操作日志独立于原电源日志和 WOL, 更新/备份时一起保留用户数据目录.
+
+日志为 Host 数据目录中与 `state.db` 并列的 `remote-display-controls.db`, 最多 100000 条操作, 另有约 128 MiB 的 SQLite 页容量上限. 不自动驱逐历史操作 ID. 容量满返回 `operation_journal_full`, 仍允许已有操作查询和同 ID 去重. 不要删除该数据库来处理网络错误或恢复容量, 否则会失去已有写入的去重证据. 最终结果保存失败遗留的 Pending 会转为 Unknown, 不因此再次执行硬件写入.
+
 ## 可选 WOL 远程开机
 
 WOL 使用独立 HTTPS Gateway, 不属于 Windows `PowerIntent.On/Off/Toggle`, 也不通过离线的 Relay 转发. 手机使用独立 WOL 凭据, Gateway 经已有 VPS-OpenWrt WireGuard 隧道和受限 SSH 发送白名单魔术包. 手机及 Windows 不需要安装 WireGuard. 完整部署见 [Wake-on-LAN.md](Wake-on-LAN.md).
@@ -62,7 +82,7 @@ Relay 是可信服务，手机到 Relay、Windows 到 Relay 各自使用 TLS。R
 
 ## 协议与不确定结果
 
-POST /v1/control 使用 Bearer device token；请求含 version=1、requestId、deviceId、expiresAt，命令只允许 status、refresh、set、operation。set 必须携带绑定 targetId、On/Off/Toggle 和 operationId。远程端没有发现/绑定/自启/退出等本地管理接口。
+POST /v1/control 使用 Bearer device token; 请求含 version=1、requestId、deviceId、expiresAt. 原电源命令为 status、refresh、set、operation, 参数扩展为 controls、set-control、control-operation. set 必须携带绑定 targetId、On/Off/Toggle 和 operationId; 参数命令字段见上表. 远程端没有发现/绑定/自启/退出等本地管理接口.
 
 requestId 用于一次通信关联，operationId 用于跨通信通道的业务去重。网络超时不能证明命令没有执行；换通道重试保留同一 operationId，不新建一次 Toggle。读取既有操作结果应发送新请求，不能重放已过期信封。请求有效期上限 120 秒，过期或不匹配设备拒绝。
 

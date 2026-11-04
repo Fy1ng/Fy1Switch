@@ -79,7 +79,7 @@ public static class RelayApplication
             var command = await ReadBody<RemoteCommand>(context);
             if (command is null) return;
             if (command.DeviceId != deviceId || command.Version != 1 || command.RequestId == Guid.Empty ||
-                command.Command is not ("status" or "refresh" or "set" or "operation"))
+                !RelayDisplayControls.ValidRequest(command))
             {
                 await WriteError(context, 400, "invalid_command");
                 return;

@@ -20,4 +20,6 @@ foreach ($framework in $runtime.runtimeOptions.includedFrameworks) {
     if (Test-Path -LiteralPath $notices) { Copy-Item -LiteralPath $notices -Destination (Join-Path $output "$($framework.name)-THIRD-PARTY-NOTICES.TXT") }
 }
 Copy-Item -LiteralPath (Join-Path $root 'docs/Relay.md') -Destination (Join-Path $output 'README.md')
+Copy-Item -LiteralPath (Join-Path $root 'docs/Remote-Control.md') -Destination $output
+Copy-Item -LiteralPath (Join-Path $root 'docs/Wake-on-LAN.md') -Destination $output
 Write-Output "Relay Linux x64 package: $output (built, not executed on Linux or deployed)."

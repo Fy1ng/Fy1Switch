@@ -1,5 +1,13 @@
 # 自建 ASP.NET Core Relay
 
+## 显示器参数扩展
+
+Relay 支持在原认证通道中转发 `controls`, `set-control`, `control-operation`, 由新版 Windows Host 执行实际参数读取、能力校验、拓扑保护和持久化操作去重. 只支持现有亮度、对比度、音量、输入源、色温和旋转枚举, 不提供任意 VCP、远程绑定或离线队列. 完整字段见 [Remote-Control.md](Remote-Control.md).
+
+新增请求字段 `control/value` 和响应字段 `controls/controlOperation` 均为可选, 普通旧命令不会携带新增空字段, `RemoteStatus` 保持原结构. 新 Relay 兼容原客户端的电源控制; 旧 Relay 拒绝新参数命令时, 新 Android 明确提示升级并保留原电源功能. Windows 和 Relay 必须同时支持扩展才能通过中继调参.
+
+Relay 验证新结果的请求、目标和操作关联, 但不自行证明硬件已执行. 写入结果未知时查询原 operationId, 不创建新 ID 猜测重试. WOL 仍使用独立 Gateway, 不经过本 Relay 的参数或电源命令.
+
 ## 边界与信任
 
 - .NET 10, 单进程, 单实例, 内存设备路由, 无离线命令队列. 可选管理模式使用 Razor Pages/原生 JavaScript, ASP.NET Core Identity 和 SQLite 保存账户, Passkey 与设备注册. 不使用 Redis. 禁止多副本/滚动重叠运行, 不能轮询多个 Relay 实例.
@@ -124,7 +132,7 @@ dotnet run --project ./src/relay/Fy1Switch.Relay/Fy1Switch.Relay.csproj --config
 }
 ```
 
-仅允许 `status` / `refresh` / `set` / `operation`，大小写严格匹配；不转发 shutdown、绑定、启动项等 host 管理命令。deviceId 必须等于路由，requestId 不得为空，version 必须为 1，expiresAt 必须在未来且最多 120 秒。Relay 不自行发明其余 Windows 业务成功条件。
+仅允许 `status` / `refresh` / `set` / `operation` 及参数扩展 `controls` / `set-control` / `control-operation`, 大小写严格匹配; 不转发 shutdown、绑定、启动项等 Host 管理命令. deviceId 必须等于路由, requestId 不得为空, version 必须为 1, expiresAt 必须在未来且最多 120 秒. Relay 不自行发明其余 Windows 业务成功条件.
 
 发给 Windows：`RelayEnvelope { id: request.requestId, kind: "control", deviceToken, request, pair: null }`。**内外 UUID 及 RemoteCommand 所有字段不改写**。
 
@@ -215,6 +223,8 @@ Nginx 等替代代理需配置 HTTP/1.1 Upgrade/Connection 转发、请求 body 
 ```
 
 默认入口执行 locked restore、Release build、MSTest；所有服务请求只访问随机 loopback 端口的真实 Kestrel + ClientWebSocket fixture。测试配置/随机 token 写入测试输出下的临时 TestResults，结束删除，不访问真实设备或公网中继。DockerBuild 仅额外构建本地镜像，不启动容器、不部署；必须已有 Docker。
+
+Linux 自包含发布包还可用 `python3 tools/Test-Relay-Linux.py <Fy1Switch.Relay程序绝对路径>` 做非 root 冒烟测试. 测试使用临时配置和 loopback 端口, 验证原状态命令、新参数命令、认证和离线拒绝, 不连接 Windows 或真实硬件. 该测试不能替代 Docker 镜像或公网反代验收.
 
 覆盖认证/设备隔离、第二连接 409、离线、deadline/超时、同 UUID/枚举透传、控制/配对回复、重放、断线重连、取消、16 pending、错误响应、HTTP 固定长度/chunked 超限、WebSocket 分片/超限及伪造转发头限流。
 

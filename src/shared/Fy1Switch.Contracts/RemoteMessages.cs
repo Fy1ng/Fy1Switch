@@ -1,8 +1,14 @@
+using System.Text.Json.Serialization;
+
 namespace Fy1Switch.Contracts;
 
-public sealed record RemoteCommand(Guid RequestId, Guid DeviceId, string Command, DateTimeOffset ExpiresAt, Guid? TargetId = null, PowerIntent? Intent = null, Guid? OperationId = null, int Version = 1);
+public sealed record RemoteCommand(Guid RequestId, Guid DeviceId, string Command, DateTimeOffset ExpiresAt, Guid? TargetId = null, PowerIntent? Intent = null, Guid? OperationId = null, int Version = 1,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull), JsonConverter(typeof(RemoteControlConverter))] DisplayControl? Control = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Value = null);
 public sealed record RemoteStatus(Guid DeviceId, Guid? TargetId, string? DisplayName, PowerObservation Observation, bool Available, bool Busy, string? TailscaleEndpoint = null, string? RelayEndpoint = null);
-public sealed record RemoteReply(Guid RequestId, bool Success, string? ErrorCode = null, RemoteStatus? Status = null, OperationRecord? Operation = null, int Version = 1);
+public sealed record RemoteReply(Guid RequestId, bool Success, string? ErrorCode = null, RemoteStatus? Status = null, OperationRecord? Operation = null, int Version = 1,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RemoteDisplayControls? Controls = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DisplayControlOperation? ControlOperation = null);
 public sealed record PairRequest(string Code, string ClientName);
 public sealed record PairReply(Guid DeviceId, Guid ClientId, string Token, string? DeviceName = null);
 public sealed record PairBundle(int Version, Guid DeviceId, string Endpoint, string CertificatePin, string Code, DateTimeOffset ExpiresAt, string? TailscaleEndpoint = null);

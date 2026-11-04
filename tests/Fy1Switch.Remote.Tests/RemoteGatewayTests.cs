@@ -82,7 +82,6 @@ public sealed class RemoteGatewayTests
     [DataRow("shutdown")]
     [DataRow("topology")]
     [DataRow("read-controls")]
-    [DataRow("set-control")]
     [DataRow("monitor-preferences")]
     [DataRow("set-monitor-preferences")]
     [DataRow("Status")]

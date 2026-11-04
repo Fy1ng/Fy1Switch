@@ -119,15 +119,25 @@ object Protocol {
     }
 
     fun command(request: RemoteCommand): String {
-        require(request.version == 1 && request.command in setOf("status", "refresh", "set", "operation"))
+        require(request.version == 1 && request.command in setOf("status", "refresh", "set", "operation") + DisplayControlPolicy.commands)
         require(request.command != "set" || (request.targetId != null && request.operationId != null && request.intent != null))
         require(request.command != "operation" || request.operationId != null)
+        if (request.command in DisplayControlPolicy.commands) {
+            require(request.targetId != null && request.intent == null)
+            require((request.command == "controls") == (request.operationId == null))
+            if (request.command == "set-control") require(request.control != null && request.value != null && DisplayControlPolicy.legal(request.control, request.value))
+            else require(request.control == null && request.value == null)
+        } else require(request.control == null && request.value == null)
         return JSONObject().put("version", request.version).put("requestId", request.requestId.toString())
             .put("deviceId", request.deviceId.toString()).put("command", request.command)
             .put("expiresAt", request.expiresAt.toString()).apply {
                 request.targetId?.let { put("targetId", it.toString()) }
                 request.intent?.let { put("intent", it.name) }
                 request.operationId?.let { put("operationId", it.toString()) }
+                if (request.command == "set-control") {
+                    put("control", requireNotNull(request.control).name)
+                    put("value", requireNotNull(request.value))
+                }
             }.toString()
     }
 
@@ -145,7 +155,21 @@ object Protocol {
             require(request.targetId == null || operation.targetId == request.targetId)
             require(request.intent == null || operation.requested == request.intent)
         }
-        return RemoteReply(requestId, json.boolean("success"), json.stringOrNull("errorCode"), status, operation, 1)
+        // Old commands ignore additive fields; parameter replies must match the explicit bound target and operation.
+        val controls = if (request.command in DisplayControlPolicy.commands) json.objectOrNull("controls")?.let(DisplayControlProtocol::controls) else null
+        val controlOperation = if (request.command in DisplayControlPolicy.commands) json.objectOrNull("controlOperation")?.let(DisplayControlProtocol::operation) else null
+        if (request.command in DisplayControlPolicy.commands) {
+            require(operation == null)
+            require(status == null || status.targetId == request.targetId)
+            require(controls == null || controls.targetId == request.targetId)
+            if (controlOperation != null) {
+                require(request.operationId != null && controlOperation.operationId == request.operationId && controlOperation.targetId == request.targetId)
+                require(request.control == null || controlOperation.control == request.control)
+                require(request.value == null || controlOperation.requestedValue == request.value)
+            }
+            if (json.boolean("success")) require(if (request.command == "controls") controls != null && controlOperation == null else controlOperation != null)
+        }
+        return RemoteReply(requestId, json.boolean("success"), json.stringOrNull("errorCode"), status, operation, 1, controls, controlOperation)
     }
 
     fun observation(json: JSONObject) = Observation(

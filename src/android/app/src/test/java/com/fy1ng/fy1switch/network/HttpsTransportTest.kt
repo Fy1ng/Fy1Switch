@@ -157,6 +157,18 @@ class HttpsTransportTest {
         assertThrows(IllegalArgumentException::class.java) { transport.readResponse(oversized) }
     }
 
+    @Test fun parameterErrorsRetainBoundedUnsupportedResponseWithoutChangingLegacyReads() {
+        val transport = HttpsTransport()
+        val request = transport.controlRequest(profile(), Route.Direct, "{}")
+        fun response(body: String, code: Int = 400) = Response.Builder().request(request).protocol(okhttp3.Protocol.HTTP_1_1)
+            .code(code).message("fixture").body(body.toResponseBody()).build()
+        val error = "{\"errorCode\":\"invalid_command\"}"
+        assertEquals("", transport.readResponse(response(error)).body)
+        assertEquals(error, transport.readResponse(response(error), parameterErrors = true).body)
+        assertEquals("", transport.readResponse(response(error, 502), parameterErrors = true).body)
+        assertThrows(IllegalArgumentException::class.java) { transport.readResponse(response("x".repeat(Protocol.MAX_BODY + 1)), parameterErrors = true) }
+    }
+
     @Test fun tailscaleUsesPinnedDeviceTlsAndBearerWithoutRelayCredentials() {
         val transport = HttpsTransport()
         val device = profile(true).copy(tailscaleEndpoint = "https://100.64.0.2:8443")

@@ -101,7 +101,7 @@ public sealed class RelayRouter
         if (envelope.Request is { } command && response.Reply is { } reply && response.Pair is null)
         {
             if (reply.RequestId != command.RequestId || reply.Version != 1 ||
-                (reply.Status is { } status && status.DeviceId != deviceId))
+                (reply.Status is { } status && status.DeviceId != deviceId) || !RelayDisplayControls.ValidReply(command, reply))
                 return RelayResult.Error(502, "invalid_device_response");
             return new RelayResult(response.StatusCode, reply);
         }

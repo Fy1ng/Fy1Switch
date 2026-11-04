@@ -39,6 +39,7 @@ object StateCodec {
                     } ?: JSONObject.NULL)
                     .put("status", device.status?.let(Protocol::statusJson) ?: JSONObject.NULL)
                     .put("operation", device.operation?.let(Protocol::operationJson) ?: JSONObject.NULL)
+                    .put("controlOperation", device.controlOperation?.let(DisplayControlProtocol::operationJson) ?: JSONObject.NULL)
                     .put("lastSuccessfulRoute", device.lastSuccessfulRoute?.name ?: JSONObject.NULL)
                     .put("feedback", device.feedback.name).put("requiresRefresh", device.requiresRefresh))
             }
@@ -69,6 +70,9 @@ object StateCodec {
             val operation = device.objectOrNull("operation")?.let(Protocol::operation)?.let {
                 if (it.outcome == OperationOutcome.Pending) it.copy(outcome = OperationOutcome.Unknown) else it
             }
+            val controlOperation = device.objectOrNull("controlOperation")?.let(DisplayControlProtocol::operation)?.let {
+                if (it.outcome == OperationOutcome.Pending) it.copy(outcome = OperationOutcome.Unknown) else it
+            }
             val feedback = if (StatePolicy.unresolved(operation)) Feedback.Unknown else Feedback.valueOf(device.getString("feedback"))
             // This optional hint only affects connection probing, never identity or live state.
             val routeName = device.opt("lastSuccessfulRoute") as? String
@@ -88,7 +92,10 @@ object StateCodec {
                         if (savedStatus == WolStatus.Pending) WolStatus.Unknown else savedStatus,
                         java.time.Instant.parse(it.getString("issuedAt")), java.time.Instant.parse(it.getString("expiresAt")),
                         java.time.Instant.parse(it.getString("updatedAt")), it.stringOrNull("errorCode"))
-                }?.also { require(profile.wol != null && it.deviceId == profile.wol.targetId) })
+                }?.also { require(profile.wol != null && it.deviceId == profile.wol.targetId) },
+                controlOperation = controlOperation,
+                controlsRequireRefresh = DisplayControlPolicy.unresolved(controlOperation),
+                controlsFeedback = if (DisplayControlPolicy.unresolved(controlOperation)) ControlsFeedback.Unknown else ControlsFeedback.Ready)
         }
         require(devices.map { it.profile.deviceId }.distinct().size == devices.size)
         val defaultId = json.stringOrNull("defaultDeviceId")?.let(Protocol::uuid)

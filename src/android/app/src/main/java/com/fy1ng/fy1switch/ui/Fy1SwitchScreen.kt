@@ -207,6 +207,9 @@ fun Fy1SwitchScreen(
                             else -> {
                                 val device = requireNotNull(visibleState.selected)
                                 key(device.profile.deviceId) { DeviceCard(device, visibleState, repository, scope) }
+                                key(device.profile.deviceId, "display-controls") {
+                                    DisplayControlsCard(requireNotNull(state.selected), state, repository, scope)
+                                }
                                 key(device.profile.deviceId, "wol") {
                                     WolHome(requireNotNull(state.selected), state, repository, scope) { page = SETTINGS }
                                 }
