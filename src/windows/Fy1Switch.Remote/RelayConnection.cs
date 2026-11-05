@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using Fy1Switch.Contracts;
@@ -9,7 +10,8 @@ public sealed class RelayConnection(RemoteGateway gateway, string relayUrl, stri
     internal Func<ClientWebSocket> SocketFactory { get; init; } = () => new ClientWebSocket();
     private readonly CancellationTokenSource _stop = new();
     private Task? _run;
-    public string Status { get; private set; } = "disconnected";
+    private string _status = "disconnected";
+    public string Status { get => Volatile.Read(ref _status); private set => Volatile.Write(ref _status, value); }
     public void Start() => _run = RunAsync(_stop.Token);
     private async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -20,6 +22,7 @@ public sealed class RelayConnection(RemoteGateway gateway, string relayUrl, stri
             using var socket = SocketFactory();
             socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
             socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+            socket.Options.CollectHttpResponseDetails = true;
             try
             {
                 Status = "connecting";
@@ -59,10 +62,19 @@ public sealed class RelayConnection(RemoteGateway gateway, string relayUrl, stri
                     send.CancelAfter(TimeSpan.FromSeconds(10));
                     await socket.SendAsync(Encoding.UTF8.GetBytes(WireJson.Serialize(result)), WebSocketMessageType.Text, true, send.Token);
                 }
+                Status = "disconnected";
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
-            catch { Status = "unavailable"; }
-            Status = "disconnected";
+            catch
+            {
+                // Keep the reason visible during backoff instead of immediately overwriting it.
+                Status = socket.HttpStatusCode switch
+                {
+                    HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "unauthorized",
+                    HttpStatusCode.Conflict => "conflict",
+                    _ => "unavailable"
+                };
+            }
             socket.Abort();
             try { await Task.Delay(TimeSpan.FromSeconds(5 + Random.Shared.Next(0, 5)), cancellationToken); }
             catch (OperationCanceledException) { break; }

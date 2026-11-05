@@ -37,7 +37,13 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private readonly PasswordBox _relayToken = new();
     private readonly PasswordBox _relayRegistrationCode = new() { MaxLength = 6 };
     private readonly TextBlock _relayCodeText = Text("", 24, true), _relayCodeInfo = Text("", 12);
-    private readonly Button _generateRelayCode, _cancelRelayCode;
+    private readonly TextBlock _relayRegistrationStatus = Text("", 14, true), _relayRegistrationDetail = Text("", 12);
+    private readonly Grid _relayAddressRow;
+    private readonly FrameworkElement _relayRegistrationField;
+    private readonly Button _registerRelay, _cancelRegistrationEdit, _generateRelayCode, _cancelRelayCode;
+    private bool _registeringRelay, _editingRegistration, _registrationIncomplete;
+    private string? _registeredCredential;
+    private string _registerLabel = "注册到中继";
     private RelayCode? _currentRelayCode;
     private CancellationTokenSource? _relayCodeCancellation;
     private Task _relayCleanup = Task.CompletedTask;
@@ -130,12 +136,23 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         remote.Children.Add(SettingsUi.Separator());
         _relayEnabled.Margin = new Thickness(0);
         remote.Children.Add(_relayEnabled);
-        _relayFields.Children.Add(SettingsUi.Fields("中继 HTTPS 地址", _relay, "接入码", _relayRegistrationCode, 150));
+        _relayFields.Children.Add(_relayRegistrationStatus);
+        _relayRegistrationDetail.SetResourceReference(TextBlock.ForegroundProperty, DesktopTheme.SecondaryBrush);
+        _relayFields.Children.Add(_relayRegistrationDetail);
+        _relayAddressRow = SettingsUi.Fields("中继 HTTPS 地址", _relay, "接入码", _relayRegistrationCode, 150);
+        _relayRegistrationField = (FrameworkElement)_relayAddressRow.Children[1];
+        _relayFields.Children.Add(_relayAddressRow);
         _relayRegistrationCode.ToolTip = "在中继 WebUI 生成的六位电脑注册码";
         var relayPairingActions = new WrapPanel();
-        var register = AddButton(relayPairingActions, "注册到中继", RegisterRelayAsync, AppIconKind.Link);
-        SettingsUi.Button(register, primary: true);
-        register.Margin = new Thickness(0, 0, 8, 6);
+        _registerRelay = AddButton(relayPairingActions, _registerLabel, RegisterOrEditRelayAsync, AppIconKind.Link);
+        SettingsUi.Button(_registerRelay, primary: true);
+        _registerRelay.Margin = new Thickness(0, 0, 8, 6);
+        _cancelRegistrationEdit = AddButton(relayPairingActions, "取消重新注册", () =>
+        {
+            _editingRegistration = _registrationIncomplete = false;
+            _relayRegistrationCode.Clear();
+            return Task.CompletedTask;
+        }, AppIconKind.Close);
         _generateRelayCode = AddButton(relayPairingActions, "生成手机中继配对码", GenerateRelayCodeAsync, AppIconKind.Phone);
         _cancelRelayCode = AddButton(relayPairingActions, "取消配对", CancelRelayCodeAsync, AppIconKind.Close);
         relayPairingActions.Margin = new Thickness(0, 12, 0, 0);
@@ -194,7 +211,14 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         _tailscaleEnabled.Unchecked += (_, _) => UpdateOptionalForms();
         _relayEnabled.Checked += (_, _) => UpdateOptionalForms();
         _relayEnabled.Unchecked += (_, _) => { CancelRelayCodeInView(); UpdateOptionalForms(); };
-        _relay.TextChanged += (_, _) => { if (_currentRelayCode is not null && _relay.Text.Trim().TrimEnd('/') != _manager.Settings.RelayUrl?.TrimEnd('/')) CancelRelayCodeInView(); };
+        _relay.TextChanged += (_, _) =>
+        {
+            if (_loadingSettings) return;
+            _editingRegistration = _registrationIncomplete = false;
+            _relayRegistrationCode.Clear();
+            if (_currentRelayCode is not null && !RelayRegistrationPresentation.SameEndpoint(_relay.Text, _manager.Settings.RelayUrl)) CancelRelayCodeInView();
+        };
+        _relayRegistrationCode.PasswordChanged += (_, _) => RefreshActions();
         foreach (var input in new[] { _listen, _port, _endpoint, _tailscaleListen, _relay })
             input.TextChanged += (_, _) => QueueSettingsSave();
         foreach (var option in new[] { _automaticNetwork, _tailscaleEnabled, _relayEnabled })
@@ -251,6 +275,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         if (visible) { LoadNetworks(); RefreshClients(); _timer.Start(); }
         else
         {
+            _editingRegistration = _registrationIncomplete = false;
             _relayRegistrationCode.Clear();
             CancelRelayCodeInView();
             _settingsHideTask = FinishSettingsHideAsync();
@@ -422,7 +447,7 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
     private RemoteSettings ReadSettings()
     {
         if (!int.TryParse(_port.Text, out var port)) throw new ArgumentException("invalid_port");
-        var unchangedRelay = _relay.Text.Trim().TrimEnd('/') == _manager.Settings.RelayUrl?.TrimEnd('/');
+        var unchangedRelay = RelayRegistrationPresentation.SameEndpoint(_relay.Text, _manager.Settings.RelayUrl);
         var secret = string.IsNullOrWhiteSpace(_relayToken.Password) ? unchangedRelay ? _manager.Settings.ProtectedRelayToken : null : _manager.ProtectedRelayToken(_relayToken.Password);
         var settings = new RemoteSettings(true, _listen.Text.Trim(), port, _endpoint.Text.Trim(),
             string.IsNullOrWhiteSpace(_relay.Text) ? null : _relay.Text.Trim(), secret,
@@ -532,15 +557,36 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         await FlushSettingsAsync();
         if (!_settingsVisible) ClearLegacyToken();
     }
+    private Task RegisterOrEditRelayAsync()
+    {
+        if (RelayPresentation().HasCredential && !_editingRegistration && !_registrationIncomplete)
+        {
+            _editingRegistration = true;
+            _relayRegistrationCode.Clear();
+            RenderPairing();
+            _relayRegistrationCode.Focus();
+            return Task.CompletedTask;
+        }
+        return RegisterRelayAsync();
+    }
     private async Task RegisterRelayAsync()
     {
         var code = _relayRegistrationCode.Password;
         if (!DeviceSecurity.IsSixDigitCode(code)) throw new ArgumentException("invalid_relay_code");
         var settings = ReadSettings() with { RelayEnabled = true };
-        CancelRelayCodeInView(); await _relayCleanup;
-        await _lan.StopAsync(); ClearPairing();
-        try { await _manager.RegisterRelayAsync(settings, code); }
-        finally { _relayRegistrationCode.Clear(); }
+        _registeringRelay = true;
+        _registrationIncomplete = false;
+        RenderPairing();
+        try
+        {
+            CancelRelayCodeInView(); await _relayCleanup;
+            await _lan.StopAsync(); ClearPairing();
+            await _manager.RegisterRelayAsync(settings, code);
+            _registeredCredential = _manager.Settings.ProtectedRelayToken;
+            _editingRegistration = false;
+        }
+        catch { _registrationIncomplete = true; throw; }
+        finally { _registeringRelay = false; _relayRegistrationCode.Clear(); }
         if (!_closed)
         {
             _saveTimer.Stop(); _savePending = false;
@@ -702,11 +748,27 @@ internal sealed class RemoteConnectionView : IAsyncDisposable
         foreach (var button in _actionButtons) button.IsEnabled = ready;
         _configuration.IsEnabled = (!_busy || _autoSaving) && !_stopping && !Handshake;
         _copy.IsEnabled = ready && _manager.Running && !_savePending;
-        _generateRelayCode.IsEnabled = ready && _manager.Running && _manager.Settings.UseRelay && !_savePending;
+        var relay = RelayPresentation();
+        var showCode = !relay.HasCredential || _editingRegistration || _registrationIncomplete;
+        _relayRegistrationStatus.Text = relay.Title;
+        _relayRegistrationDetail.Text = relay.Detail;
+        _relayRegistrationStatus.SetResourceReference(TextBlock.ForegroundProperty,
+            relay.Connected ? DesktopTheme.SuccessBrush : relay.Warning ? DesktopTheme.WarningForegroundBrush : DesktopTheme.SecondaryBrush);
+        _relayRegistrationField.Visibility = showCode ? Visibility.Visible : Visibility.Collapsed;
+        _relayAddressRow.ColumnDefinitions[1].Width = new GridLength(showCode ? 16 : 0);
+        _relayAddressRow.ColumnDefinitions[2].Width = new GridLength(showCode ? 150 : 0);
+        var label = _registeringRelay ? "正在注册..." : !showCode ? "重新注册" : relay.HasCredential ? "确认重新注册" : "注册到中继";
+        if (_registerLabel != label) { _registerLabel = label; AppIcons.SetButton(_registerRelay, label, AppIconKind.Link); }
+        _registerRelay.IsEnabled = ready && _relayEnabled.IsChecked == true && (!showCode || DeviceSecurity.IsSixDigitCode(_relayRegistrationCode.Password));
+        _cancelRegistrationEdit.Visibility = showCode && relay.HasCredential ? Visibility.Visible : Visibility.Collapsed;
+        _generateRelayCode.IsEnabled = ready && relay.Connected && !_savePending && !_editingRegistration && !_registrationIncomplete;
         _cancelRelayCode.IsEnabled = ready && _currentRelayCode is not null;
         _cancelRelayCode.Visibility = _currentRelayCode is not null ? Visibility.Visible : Visibility.Collapsed;
         _revoke.IsEnabled = ready && _clients.SelectedItem is ClientItem;
     }
+    private RelayRegistrationPresentation RelayPresentation() => RelayRegistrationPresentation.Create(_manager.Settings,
+        _relay.Text, _relayEnabled.IsChecked == true, _manager.Running, _manager.RelayStatus, _registeringRelay,
+        _registrationIncomplete, _registeredCredential is not null && _registeredCredential == _manager.Settings.ProtectedRelayToken);
     private void SessionSwitched(object sender, SessionSwitchEventArgs args)
     {
         if (args.Reason != SessionSwitchReason.SessionLock) return;

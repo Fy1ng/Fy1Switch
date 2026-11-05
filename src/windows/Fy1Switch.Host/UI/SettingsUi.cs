@@ -113,7 +113,6 @@ internal static class SettingsUi
         {
             input.SetResourceReference(FrameworkElement.StyleProperty,
                 input is PasswordBox ? "Fy1Switch.Settings.PasswordBox" : "Fy1Switch.Settings.TextBox");
-            input.PreviewMouseWheel += ScrollPage;
         }
         field.Children.Add(input);
         return field;
@@ -170,15 +169,44 @@ internal static class SettingsUi
         return row;
     }
 
+    internal static void EnablePageScrolling(ScrollViewer page)
+    {
+        // Include blank page margins in hit testing, not just the controls inside each card.
+        page.Background = Brushes.Transparent;
+        page.PreviewMouseWheel += ScrollPage;
+    }
+
     private static void ScrollPage(object sender, MouseWheelEventArgs args)
     {
-        // Route wheel input before a single-line field's internal viewer consumes it.
-        for (var parent = VisualTreeHelper.GetParent((Control)sender); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        var page = (ScrollViewer)sender;
+        var insidePage = false;
+        var openChoice = false;
+        for (var element = args.OriginalSource as DependencyObject; element is not null; element = VisualParent(element))
         {
-            if (parent is not ScrollViewer page) continue;
-            args.Handled = true;
-            page.RaiseEvent(new MouseWheelEventArgs(args.MouseDevice, args.Timestamp, args.Delta) { RoutedEvent = Mouse.MouseWheelEvent });
-            return;
+            if (element is ComboBox { IsDropDownOpen: true }) openChoice = true;
+            if (!ReferenceEquals(element, page)) continue;
+            insidePage = true;
+            break;
         }
+        // A Popup has a separate visual tree even if its logical route includes the page.
+        // Let its own ScrollViewer handle the wheel; never scroll the page underneath it.
+        if (!insidePage) return;
+        args.Handled = true;
+        if (openChoice || Mouse.Captured is ComboBox { IsDropDownOpen: true }) return;
+
+        // Handle tunneling before ComboBox, ListBox, TextBox or Slider can consume it or change a value.
+        // Reuse native ScrollViewer wheel behavior, including the user's system scroll-line setting.
+        page.RaiseEvent(new MouseWheelEventArgs(args.MouseDevice, args.Timestamp, args.Delta)
+        {
+            RoutedEvent = Mouse.MouseWheelEvent, Source = page
+        });
     }
+
+    private static DependencyObject? VisualParent(DependencyObject element) => element switch
+    {
+        Visual => VisualTreeHelper.GetParent(element),
+        FrameworkContentElement content => content.Parent,
+        ContentElement content => ContentOperations.GetParent(content),
+        _ => null
+    };
 }

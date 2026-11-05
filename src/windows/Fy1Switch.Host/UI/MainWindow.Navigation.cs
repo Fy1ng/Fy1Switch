@@ -251,10 +251,15 @@ public sealed partial class MainWindow
         }
     }
 
-    private static ScrollViewer Page(UIElement content) => new()
+    private static ScrollViewer Page(UIElement content)
     {
-        Content = content,
-        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-    };
+        var page = new ScrollViewer
+        {
+            Content = content,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        SettingsUi.EnablePageScrolling(page);
+        return page;
+    }
 }

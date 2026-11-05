@@ -190,7 +190,12 @@ public sealed partial class MainWindow
         monitor.Children.Add(SettingsUi.Separator());
         _vcpText.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.TextBox");
         AutomationProperties.SetName(_vcpText, "检测到的 VCP 代码和支持值, 只读");
-        var vcp = new Expander { Header = "VCP 功能", Content = _vcpText };
+        var vcp = new Expander
+        {
+            Header = "VCP 功能", Content = _vcpText, MinHeight = 48,
+            Padding = new Thickness(12, 10, 12, 10), HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
         vcp.SetResourceReference(FrameworkElement.StyleProperty, "Fy1Switch.Settings.Expander");
         monitor.Children.Add(vcp);
         var section = new Expander
